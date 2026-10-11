@@ -1,0 +1,4 @@
+ruff
+bandit
+pip-audit
+pytest
