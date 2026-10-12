@@ -7,6 +7,8 @@ host collects checks (updates, containers, systemd, disks) and reports to a self
 server, which shows a red/yellow/green status page and alerts you only when something changes.
 You reach it through your own VPN. It is never a hosted service and never phones home.
 
+![Project Screenshot](https://i.imgur.com/Jhtz2pX.png)
+
 ## MVP
 
 1. Agent check-ins, with alerts for hosts that stop checking in (dead-man's switch)
