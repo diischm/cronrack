@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/        # build metadata pip creates when installing your package
+build/
+dist/              # built packages
+
+# Environments and secrets
+.venv/
+.env
+.env.*             # .env.local, .env.prod, etc.
+!.env.example      # "!" re-includes this file: a template with no real values IS committed
+
+# Django
+*.sqlite3
+staticfiles/       # output of collectstatic, generated rather than written by hand
+
+# Tool caches and test output
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
