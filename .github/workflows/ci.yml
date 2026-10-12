@@ -50,6 +50,7 @@ jobs:
       - run: bandit -c pyproject.toml -r agent server -x '*/tests/*' 
 
 
+
   pip-audit:
     name: Dependency audit (pip-audit)
     runs-on: ubuntu-24.04
