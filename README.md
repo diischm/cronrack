@@ -24,7 +24,5 @@ Kubernetes checks, CVE scanning, deprecation/EOL checks, log summaries, local se
 cron job wrappers, approved remote actions, external heartbeat.
 
 ## Security model
-
-- The agent is pull-only: outbound HTTPS, never listens on a port, read-only by default.
 - The server can only request actions by name; the allowlist lives on the host. Commands from the server are never executed.
 - Agent tokens are stored hashed, and all agent-reported data is treated as untrusted.
