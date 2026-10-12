@@ -4,3 +4,5 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["agent/tests"]
+[tool.bandit]
+skips = ["B404"]  # importing subprocess is expected: the agent wraps standard CLI tools by design
