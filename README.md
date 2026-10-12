@@ -26,3 +26,13 @@ cron job wrappers, approved remote actions, external heartbeat.
 ## Security model
 - The server can only request actions by name; the allowlist lives on the host. Commands from the server are never executed.
 - Agent tokens are stored hashed, and all agent-reported data is treated as untrusted.
+
+
+## Development setup
+
+    pipx install pre-commit
+    pre-commit install
+
+Hooks run on every commit: ruff (lint + format), gitleaks (secrets),
+large-file and YAML checks. CI runs the same checks, so skipping hooks
+with --no-verify won't get anything past review.
