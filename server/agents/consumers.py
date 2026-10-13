@@ -31,6 +31,7 @@ from hosts.services import (
     CLOSE_INVALID_MESSAGE,
     CLOSE_REPLACED,
     CLOSE_TOKEN_REVOKED,
+    REPORT_INTERVAL_SECONDS,
     host_group,
     save_report,
 )
@@ -38,7 +39,6 @@ from rules.engine import top_issues
 
 logger = logging.getLogger(__name__)
 
-REPORT_INTERVAL_SECONDS = 60
 # Check names as in the agent's config (agent/report.py REPORT_KEYS).
 ENABLED_CHECKS = ["updates", "reboot", "containers", "units", "timers", "disks"]
 

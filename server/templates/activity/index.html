@@ -1,0 +1,31 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}Activity · CronRack{% endblock %}
+{% block nav_activity %}aria-current="page"{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">Activity</h1>
+  </div>
+  {% if items %}
+    {% regroup items by day as days %}
+    {% for group in days %}
+      <h2 class="section-title">{{ group.grouper }}</h2>
+      <ul class="surface activity rows">
+        {% for entry in group.list %}
+          <li class="activity__row">
+            <span class="activity__text">{% include "components/lamp.html" with status=entry.status %} {{ entry.text }}</span>
+            <span class="activity__time">{{ entry.time_human }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endfor %}
+    {# Apo: "Load more" fetches /api/v1/activity.json?page=N and appends with textContent. #}
+    {% if next_page %}<a class="btn" href="?page={{ next_page }}">Load more</a>{% endif %}
+  {% else %}
+    <section class="surface empty">
+      <p class="empty__text">Nothing happened yet. That's a good thing.</p>
+    </section>
+  {% endif %}
+{% endblock %}

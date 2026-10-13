@@ -1,0 +1,17 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}Add host · CronRack{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">{{ host.name }} created</h1>
+    <p class="page-sub">Step 2 of 3: put the token on the host.</p>
+  </div>
+  {% include "components/agent_setup.html" %}
+  {# Step 3 (Apo): poll /api/v1/hosts/<id>/status.json every 3s with the logo-bar loader. #}
+  <section class="surface panel">
+    <h2 class="section-title">Waiting for {{ host.name }} to check in…</h2>
+    <a class="btn" href="{% url 'host-detail' host.pk %}">Go to host</a>
+  </section>
+{% endblock %}

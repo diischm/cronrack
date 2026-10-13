@@ -1,6 +1,15 @@
 import pytest
+from django.core.cache import cache
 
 from hosts.models import Host
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    """The login rate limit lives in the cache; start every test with a clean one."""
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture
@@ -16,3 +25,9 @@ def bob(django_user_model):
 @pytest.fixture
 def host(alice):
     return Host.objects.create(owner=alice, name="nas")
+
+
+@pytest.fixture
+def alice_client(client, alice):
+    client.force_login(alice)
+    return client

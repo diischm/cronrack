@@ -1,0 +1,11 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{# The agent token, shown ONCE (handoff 5.5 step 2). Never store it client-side or put it in a URL. #}
+<section class="surface panel">
+  <h2 class="section-title">Agent config for {{ host.name }}</h2>
+  <p class="warning">This token is shown once. Copy it now.</p>
+  <p class="muted">Save this as <code>{{ config_path }}</code> on the host:</p>
+  <pre class="code well">{{ agent_config }}</pre>
+  <p class="muted">Or run these commands on the host to save it with the right permissions (chmod 600):</p>
+  <pre class="code well">{{ agent_commands }}</pre>
+  <p class="muted">The install script comes later; for now install and start the agent by hand.</p>
+</section>

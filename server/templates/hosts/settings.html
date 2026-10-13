@@ -1,0 +1,44 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}{{ host.name }} settings · CronRack{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <a class="btn btn--icon" href="{% url 'host-detail' host.pk %}" aria-label="Back">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+    </a>
+    <h1 class="page-title">{{ host.name }}</h1>
+    <p class="page-sub">Host settings</p>
+  </div>
+
+  <form class="surface panel form" method="post" action="{% url 'host-settings' host.pk %}" novalidate>
+    {% csrf_token %}
+    <h2 class="section-title">Rename</h2>
+    {% include "components/field.html" with field=name_form.name %}
+    <button type="submit" class="btn">Save</button>
+  </form>
+
+  {# Apo: wrap rotate / revoke / delete in native <dialog> confirmations (handoff 5.6). #}
+  <form class="surface panel form" method="post" action="{% url 'host-rotate' host.pk %}">
+    {% csrf_token %}
+    <h2 class="section-title">Rotate token</h2>
+    <p class="muted">Makes a new token and disconnects the agent until it uses the new one.</p>
+    <button type="submit" class="btn">Rotate token</button>
+  </form>
+
+  <form class="surface panel form" method="post" action="{% url 'host-revoke' host.pk %}">
+    {% csrf_token %}
+    <h2 class="section-title">Revoke token</h2>
+    <p class="muted">The agent on this host will stop reporting.</p>
+    <button type="submit" class="btn">Revoke token</button>
+  </form>
+
+  <form class="surface panel form" method="post" action="{% url 'host-delete' host.pk %}" novalidate>
+    {% csrf_token %}
+    <h2 class="section-title">Delete host</h2>
+    <p class="muted">Deletes the host, its token and its activity. This can't be undone.</p>
+    {% include "components/field.html" with field=delete_form.confirm_name %}
+    <button type="submit" class="btn btn--danger">Delete host</button>
+  </form>
+{% endblock %}

@@ -19,3 +19,16 @@ class StatusEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.host}: {self.old_status} -> {self.new_status}"
+
+    def describe(self) -> str:
+        """One sentence for the activity list and alerts: 'pi-01 went red: 2 security updates'."""
+        name = self.host.name
+        if self.new_status == "offline":
+            text = f"{name} went offline"
+        elif self.old_status == "offline":
+            text = f"{name} is back online ({self.new_status})"
+        elif self.old_status == "waiting":
+            text = f"{name} sent its first report ({self.new_status})"
+        else:
+            text = f"{name} went {self.new_status}"
+        return f"{text}: {self.summary}" if self.summary else text

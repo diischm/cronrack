@@ -1,0 +1,13 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}New token · CronRack{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">New token for {{ host.name }}</h1>
+    <p class="page-sub">The old token no longer works and the agent was disconnected.</p>
+  </div>
+  {% include "components/agent_setup.html" %}
+  <a class="btn" href="{% url 'host-settings' host.pk %}">Back to host settings</a>
+{% endblock %}

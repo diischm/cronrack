@@ -52,12 +52,21 @@ def scan(html: str) -> PageScanner:
     return scanner
 
 
+@pytest.fixture
+def client(client: Client, alice) -> Client:
+    """Logged in: with no account, every page redirects to /setup/ (first run)."""
+    client.force_login(alice)
+    return client
+
+
 @override_settings(DEBUG=False)
+@pytest.mark.django_db
 def test_preview_is_404_without_debug(client: Client) -> None:
     assert client.get("/dev/preview/").status_code == 404
 
 
 @override_settings(DEBUG=True)
+@pytest.mark.django_db
 def test_preview_renders_with_debug(client: Client) -> None:
     response = client.get("/dev/preview/")
 
@@ -71,6 +80,7 @@ def test_preview_renders_with_debug(client: Client) -> None:
 
 
 @override_settings(DEBUG=True)
+@pytest.mark.django_db
 def test_preview_empty_state(client: Client) -> None:
     html = client.get("/dev/preview/?state=empty").content.decode()
 
@@ -79,6 +89,7 @@ def test_preview_empty_state(client: Client) -> None:
 
 
 @override_settings(DEBUG=True)
+@pytest.mark.django_db
 def test_page_has_no_inline_scripts_styles_or_handlers(client: Client) -> None:
     page = scan(client.get("/dev/preview/").content.decode())
 

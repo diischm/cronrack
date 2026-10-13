@@ -1,0 +1,19 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}Set up · CronRack{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">Welcome to CronRack</h1>
+    <p class="page-sub">Create the admin account. There is no default password.</p>
+  </div>
+  <form class="surface panel form" method="post" action="{% url 'setup' %}" novalidate>
+    {% csrf_token %}
+    {% include "components/form_errors.html" with form=form %}
+    {% include "components/field.html" with field=form.username %}
+    {% include "components/field.html" with field=form.password1 %}
+    {% include "components/field.html" with field=form.password2 %}
+    <button type="submit" class="btn btn--primary">Create admin account</button>
+  </form>
+{% endblock %}

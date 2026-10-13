@@ -1,0 +1,19 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}Sign in · CronRack{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">Sign in</h1>
+  </div>
+  <form class="surface panel form" method="post" action="{% url 'login' %}" novalidate>
+    {% csrf_token %}
+    {% include "components/form_errors.html" with form=form %}
+    {% include "components/field.html" with field=form.username %}
+    {% include "components/field.html" with field=form.password %}
+    {# next is checked server-side by LoginView (same host only, no open redirect). #}
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit" class="btn btn--primary">Sign in</button>
+  </form>
+{% endblock %}
