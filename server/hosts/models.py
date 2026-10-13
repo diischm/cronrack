@@ -27,6 +27,7 @@ class Host(models.Model):
         YELLOW = "yellow", "Yellow"
         RED = "red", "Red"
         OFFLINE = "offline", "Offline"
+        MAINTENANCE = "maintenance", "Maintenance"
 
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="hosts"
@@ -103,8 +104,8 @@ class AgentToken(models.Model):
     def rotate(cls, host: Host) -> str:
         """Replace the host's token with a new one and return the new plaintext.
 
-        The old hash is overwritten, so the old token stops working immediately.
-        (Closing the host's open WebSocket is added with the consumer in Phase 5.)
+        The old hash is overwritten, so the old token stops working immediately,
+        and once the change is saved the agent's open WebSocket is closed (4410).
         """
         raw = secrets.token_urlsafe(32)
         with transaction.atomic():
@@ -117,4 +118,8 @@ class AgentToken(models.Model):
             token.last_used_at = None
             token.revoked = False
             token.save()
+            # Imported here: hosts.services imports this module.
+            from hosts.services import CLOSE_TOKEN_REVOKED, close_agent
+
+            transaction.on_commit(lambda: close_agent(host, CLOSE_TOKEN_REVOKED))
         return raw
