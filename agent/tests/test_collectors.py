@@ -42,18 +42,32 @@ def test_parse_docker_ps_fixture():
         "backup-job",
         "init-migrate",
         "scratch",
+        "cache",
     ]
-    problems = {name for name, c in by_name.items() if c["problem"]}
-    assert problems == {"app", "worker", "backup-job"}
+    for container in containers:
+        assert set(container) == {"name", "state", "status", "health", "exit_code"}
     assert by_name["app"] == {
         "name": "app",
         "state": "running",
         "status": "Up 2 hours (unhealthy)",
-        "problem": True,
+        "health": "unhealthy",
+        "exit_code": None,
     }
+    assert by_name["web"]["health"] == "healthy"
+    assert by_name["cache"]["health"] == "starting"
+    assert by_name["db"]["health"] is None  # no healthcheck defined
+    assert by_name["backup-job"]["exit_code"] == 1
+    assert by_name["init-migrate"]["exit_code"] == 0
+    # Only "Exited (N)" sets exit_code; running, restarting and created don't.
     assert by_name["worker"]["state"] == "restarting"
-    assert by_name["backup-job"]["status"] == "Exited (1) 16 hours ago"
-    assert by_name["init-migrate"]["problem"] is False  # exit code 0 is fine
+    assert by_name["worker"]["exit_code"] is None
+    assert by_name["scratch"]["exit_code"] is None
+    assert by_name["scratch"]["health"] is None
+
+
+def test_parse_docker_ps_negative_exit_code():
+    text = '{"Names": "x", "State": "exited", "Status": "Exited (-1) 2 minutes ago"}\n'
+    assert collectors.parse_docker_ps(text)[0]["exit_code"] == -1
 
 
 def test_parse_docker_ps_skips_bad_lines_but_keeps_good_ones():
@@ -65,7 +79,13 @@ def test_parse_docker_ps_skips_bad_lines_but_keeps_good_ones():
         '{"Names": "missing-status", "State": "running"}\n'
     )
     assert collectors.parse_docker_ps(text) == [
-        {"name": "ok", "state": "running", "status": "Up 1 hour", "problem": False},
+        {
+            "name": "ok",
+            "state": "running",
+            "status": "Up 1 hour",
+            "health": None,
+            "exit_code": None,
+        },
     ]
 
 
@@ -128,18 +148,39 @@ def test_parse_systemctl_timers_older_na_format():
     ]
 
 
+def test_parse_systemctl_timers_unparseable_activates_is_none():
+    text = (
+        "Mon 2026-10-12 04:00:00 UTC 8h - - no-activates.timer\n"
+        "Mon 2026-10-12 04:00:00 UTC 8h - - garbled.timer not/a$unit\n"
+    )
+    assert collectors.parse_systemctl_timers(text) == [
+        {
+            "timer": "no-activates.timer",
+            "activates": None,
+            "last_run": None,
+            "next_run": "Mon 2026-10-12 04:00:00 UTC",
+        },
+        {
+            "timer": "garbled.timer",
+            "activates": None,
+            "last_run": None,
+            "next_run": "Mon 2026-10-12 04:00:00 UTC",
+        },
+    ]
+
+
 def test_parse_df_fixture():
     assert collectors.parse_df(load("df.txt")) == [
-        {"mount": "/", "percent_used": 44},
-        {"mount": "/boot", "percent_used": 11},
-        {"mount": "/boot/efi", "percent_used": 1},
-        {"mount": "/mnt/data", "percent_used": 96},
+        {"mount": "/", "percent": 44},
+        {"mount": "/boot", "percent": 11},
+        {"mount": "/boot/efi", "percent": 1},
+        {"mount": "/mnt/data", "percent": 96},
     ]
 
 
 def test_parse_df_mount_point_with_spaces():
     text = "/dev/sdc1 ext4 1000 500 500 50% /mnt/my disk\n"
-    assert collectors.parse_df(text) == [{"mount": "/mnt/my disk", "percent_used": 50}]
+    assert collectors.parse_df(text) == [{"mount": "/mnt/my disk", "percent": 50}]
 
 
 # --- check_reboot_required ------------------------------------------------------

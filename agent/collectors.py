@@ -43,6 +43,14 @@ _APT_LINE = re.compile(
 # "Exited (137) 3 hours ago" -> 137
 _DOCKER_EXIT_CODE = re.compile(r"Exited \((-?\d+)\)", re.ASCII)
 
+# "Up 2 hours (healthy)", "Up 5 seconds (health: starting)" -> healthcheck state.
+_DOCKER_HEALTH = re.compile(r"\((healthy|unhealthy|health: starting)\)", re.ASCII)
+_DOCKER_HEALTH_VALUES = {
+    "healthy": "healthy",
+    "unhealthy": "unhealthy",
+    "health: starting": "starting",
+}
+
 # A systemd timestamp, e.g. "Sun 2026-10-11 19:42:10 UTC".
 _TIMESTAMP = re.compile(r"[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+", re.ASCII)
 
@@ -112,17 +120,24 @@ def run_docker_ps() -> str | None:
     return _run(["docker", "ps", "-a", "--format", "{{json .}}"])
 
 
-def _container_has_problem(state: str, status: str) -> bool:
-    if "(unhealthy)" in status:
-        return True
-    if state == "restarting" or status.startswith("Restarting"):
-        return True
-    exit_match = _DOCKER_EXIT_CODE.match(status)
-    return exit_match is not None and int(exit_match[1]) != 0
+def _container_health(status: str) -> str | None:
+    match = _DOCKER_HEALTH.search(status)
+    return _DOCKER_HEALTH_VALUES[match[1]] if match else None
+
+
+def _container_exit_code(status: str) -> int | None:
+    match = _DOCKER_EXIT_CODE.match(status)
+    return int(match[1]) if match else None
 
 
 def parse_docker_ps(text: str) -> list[dict]:
-    """One dict per container: name, state, status, and a problem flag."""
+    """One dict per container: name, state, status, health, exit_code.
+
+    Facts only. Whether a container is a problem is decided on the server by
+    the rule engine, so the user can override it.
+    health:    "healthy" | "unhealthy" | "starting", or None without a healthcheck
+    exit_code: the N in "Exited (N) ...", or None if the container hasn't exited
+    """
     containers = []
     for line in text.splitlines():
         line = line.strip()
@@ -142,7 +157,8 @@ def parse_docker_ps(text: str) -> list[dict]:
                 "name": name,
                 "state": state,
                 "status": status,
-                "problem": _container_has_problem(state, status),
+                "health": _container_health(status),
+                "exit_code": _container_exit_code(status),
             }
         )
     return containers
@@ -177,16 +193,22 @@ def run_systemctl_timers() -> str | None:
     return _run(["systemctl", "list-timers", "--all", "--no-legend", "--plain"])
 
 
+def _is_timer_name(word: str) -> bool:
+    return word.endswith(".timer") and _UNIT_NAME.fullmatch(word) is not None
+
+
 def parse_systemctl_timers(text: str) -> list[dict]:
     """One dict per timer: timer, activates, last_run, next_run.
+
+    activates is None if the ACTIVATES column is missing or isn't a valid unit name.
 
     Columns are NEXT LEFT LAST PASSED UNIT ACTIVATES, but NEXT/LAST contain
     spaces ("Sun 2026-10-11 19:42:10 UTC"), LEFT/PASSED have a varying number of
     words ("8h", "1h 16min", "6 days ago"), and empty cells are "-" or "n/a".
     So we don't split by column position. Instead:
 
-    1. UNIT and ACTIVATES are always the last two words (unit names have no
-       spaces). Take them off the end.
+    1. UNIT and ACTIVATES are the last two words (unit names have no spaces).
+       Take them off the end. If ACTIVATES is missing or garbled, take only UNIT.
     2. What's left is NEXT LEFT LAST PASSED. If it *starts* with a timestamp,
        that's NEXT; otherwise NEXT is empty.
     3. Search the rest for the next timestamp: that's LAST. LEFT never looks
@@ -195,17 +217,16 @@ def parse_systemctl_timers(text: str) -> list[dict]:
     timers = []
     for line in text.splitlines():
         words = line.split()
-        if len(words) < 2:
-            continue
-        timer, activates = words[-2], words[-1]
-        if not (
-            timer.endswith(".timer")
-            and _UNIT_NAME.fullmatch(timer)
-            and _UNIT_NAME.fullmatch(activates)
-        ):
+        if len(words) >= 2 and _is_timer_name(words[-2]):
+            timer = words[-2]
+            activates = words[-1] if _UNIT_NAME.fullmatch(words[-1]) else None
+            rest = words[:-2]
+        elif words and _is_timer_name(words[-1]):
+            timer, activates, rest = words[-1], None, words[:-1]
+        else:
             continue
         # Re-join with single spaces so column padding doesn't break the regex.
-        dates = " ".join(words[:-2])
+        dates = " ".join(rest)
         next_match = _TIMESTAMP.match(dates)
         after_next = dates[next_match.end() :] if next_match else dates
         last_match = _TIMESTAMP.search(after_next)
@@ -231,7 +252,7 @@ def run_df() -> str | None:
 
 
 def parse_df(text: str) -> list[dict]:
-    """Mount point and percent used for each real filesystem.
+    """Mount point and percent used ("percent") for each real filesystem.
 
     Columns: Filesystem Type 1024-blocks Used Available Capacity Mounted-on.
     The mount point is last and may contain spaces, so split at most 6 times.
@@ -247,5 +268,5 @@ def parse_df(text: str) -> list[dict]:
         percent = _PERCENT.fullmatch(capacity)
         if not percent:
             continue  # header line ("Capacity") or "-" for pseudo filesystems
-        disks.append({"mount": mount, "percent_used": int(percent[1])})
+        disks.append({"mount": mount, "percent": int(percent[1])})
     return disks
