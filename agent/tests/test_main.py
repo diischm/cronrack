@@ -61,10 +61,23 @@ def test_unsafe_permissions_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "chmod 600" in capsys.readouterr().err
 
 
-def test_without_once_prints_placeholder(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_run_without_server_url_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     code = main(["--config", str(tmp_path / "missing.toml")])
 
-    assert code == 0
-    assert capsys.readouterr().out.strip() == "Connection loop arrives in Phase 7"
+    assert code == 2
+    assert "server_url" in capsys.readouterr().err
+
+
+def test_run_without_token_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "agent.toml"
+    path.write_text('server_url = "https://cronrack.lan"\n', encoding="utf-8")
+    os.chmod(path, 0o600)
+
+    code = main(["--config", str(path)])
+
+    assert code == 2
+    assert "no token" in capsys.readouterr().err
+
+
+def test_once_works_without_a_token(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--once", "--config", str(tmp_path / "missing.toml")]) == 0

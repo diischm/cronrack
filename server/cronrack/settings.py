@@ -40,8 +40,10 @@ if not SECRET_KEY:
     SECRET_KEY = get_random_secret_key()
 
 # Comma-separated, e.g. "cronrack.home.lan,localhost". With DEBUG=1 and nothing set,
-# Django still allows localhost / 127.0.0.1 / [::1].
+# only this machine: localhost, 127.0.0.1 and [::1].
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")
+if DEBUG and not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
 
 
 # --- Applications -----------------------------------------------------------

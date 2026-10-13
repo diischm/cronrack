@@ -11,6 +11,8 @@ urlpatterns = [
     path("", include("hosts.urls")),
     path("", include("activity.urls")),
     path("", include("prefs.urls")),
+    # Public: install.sh and the agent package (no secrets inside).
+    path("", include("agents.urls")),
     # Dev-only: 404 unless DEBUG=1 (checked inside the view).
     path("dev/preview/", dev_views.preview, name="dev-preview"),
 ]
