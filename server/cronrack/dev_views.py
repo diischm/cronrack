@@ -4,11 +4,16 @@ from django.conf import settings
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import render
 
-# Sample context from FRONTEND-HANDOFF.md section 6.2: one red, one yellow and one
-# green host, plus three activity entries. Real data comes with the Phase 6 views.
+# Sample context in the shape of hosts.presenters.overview_context(), with the
+# hosts from design-ref/cronrack-dashboard-desktop.html: one red, one yellow and
+# two green hosts, plus three activity entries.
 PREVIEW_CONTEXT = {
     "attention_count": 2,
     "updated_human": "30s ago",
+    "status_counts": {"red": 1, "yellow": 1, "green": 2},
+    "hosts_online": 4,
+    # Normally set by hosts.context_processors.shell from the database.
+    "shell_hosts": {"connected": 4, "total": 4},
     "hosts": [
         {
             "id": 3,
@@ -21,6 +26,9 @@ PREVIEW_CONTEXT = {
             ],
             "last_seen_human": "40s ago",
             "url": "/hosts/3/",
+            "updates": {"total": 12, "security": 3},
+            "containers": {"total": 9, "running": 8, "failing": 1},
+            "disk_max_percent": 62,
         },
         {
             "id": 1,
@@ -31,8 +39,11 @@ PREVIEW_CONTEXT = {
                 {"text": "Reboot required", "severity": "yellow"},
                 {"text": "Disk / at 87%", "severity": "yellow"},
             ],
-            "last_seen_human": "25s ago",
+            "last_seen_human": "22s ago",
             "url": "/hosts/1/",
+            "updates": {"total": 4, "security": 0},
+            "containers": {"total": 3, "running": 3, "failing": 0},
+            "disk_max_percent": 87,
         },
         {
             "id": 2,
@@ -40,8 +51,23 @@ PREVIEW_CONTEXT = {
             "status": "green",
             "status_label": "All good",
             "issues": [],
-            "last_seen_human": "12s ago",
+            "last_seen_human": "15s ago",
             "url": "/hosts/2/",
+            "updates": {"total": 0, "security": 0},
+            "containers": {"total": 6, "running": 6, "failing": 0},
+            "disk_max_percent": 48,
+        },
+        {
+            "id": 4,
+            "name": "media-box",
+            "status": "green",
+            "status_label": "All good",
+            "issues": [],
+            "last_seen_human": "31s ago",
+            "url": "/hosts/4/",
+            "updates": {"total": 1, "security": 0},
+            "containers": {"total": 4, "running": 4, "failing": 0},
+            "disk_max_percent": 71,
         },
     ],
     "activity": [
@@ -62,5 +88,12 @@ def preview(request: HttpRequest) -> HttpResponse:
         raise Http404
     context = dict(PREVIEW_CONTEXT)
     if request.GET.get("state") == "empty":
-        context.update(attention_count=0, hosts=[], activity=[])
+        context.update(
+            attention_count=0,
+            status_counts={"red": 0, "yellow": 0, "green": 0},
+            hosts_online=0,
+            shell_hosts={"connected": 0, "total": 0},
+            hosts=[],
+            activity=[],
+        )
     return render(request, "hosts/overview.html", context)

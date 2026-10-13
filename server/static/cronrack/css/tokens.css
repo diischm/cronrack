@@ -54,3 +54,10 @@
   --catch: rgba(255,255,255,.06);
   --lamp-bezel: #0E0E11; --lamp-bezel-hi: #4A4A52; --lamp-recess: #222227;
 }
+
+/* Added in Phase 6b, from design-ref/cronrack-dashboard-desktop.html:
+   faint text (tile units, card labels), the disk-meter fills, and the light
+   catch on a well's bottom rim (much dimmer in dark mode). */
+:root { --text-faint: #6A6580; --meter-fill: #A3A0B3; --meter-amber: #E0A100; --meter-red: #D8341F;
+  --catch-in: rgba(255,255,255,.55); }
+[data-theme="dark"] { --text-faint: #8D8A9C; --meter-fill: #6F6C80; --catch-in: rgba(255,255,255,.05); }

@@ -73,3 +73,155 @@ html, body { overflow-x: hidden; }
 .table-scroll { overflow-x: auto; padding: 8px; border-radius: 14px; }
 .table-scroll table { border-collapse: collapse; white-space: nowrap; font-size: 14px; }
 .table-scroll th, .table-scroll td { padding: 6px 10px; text-align: left; }
+
+/* --- Phase 6b ------------------------------------------------------------------
+   Desktop layout (>= 900px), matching design-ref/cronrack-dashboard-desktop.html.
+   Everything above this line is the phone layout and is unchanged; the rules
+   below only add new pieces or apply inside the min-width media query. */
+
+/* The `hidden` attribute must win over classes that set display (e.g. .loader). */
+[hidden] { display: none !important; }
+
+/* Desktop-only pieces disappear on phones, so the phone layout stays as it was. */
+@media (max-width: 899.98px) {
+  .desk-only, .side-card, .theme-label { display: none !important; }
+}
+
+/* Overview wrappers: on phones they stack exactly like the old flat list did. */
+.overview-head__text, .overview-body, .overview-hosts, .host-grid, .away {
+  display: flex; flex-direction: column; gap: 12px; }
+.overview-head__text { gap: 4px; }
+.overview-head__error { font-size: 14px; font-weight: 700; color: var(--red-chip-text); }
+
+/* Small loader (handoff 4.4b): a 36px tile next to "updated X ago". */
+.loader.loader--sm { width: 36px; height: 36px; flex: none; border-radius: 12px; gap: 3px; }
+.loader--sm span { width: 17px; height: 4px; border-radius: 2px; }
+
+/* Recessed disk meter: a native <meter> with the .well look. The fill color comes
+   from --meter-color: neutral, amber from 85%, red from 95%. */
+.meter { --meter-color: var(--meter-fill);
+  appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 8px;
+  border-radius: 4px; overflow: hidden; }
+.meter--amber { --meter-color: var(--meter-amber); }
+.meter--red { --meter-color: var(--meter-red); }
+.meter::-webkit-meter-bar { height: 8px; border: 0; border-radius: 4px; background: transparent; }
+.meter::-webkit-meter-optimum-value,
+.meter::-webkit-meter-suboptimum-value,
+.meter::-webkit-meter-even-less-good-value { border-radius: 4px; background: var(--meter-color); }
+.meter::-moz-meter-bar { border-radius: 4px; background: var(--meter-color); }
+
+/* Host detail: disk rows put the meter between the mount and the percentage. */
+.disk-row { display: flex; align-items: center; gap: 10px; }
+.disk-row__mount { min-width: 0; overflow-wrap: anywhere; }
+.disk-row .meter { flex: 1 1 60px; min-width: 60px; max-width: 240px; }
+.disk-row__fixed { flex: none; white-space: nowrap; }
+
+@media (min-width: 900px) {
+  /* Shell: a 248px sidebar (logo, nav, hosts card, theme toggle) + content.
+     .topbar becomes `display: contents`, so its logo and buttons join the grid
+     directly and `order` stacks the sidebar pieces under each other. */
+  .app:not(.app--bare) { max-width: none; margin: 0; display: grid;
+    grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: repeat(4, auto) 1fr;
+    row-gap: 28px; align-items: start; }
+  .app:not(.app--bare) .topbar { display: contents; }
+  .app:not(.app--bare) .brand,
+  .app:not(.app--bare) .topbar__actions,
+  .bottom-nav, .side-card { grid-column: 1; margin: 0 20px; }
+
+  .app:not(.app--bare) .brand { order: 1; margin-top: 28px; padding: 0 8px; gap: 12px;
+    font-size: 22px; }
+  .app:not(.app--bare) .brand__bars { gap: 4px; }
+  .app:not(.app--bare) .brand__bars span { width: 22px; height: 4px; }
+
+  /* Nav: the same recessed track, now vertical, with the active item raised. */
+  .bottom-nav { order: 2; padding: 8px; grid-template-columns: minmax(0, 1fr); }
+  .bottom-nav .seg { min-height: 48px; padding: 0 16px; flex-direction: row;
+    justify-content: flex-start; gap: 12px; font-size: 15px; transition: color var(--ease); }
+  .bottom-nav .seg:hover { color: var(--accent-text); }
+  .bottom-nav .seg:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+  .side-card { order: 3; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .side-card__title { margin: 0; font-size: 15px; font-weight: 800; }
+  .side-card__text { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-muted); }
+
+  .app:not(.app--bare) .topbar__actions { order: 4; padding: 0 8px; align-items: center;
+    justify-content: space-between; }
+  .theme-label { font-size: 14px; font-weight: 700; color: var(--text-muted); }
+  .add-key { display: none; }
+
+  /* Content column: at most 1400px of content. Pages other than the overview
+     keep a readable 720px column, so forms and lists never stretch edge to edge. */
+  .app:not(.app--bare) .app-main { grid-column: 2; grid-row: 1 / -1; width: 100%;
+    max-width: calc(1400px + 80px); padding: 32px 48px 56px 32px; gap: 24px; }
+  .app-main:not(.app-main--wide) > * { max-width: 720px; }
+  .app:not(.app--bare) .app-main--wide { gap: 32px; }
+
+  .page-title { font-size: 40px; line-height: 1.1; }
+  .page-sub { font-size: 16px; }
+
+  /* Overview header: headline on the left, "Check all now" + "Add host" on the right. */
+  .overview-head { margin: 0; flex-direction: row; flex-wrap: wrap; align-items: flex-end;
+    justify-content: space-between; gap: 20px; }
+  .overview-head__text { gap: 6px; }
+  .overview-head__sub { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .overview-head__actions { display: flex; flex-wrap: wrap; gap: 14px; }
+  .btn--head { min-height: 48px; padding: 0 20px; font-size: 15px; }
+  .btn--primary.btn--head { padding: 0 22px; font-size: 16px; }
+
+  /* Summary tiles: 2 per row on narrow desktops, 4 from 1200px. */
+  .summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .tile { padding: 20px 22px; display: flex; flex-direction: column; gap: 10px; }
+  .tile__label { display: flex; align-items: center; gap: 10px; font-size: 14px;
+    font-weight: 700; color: var(--text-muted); }
+  .tile__label .lamp + span { margin-left: 4px; }
+  .tile__icon { flex: none; color: var(--accent-text); }
+  .tile__value { margin: 0; font-size: 34px; font-weight: 800; line-height: 1; }
+  .tile__unit { font-size: 15px; font-weight: 700; color: var(--text-faint); }
+
+  /* Hosts grid + right rail. The rail drops under the grid when space runs out. */
+  .overview-body { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 28px; }
+  .overview-hosts { flex: 999 1 560px; min-width: 0; gap: 16px; }
+  .host-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 22px; }
+  .host-grid > .empty { grid-column: 1 / -1; }
+
+  /* Host card: roomier, with a recessed detail strip and a "Last report" line. */
+  .host-card { padding: 22px; gap: 16px; }
+  .host-card:hover:not(:active) { box-shadow: inset 1px 1px 2px var(--rim-light), inset -1px -1px 3px var(--rim-dark),
+    9px 11px 18px var(--shadow-dark), -9px -9px 18px var(--shadow-light); }
+  .host-card__head { gap: 10px; }
+  .host-card__title .lamp + .host-card__name { margin-left: 4px; }
+  .host-card__name { font-size: 19px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; overflow-wrap: normal; }
+  .host-card__issues { min-height: 52px; gap: 8px; color: var(--text); }
+  .host-card__strip { margin: 0; padding: 12px 14px; border-radius: 16px; display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .stat { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .stat--meter { gap: 6px; }
+  .stat__label { font-size: 12px; font-weight: 700; color: var(--text-faint); }
+  .stat dd { margin: 0; }
+  .stat__value { font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
+  .host-card__seen { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-faint); }
+
+  /* "While you were away": the whole section becomes one raised panel. */
+  .away { flex: 1 1 320px; min-width: 0; padding: 22px; border-radius: 26px;
+    background: linear-gradient(145deg, var(--surface-hi) 0%, var(--ground) 50%, var(--surface-lo) 100%);
+    box-shadow: inset 1px 1px 2px var(--rim-light), inset -1px -1px 3px var(--rim-dark),
+      7px 8px 14px var(--shadow-dark), -7px -7px 14px var(--shadow-light); }
+  .away .section-head { margin: 0; align-items: center; }
+  .away .section-link { font-size: 14px; }
+  .away .activity { padding: 0; gap: 12px; border-radius: 0; background: none; box-shadow: none; }
+  .away .activity.rows > * + * { box-shadow: none; }
+  .away .activity__row { padding: 8px 0; align-items: center; gap: 12px; }
+  .activity__lamp { display: flex; }
+  .away .activity__text { flex: 1 1 auto; margin-left: 4px; }
+  .away .activity__time { font-size: 14px; color: var(--text-faint); }
+}
+
+@media (min-width: 1200px) {
+  .summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (min-width: 900px) and (prefers-reduced-motion: reduce) {
+  .bottom-nav .seg { transition: none; }
+}

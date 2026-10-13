@@ -163,7 +163,16 @@ def test_collect_all_only_asks_my_connected_hosts(alice_client: Client, alice, b
 
 # --- overview, detail and the JSON shapes (handoff 6.2 / 6.3) ---------------------
 
-HOST_KEYS = {"id", "name", "status", "status_label", "issues", "last_seen_human", "url"}
+HOST_KEYS = {
+    "id", "name", "status", "status_label", "issues", "last_seen_human", "url",
+    # Phase 6b: the desktop card's detail strip.
+    "updates", "containers", "disk_max_percent",
+}  # fmt: skip
+OVERVIEW_KEYS = {
+    "attention_count", "updated_human", "hosts", "activity",
+    # Phase 6b: the desktop summary tiles.
+    "status_counts", "hosts_online",
+}  # fmt: skip
 
 
 def make_host(owner, name, status, report=None, **fields):
@@ -190,8 +199,10 @@ def test_overview_json_shape_and_order(alice_client: Client, alice, bob):
 
     data = alice_client.get("/api/v1/overview.json").json()
 
-    assert set(data) == {"attention_count", "updated_human", "hosts", "activity"}
+    assert set(data) == OVERVIEW_KEYS
     assert data["attention_count"] == 3
+    assert data["status_counts"] == {"red": 2, "yellow": 1, "green": 1}
+    assert data["hosts_online"] == 4  # bob's host is not counted
     assert [h["name"] for h in data["hosts"]] == ["a-red", "b-red", "a-yellow", "zz-green"]
     for h in data["hosts"]:
         assert set(h) == HOST_KEYS
@@ -227,6 +238,166 @@ def test_offline_host_shows_last_seen(alice_client: Client, alice):
     card = alice_client.get("/api/v1/overview.json").json()["hosts"][0]
     assert card["status_label"] == "Offline"
     assert card["issues"][0] == {"text": "Last seen 14 min ago", "severity": "red"}
+
+
+def test_overview_card_numbers(alice_client: Client, alice):
+    """The desktop card strip: updates, container counts and the fullest disk."""
+    containers = [
+        {"name": "nginx", "state": "restarting", "status": "Restarting (1) 5s ago",
+         "health": None, "exit_code": None},
+        {"name": "db", "state": "running", "status": "Up 3 days", "health": "healthy",
+         "exit_code": None},
+        {"name": "web", "state": "running", "status": "Up 3 days", "health": None,
+         "exit_code": None},
+    ]  # fmt: skip
+    report = make_report(
+        updates={"total": 12, "security": 3},
+        containers=containers,
+        disks=[{"mount": "/", "percent": 62}, {"mount": "/srv", "percent": 91}],
+    )
+    make_host(alice, "homeserver", "red", report)
+
+    card = alice_client.get("/api/v1/overview.json").json()["hosts"][0]
+
+    assert card["updates"] == {"total": 12, "security": 3}
+    assert card["containers"] == {"total": 3, "running": 2, "failing": 1}
+    assert card["disk_max_percent"] == 91
+
+
+def test_overview_card_numbers_can_be_missing(alice_client: Client, alice):
+    make_host(alice, "tiny", "green", make_report(updates=None, containers=None, disks=None))
+    make_host(alice, "waiting", "waiting")  # no report yet
+
+    for card in alice_client.get("/api/v1/overview.json").json()["hosts"]:
+        assert card["updates"] is None
+        assert card["containers"] is None
+        assert card["disk_max_percent"] is None
+
+
+def test_overview_summary_counts(alice_client: Client, alice):
+    """Offline counts as red (red lamp); "online" means the agent is connected."""
+    make_host(alice, "a", "red", make_report())
+    make_host(alice, "b", "offline", make_report())
+    Host.objects.filter(name="b").update(connected=False)
+    make_host(alice, "c", "green", make_report())
+    make_host(alice, "d", "waiting")
+
+    data = alice_client.get("/api/v1/overview.json").json()
+
+    assert data["status_counts"] == {"red": 2, "yellow": 0, "green": 1}
+    assert data["hosts_online"] == 2
+
+
+# --- both layouts (CSS switches at 900px; the HTML is the same) --------------------
+# The server sends one page for phones and desktops, so "renders at both layouts"
+# means: every piece both layouts need is in the HTML, and the template has no errors.
+
+
+def test_overview_has_phone_and_desktop_pieces(alice_client: Client, alice):
+    make_host(alice, "homeserver", "red", make_report(failed_units=["x.service"]))
+    make_host(alice, "pi-01", "yellow", make_report(reboot_required=True))
+    Host.objects.create(owner=alice, name="new-box")  # waiting: no report, no numbers
+    host = Host.objects.get(name="homeserver")
+    StatusEvent.objects.create(host=host, old_status="green", new_status="red", summary="x")
+
+    response = alice_client.get("/")
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    # Shared by both layouts
+    assert "2 things need you" in html
+    assert 'class="bottom-nav seg-track well"' in html
+    assert "While you were away" in html
+    # Desktop: sidebar card, header actions, tiles, card strip with a meter
+    assert "2 hosts connected" in html
+    assert "Check all now" in html
+    assert 'action="/hosts/collect-all/"' in html
+    assert "csrfmiddlewaretoken" in html
+    assert 'aria-label="Summary"' in html
+    assert "Hosts online" in html
+    assert 'class="host-card__strip well desk-only"' in html
+    assert '<meter class="meter well"' in html
+    assert "Waiting for the first report" in html
+
+
+def test_disk_meter_colors(alice_client: Client, alice):
+    for name, percent in (("calm", 84), ("amber", 85), ("red", 95)):
+        make_host(alice, name, "green", make_report(disks=[{"mount": "/", "percent": percent}]))
+
+    html = alice_client.get("/").content.decode()
+
+    assert 'class="meter well" min="0" max="100" value="84"' in html
+    assert 'class="meter well meter--amber" min="0" max="100" value="85"' in html
+    assert 'class="meter well meter--red" min="0" max="100" value="95"' in html
+
+
+def test_detail_page_renders_in_the_shell(alice_client: Client, alice):
+    report = make_report(disks=[{"mount": "/", "percent": 96}])
+    host = make_host(alice, "homeserver", "green", report)
+
+    html = alice_client.get(f"/hosts/{host.pk}/").content.decode()
+
+    assert 'class="bottom-nav seg-track well"' in html
+    assert "1 host connected" in html
+    assert 'class="meter well meter--red"' in html
+
+
+def test_sidebar_counts_only_my_hosts(alice_client: Client, alice, bob):
+    make_host(alice, "mine", "green", make_report())
+    Host.objects.create(owner=alice, name="mine-offline")
+    make_host(bob, "bobs-1", "green", make_report())
+    make_host(bob, "bobs-2", "green", make_report())
+
+    html = alice_client.get("/activity/").content.decode()
+
+    assert "1 host connected" in html
+    assert "Out of 2 hosts." in html
+
+
+def test_layout_breakpoint_is_in_the_css():
+    css = (Path(__file__).resolve().parent.parent / "static/cronrack/css/pages.css").read_text()
+    assert "@media (min-width: 900px)" in css
+    assert "@media (max-width: 899.98px)" in css
+    assert "repeat(auto-fill, minmax(300px, 1fr))" in css
+    assert "border:" not in css.replace("border: 0", "")
+
+
+# --- check all now ----------------------------------------------------------------
+
+
+def test_collect_all_requires_post(alice_client: Client, alice):
+    Host.objects.create(owner=alice, name="on", connected=True)
+    with mock.patch("hosts.views.request_collect") as collect:
+        response = alice_client.get("/hosts/collect-all/")
+    assert response.status_code == 405
+    collect.assert_not_called()
+
+
+def test_collect_all_requires_csrf(alice):
+    Host.objects.create(owner=alice, name="on", connected=True)
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(alice)
+
+    with mock.patch("hosts.views.request_collect") as collect:
+        response = client.post("/hosts/collect-all/")
+
+    assert response.status_code == 403
+    collect.assert_not_called()
+
+
+def test_collect_all_works_with_the_csrf_header(alice):
+    """What overview.js sends: the form's token in an X-CSRFToken header."""
+    Host.objects.create(owner=alice, name="on", connected=True)
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(alice)
+    page = client.get("/").content.decode()
+    token = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', page).group(1)
+
+    with mock.patch("hosts.views.request_collect") as collect:
+        response = client.post("/hosts/collect-all/", HTTP_X_CSRFTOKEN=token)
+
+    assert response.status_code == 202
+    assert collect.call_count == 1
 
 
 def test_status_json_shape(alice_client: Client, host):
