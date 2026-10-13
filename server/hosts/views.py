@@ -25,24 +25,37 @@ AGENT_CONFIG_PATH = "/etc/cronrack/agent.toml"
 
 
 def agent_setup(request: HttpRequest, host: Host, token: str) -> dict:
-    """Context for the "shown once" token block: the agent.toml content and commands.
+    """Context for the "shown once" token block: the install command and the token.
 
     The token exists only in this response. It is never stored, logged or put in a URL,
     and the response is marked no-store so the browser doesn't cache it either.
     """
+    # The server's base URL as the browser reached it, e.g. "https://cronrack.lan".
     # get_host() is checked against ALLOWED_HOSTS, so it can't be a spoofed value.
-    server_url = f"wss://{request.get_host()}/ws/agent/"
-    config = f'server_url = "{server_url}"\ntoken = "{token}"\n'
-    commands = (
-        "sudo install -d -m 755 /etc/cronrack\n"
-        # Create the file as 0600 first, so the token is never readable by others.
-        f"sudo install -m 600 /dev/null {AGENT_CONFIG_PATH}\n"
-        f"sudo tee {AGENT_CONFIG_PATH} > /dev/null <<'EOF'\n"
-        f"{config}"
-        "EOF\n"
-        f"sudo chmod 600 {AGENT_CONFIG_PATH}"
+    server_url = request.build_absolute_uri("/").rstrip("/")
+    # The token is NOT in the command: install.sh asks for it with hidden input, so it
+    # never lands in shell history or the process list.
+    install_command = (
+        f"curl -fsSL {server_url}/agent/install.sh | sudo bash -s -- --server {server_url}"
     )
-    return {"agent_config": config, "agent_commands": commands, "config_path": AGENT_CONFIG_PATH}
+    config = f'server_url = "{server_url}"\ntoken = "{token}"\n'
+    # Manual fallback (agent already installed, cronrack user exists). The file gets
+    # its final owner and mode first; sudoedit then opens it in an editor, so the
+    # token is pasted into the file, not typed into the shell.
+    commands = (
+        "sudo install -d -m 750 -o root -g cronrack /etc/cronrack\n"
+        f"sudo install -m 640 -o root -g cronrack /dev/null {AGENT_CONFIG_PATH}\n"
+        f"sudoedit {AGENT_CONFIG_PATH}\n"
+        "sudo systemctl restart cronrack-agent"
+    )
+    return {
+        "server_url": server_url,
+        "install_command": install_command,
+        "token": token,
+        "agent_config": config,
+        "agent_commands": commands,
+        "config_path": AGENT_CONFIG_PATH,
+    }
 
 
 # --- overview ------------------------------------------------------------------

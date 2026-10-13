@@ -6,10 +6,12 @@ The file will hold the host's token, so two rules apply everywhere here:
 """
 
 import os
+import re
 import stat
 import tomllib
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 DEFAULT_CONFIG_PATH = "/etc/cronrack/agent.toml"
 # B105 reviewed: this is the *name* of an environment variable, not a secret.
@@ -22,8 +24,18 @@ MVP_CHECKS = ("updates", "reboot", "containers", "units", "timers", "disks")
 MIN_INTERVAL_SECONDS = 10
 MAX_INTERVAL_SECONDS = 86_400
 
-# Group or others may not read or write the file.
-_FORBIDDEN_MODE_BITS = stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH
+# Plain http:// / ws:// is only allowed to these hosts (local development, SSH tunnels).
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+WEBSOCKET_PATH = "/ws/agent/"
+
+# Server tokens come from secrets.token_urlsafe(32): 43 URL-safe characters. Checking
+# the shape also keeps anything odd (spaces, newlines) out of the HTTP header.
+_TOKEN = re.compile(r"[A-Za-z0-9_-]{20,128}")
+
+PERMISSION_FIX = (
+    "Run: sudo chown root:cronrack {path} && sudo chmod 640 {path} "
+    "(installed service), or chmod 600 {path} for your own test file."
+)
 
 
 class ConfigError(Exception):
@@ -50,21 +62,87 @@ class AgentConfig:
         )
 
 
-def _check_mode(mode: int, path: str) -> None:
-    if mode & _FORBIDDEN_MODE_BITS:
+def _process_groups() -> set[int]:
+    return {os.getgid(), *os.getgroups()}
+
+
+def _check_stat(st: os.stat_result, path: str, uid: int, groups: set[int]) -> None:
+    """Refuse a config file that anyone but us (and root) could read or change.
+
+    Allowed: root:cronrack 0640 (the installed service: the agent can read its token
+    but can't rewrite its own config), and <me>:<me> 0600 (a local test file).
+    """
+    mode = stat.S_IMODE(st.st_mode)
+    fix = PERMISSION_FIX.format(path=path)
+    if mode & stat.S_IRWXO:
         raise ConfigError(
-            f"{path} is readable or writable by group/others "
-            f"(mode {stat.S_IMODE(mode):03o}); it holds the agent token. Run: chmod 600 {path}"
+            f"{path} is accessible by others (mode {mode:03o}); it holds the token. {fix}"
+        )
+    if mode & (stat.S_IWGRP | stat.S_IXGRP):
+        raise ConfigError(f"{path} is writable or executable by its group (mode {mode:03o}). {fix}")
+    if st.st_uid not in (0, uid):
+        raise ConfigError(f"{path} is owned by another user (uid {st.st_uid}). {fix}")
+    if mode & stat.S_IRGRP and st.st_gid not in groups:
+        raise ConfigError(
+            f"{path} is readable by group {st.st_gid}, which this agent isn't in. {fix}"
         )
 
 
 def check_permissions(path: str) -> None:
-    """Raise ConfigError if group or others can read or write the file."""
+    """Raise ConfigError if the file's owner or mode would expose or allow changing the token."""
     try:
-        mode = os.stat(path).st_mode
+        st = os.stat(path)
     except OSError as exc:
         raise ConfigError(f"cannot read {path}: {exc.strerror}") from None
-    _check_mode(mode, path)
+    _check_stat(st, path, os.getuid(), _process_groups())
+
+
+def check_server_url(url: str) -> str:
+    """Validate the server's base URL and return it. Raises ConfigError.
+
+    https:// (or wss://) is required. Plain http:// / ws:// is only accepted for
+    localhost, 127.0.0.1 and ::1, so the token never crosses a network unencrypted.
+    """
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        parts.port  # noqa: B018 - raises ValueError for a bad port
+    except ValueError:
+        raise ConfigError("'server_url' is not a valid URL") from None
+    if parts.scheme not in {"https", "wss", "http", "ws"}:
+        raise ConfigError("'server_url' must start with https://")
+    if not host:
+        raise ConfigError("'server_url' has no host name")
+    if parts.username or parts.password or parts.query or parts.fragment:
+        raise ConfigError("'server_url' must not contain a user name, password, ? or #")
+    if parts.scheme in {"http", "ws"} and host not in LOCAL_HOSTS:
+        raise ConfigError(
+            "'server_url' must use https:// (plain http:// is only allowed for "
+            "localhost, 127.0.0.1 and ::1)"
+        )
+    return url
+
+
+def websocket_url(server_url: str) -> str:
+    """The agent endpoint for a base URL: https://x -> wss://x/ws/agent/, http -> ws.
+
+    A URL that already ends in /ws/agent/ is kept (older config files used that form).
+    """
+    parts = urlsplit(check_server_url(server_url))
+    scheme = {"https": "wss", "http": "ws"}.get(parts.scheme, parts.scheme)
+    path = parts.path.rstrip("/")
+    if not path.endswith(WEBSOCKET_PATH.rstrip("/")):
+        path += WEBSOCKET_PATH.rstrip("/")
+    return f"{scheme}://{parts.netloc}{path}/"
+
+
+def check_token(token: str) -> str:
+    if not _TOKEN.fullmatch(token):
+        # Never include the value: it may be a real (if mangled) secret.
+        raise ConfigError(
+            "'token' doesn't look like a CronRack token (copy it again from the server)"
+        )
+    return token
 
 
 def _optional_str(data: dict[str, Any], key: str) -> str | None:
@@ -85,6 +163,10 @@ def _parse(data: dict[str, Any]) -> AgentConfig:
         token=_optional_str(data, "token"),
         ca_file=_optional_str(data, "ca_file"),
     )
+    if config.server_url is not None:
+        check_server_url(config.server_url)
+    if config.token is not None:
+        check_token(config.token)
 
     if "interval_seconds" in data:
         interval = data["interval_seconds"]
@@ -126,7 +208,7 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> AgentConfig:
     try:
         with open(path, "rb") as f:
             # Check the file we actually opened, so it can't be swapped in between.
-            _check_mode(os.fstat(f.fileno()).st_mode, path)
+            _check_stat(os.fstat(f.fileno()), path, os.getuid(), _process_groups())
             data = tomllib.load(f)
     except FileNotFoundError:
         data = {}
@@ -140,5 +222,5 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> AgentConfig:
 
     env_token = os.environ.get(TOKEN_ENV_VAR)
     if env_token:
-        config.token = env_token
+        config.token = check_token(env_token)
     return config

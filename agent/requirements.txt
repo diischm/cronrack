@@ -1,0 +1,2 @@
+# The agent's only runtime dependency (WebSocket client). Exact pin; upgrade on purpose.
+websockets==17.2

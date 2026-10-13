@@ -1,0 +1,44 @@
+# CronRack agent: one outbound WebSocket to your CronRack server. Listens on no port.
+# Installed by deploy/install.sh to /etc/systemd/system/cronrack-agent.service.
+#
+#   systemctl status cronrack-agent
+#   journalctl -u cronrack-agent -f
+
+[Unit]
+Description=CronRack agent
+Documentation=https://github.com/diischm/cronrack
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+User=cronrack
+Group=cronrack
+WorkingDirectory=/opt/cronrack-agent/app
+ExecStart=/opt/cronrack-agent/venv/bin/python -m agent --config /etc/cronrack/agent.toml
+Restart=always
+RestartSec=5
+
+# Docker access is OPT-IN. Uncomment only if you want container checks.
+# Being in the "docker" group is effectively ROOT on this host: anyone in it can
+# start a container that mounts / and changes any file. Only enable it if you
+# accept that a compromised agent could take over the machine.
+#SupplementaryGroups=docker
+
+# --- Hardening ------------------------------------------------------------------
+# Never gain privileges (blocks sudo, setuid binaries, file capabilities).
+NoNewPrivileges=yes
+# The whole filesystem is read-only for the agent; it never needs to write anything.
+ProtectSystem=strict
+# /home, /root and /run/user are invisible.
+ProtectHome=yes
+# A private /tmp, not shared with other services.
+PrivateTmp=yes
+# No changing kernel settings (/proc/sys, /sys) or cgroups.
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+# No creating setuid/setgid files.
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target

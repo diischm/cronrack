@@ -48,8 +48,15 @@ def test_add_host_shows_the_token_once(alice_client: Client, alice, caplog):
     host = Host.objects.get(owner=alice, name="pi-01")
     token = token_from(response)
     html = html_lib.unescape(response.content.decode())
-    assert 'server_url = "wss://testserver/ws/agent/"' in html
-    assert "chmod 600 /etc/cronrack/agent.toml" in html
+    # The one-line install command for this server (the token is NOT part of it) ...
+    assert (
+        "curl -fsSL http://testserver/agent/install.sh | sudo bash -s -- "
+        "--server http://testserver" in html
+    )
+    # ... the token to paste at the prompt, and the manual agent.toml fallback.
+    assert f'<pre class="code well">{token}</pre>' in html
+    assert 'server_url = "http://testserver"' in html
+    assert "sudo install -m 640 -o root -g cronrack /dev/null /etc/cronrack/agent.toml" in html
     assert "no-store" in response["Cache-Control"]
 
     # Only the hash is stored, and it matches the token shown.
