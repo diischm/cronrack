@@ -53,7 +53,8 @@ def _run(args: list[str]) -> str | None:
     """Run a command (no shell) and return stdout, or None on any failure."""
     env = {**os.environ, **_COMMAND_ENV_OVERRIDES}
     try:
-        result = subprocess.run(
+        # B603 reviewed: argv is always a literal list from run_* callers; no shell, no external input.
+        result = subprocess.run(  # nosec B603
             args,
             stdin=subprocess.DEVNULL,
             capture_output=True,
