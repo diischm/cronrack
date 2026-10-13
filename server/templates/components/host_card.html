@@ -1,6 +1,7 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {# One tappable host card. Usage: {% include "components/host_card.html" with host=host %} #}
 {# Everything in `host` comes from agent reports or user input: plain {{ }} output only, so Django escapes it. #}
+{# The detail strip and the "Last report" line are desktop-only (pages.css, >= 900px). #}
 <a class="surface card-press host-card" href="{{ host.url }}">
   <div class="host-card__head">
     <div class="host-card__title">
@@ -18,5 +19,29 @@
         </li>
       {% endfor %}
     </ul>
+  {% else %}
+    <ul class="host-card__issues desk-only">
+      <li><span>{% if host.status == "waiting" %}Waiting for the first report{% else %}Nothing needs you{% endif %}</span></li>
+    </ul>
   {% endif %}
+  <dl class="host-card__strip well desk-only">
+    <div class="stat">
+      <dt class="stat__label">Updates</dt>
+      <dd class="stat__value">{% if host.updates is None %}n/a{% else %}{{ host.updates.total }}{% if host.updates.security %} ({{ host.updates.security }} security){% endif %}{% endif %}</dd>
+    </div>
+    <div class="stat">
+      <dt class="stat__label">Containers</dt>
+      <dd class="stat__value">{% if host.containers is None %}n/a{% elif host.containers.failing %}{{ host.containers.total }} · {{ host.containers.failing }} failing{% else %}{{ host.containers.running }} running{% endif %}</dd>
+    </div>
+    <div class="stat stat--meter">
+      {% if host.disk_max_percent is None %}
+        <dt class="stat__label">Disk</dt>
+        <dd class="stat__value">n/a</dd>
+      {% else %}
+        <dt class="stat__label">Disk {{ host.disk_max_percent }}%</dt>
+        <dd>{% include "components/meter.html" with percent=host.disk_max_percent label="Largest disk" %}</dd>
+      {% endif %}
+    </div>
+  </dl>
+  <p class="host-card__seen desk-only">{% if host.status == "waiting" %}No report yet{% else %}Last report {{ host.last_seen_human }}{% endif %}</p>
 </a>

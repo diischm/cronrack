@@ -104,8 +104,7 @@
       {% else %}
         <ul class="rows plain-list">
           {% for d in disks %}
-            {# Apo: meter track + fill. No inline style attributes (CSP); use the meter or width classes. #}
-            <li>{{ d.mount }} <meter min="0" max="100" value="{{ d.percent }}"></meter> {{ d.percent }}%{% if d.level != "green" %} {% include "components/chip.html" with status=d.level label=d.level %}{% endif %}</li>
+            <li class="disk-row"><span class="disk-row__mount">{{ d.mount }}</span> {% include "components/meter.html" with percent=d.percent label=d.mount %} <span class="disk-row__fixed">{{ d.percent }}%</span>{% if d.level != "green" %} <span class="disk-row__fixed">{% include "components/chip.html" with status=d.level label=d.level %}</span>{% endif %}</li>
           {% endfor %}
         </ul>
       {% endif %}

@@ -136,6 +136,8 @@ def test_hostile_report_data_renders_escaped(alice_client: Client, host):
             }
         ],
         failed_units=[XSS_ATTR],
+        # The mount also lands in the disk meter's aria-label attribute.
+        disks=[{"mount": XSS_ATTR, "percent": 90}],
     )
     host.status = "red"
     host.save()

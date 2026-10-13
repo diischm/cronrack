@@ -78,9 +78,42 @@ def issue_dict(finding: Finding) -> dict[str, Any]:
     }
 
 
+def _problem_containers(findings: list[Finding]) -> set[str]:
+    """Names of containers that have an active red or yellow docker.* finding."""
+    return {
+        f.subject.removeprefix("container:")
+        for f in findings
+        if f.rule_id.startswith("docker.") and f.severity in ("red", "yellow")
+    }
+
+
+def _card_numbers(report: dict | None, findings: list[Finding]) -> dict[str, Any]:
+    """The numbers in a host card's detail strip. A check the host didn't report stays None."""
+    numbers: dict[str, Any] = {"updates": None, "containers": None, "disk_max_percent": None}
+    if report is None:
+        return numbers
+    if report.get("updates") is not None:
+        numbers["updates"] = {
+            "total": report["updates"]["total"],
+            "security": report["updates"]["security"],
+        }
+    containers = report.get("containers")
+    if containers is not None:
+        failing = _problem_containers(findings)
+        numbers["containers"] = {
+            "total": len(containers),
+            "running": sum(1 for c in containers if c["state"] == "running"),
+            "failing": sum(1 for c in containers if c["name"] in failing),
+        }
+    if report.get("disks"):
+        numbers["disk_max_percent"] = max(d["percent"] for d in report["disks"])
+    return numbers
+
+
 def host_summary(host: Host, now: datetime, data: OwnerData) -> dict[str, Any]:
     """One host card on the overview."""
-    issues = top_issues(active_findings(host, now, data))
+    findings = active_findings(host, now, data)
+    issues = top_issues(findings)
     return {
         "id": host.pk,
         "name": host.name,
@@ -89,6 +122,7 @@ def host_summary(host: Host, now: datetime, data: OwnerData) -> dict[str, Any]:
         "issues": [{"text": f.text, "severity": f.severity} for f in issues],
         "last_seen_human": ago(host.last_seen_at, now),
         "url": reverse("host-detail", args=[host.pk]),
+        **_card_numbers(host.latest_report, findings),
     }
 
 
@@ -108,9 +142,17 @@ def overview_context(user, now: datetime) -> dict[str, Any]:
     hosts = sort_hosts(Host.objects.filter(owner=user))
     newest = max((h.last_seen_at for h in hosts if h.last_seen_at), default=None)
     events = StatusEvent.objects.filter(host__owner=user).select_related("host")
+    statuses = [h.status for h in hosts]
     return {
-        "attention_count": sum(1 for h in hosts if h.status in NEEDS_ATTENTION),
+        "attention_count": sum(1 for s in statuses if s in NEEDS_ATTENTION),
         "updated_human": ago(newest, now),
+        # The desktop summary tiles. An offline host has a red lamp, so it counts as red.
+        "status_counts": {
+            "red": sum(1 for s in statuses if s in ("red", "offline")),
+            "yellow": statuses.count("yellow"),
+            "green": statuses.count("green"),
+        },
+        "hosts_online": sum(1 for h in hosts if h.connected),
         "hosts": [host_summary(h, now, data) for h in hosts],
         "activity": [activity_entry(e, now, data) for e in events[:OVERVIEW_ACTIVITY]],
     }
@@ -120,11 +162,7 @@ def _container_sections(report: dict, findings: list[Finding]):
     containers = report.get("containers")
     if containers is None:
         return None
-    problem_names = {
-        f.subject.removeprefix("container:")
-        for f in findings
-        if f.rule_id.startswith("docker.") and f.severity in ("red", "yellow")
-    }
+    problem_names = _problem_containers(findings)
     problems, healthy = [], []
     for c in containers:
         if c["name"] in problem_names:

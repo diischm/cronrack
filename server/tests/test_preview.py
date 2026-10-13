@@ -126,6 +126,9 @@ def test_templates_follow_the_placeholder_and_csp_rules() -> None:
         assert "|safe" not in text, template
         assert "style=" not in text, template
         assert not EVENT_HANDLER_ATTR.search(text), template
+        # Django's {# #} comments are single-line only; a multi-line one is printed as text.
+        for line in text.splitlines():
+            assert "{#" not in line or "#}" in line, f"{template}: use {{% comment %}}"
 
 
 @pytest.mark.parametrize(
