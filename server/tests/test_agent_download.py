@@ -138,7 +138,11 @@ def test_rotated_token_page_shows_command_and_token(alice_client, host):
 
 
 def allowed_hosts_with(env: dict[str, str]) -> str:
-    clean = {k: v for k, v in os.environ.items() if k not in {"DEBUG", "ALLOWED_HOSTS"}}
+    clean = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in {"DEBUG", "ALLOWED_HOSTS", "CRONRACK_DOMAIN", "BEHIND_PROXY"}
+    }
     code = "import cronrack.settings as s; print(','.join(s.ALLOWED_HOSTS))"
     result = subprocess.run(
         [sys.executable, "-c", code],

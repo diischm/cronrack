@@ -1,0 +1,65 @@
+# Caddy: the only part of CronRack reachable from the network. It ends TLS (HTTPS for
+# browsers, WSS for agents), serves the static files itself and passes everything
+# else to the app container. docker-compose.yml mounts this file read-only.
+#
+# Certificates: three ways, pick one by editing the `tls` line below.
+#
+# 1. `tls internal` (the default). Caddy runs its own small certificate authority (CA)
+#    and signs a certificate for CRONRACK_DOMAIN. Works for any name, such as a LAN name
+#    (cronrack.home.lan), a Tailscale name, an IP address or localhost, with no public
+#    domain and no internet access. Browsers and agents don't know this CA, so:
+#      - browsers warn until you trust the root certificate (or click through once);
+#      - agents get it with install.sh --ca-file (see docs/DEPLOY.md).
+#    The root certificate lives in the caddy_data volume:
+#      docker compose exec -T caddy cat /data/caddy/pki/authorities/local/root.crt
+#    It stays the same as long as that volume exists, so keep the volume.
+#
+# 2. A real public domain (e.g. cronrack.example.com): delete the `tls internal` line.
+#    Caddy then gets a free, trusted certificate from Let's Encrypt automatically.
+#    That needs a DNS record pointing at this server and ports 80/443 reachable from
+#    the internet (or a DNS-challenge plugin, which needs a custom Caddy build).
+#    Agents then need no --ca-file.
+#
+# 3. Tailscale certificates (a *.ts.net name, with HTTPS enabled in the Tailscale admin
+#    console): trusted everywhere, nothing public. Caddy can fetch them from the
+#    Tailscale daemon, but in a container that means mounting the host's
+#    tailscaled.sock into the caddy container. Alternatively run
+#    `tailscale cert <name>` on the host and point `tls <cert.pem> <key.pem>` at the
+#    files (mounted read-only), renewing them before they expire.
+
+{
+	# HTTP/1.1 and HTTP/2 only. HTTP/3 would need UDP port 443 published as well.
+	servers {
+		protocols h1 h2
+	}
+	# Caddy runs in a container: don't try to add its CA to the container's trust store.
+	skip_install_trust
+	# Leave out the admin API's request log: the health check calls it every 30 s.
+	log default {
+		exclude admin.api
+	}
+}
+
+{$CRONRACK_DOMAIN} {
+	tls internal
+
+	# HSTS: browsers must use https for this name from now on. Django already sends this
+	# header on everything it answers; the `?` means "only if the response doesn't have
+	# it yet", so the static files get it too, and no response ever has it twice.
+	header ?Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# CSS, JS and fonts, straight from the shared "static" volume (read-only here).
+	# No directory listings: file_server only lists folders when told to (`browse`).
+	handle /static/* {
+		header ?X-Content-Type-Options "nosniff"
+		root * /srv
+		file_server
+	}
+
+	# Everything else, including the agents' WebSocket (/ws/agent/), goes to the app.
+	# reverse_proxy passes WebSocket upgrades through and sets X-Forwarded-For and
+	# X-Forwarded-Proto itself (any such headers a client sends are replaced).
+	handle {
+		reverse_proxy app:8000
+	}
+}

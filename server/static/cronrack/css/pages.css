@@ -46,7 +46,7 @@ html, body { overflow-x: hidden; }
 .empty__text { margin: 0; font-size: 15px; color: var(--text-muted); }
 
 /* Bottom nav: four segments in one recessed track */
-.bottom-nav { margin: 8px 16px 20px; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: row; }
+.bottom-nav { margin: 8px 16px 20px; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row; }
 
 /* Toasts float at the top, inside the column width */
 .toasts { position: fixed; top: 12px; left: 0; right: 0; z-index: 10; margin: 0 auto;
@@ -84,7 +84,7 @@ html, body { overflow-x: hidden; }
 
 /* Desktop-only pieces disappear on phones, so the phone layout stays as it was. */
 @media (max-width: 899.98px) {
-  .desk-only, .side-card, .theme-label { display: none !important; }
+  .desk-only, .side-card, .side-version, .theme-label { display: none !important; }
 }
 
 /* Overview wrappers: on phones they stack exactly like the old flat list did. */
@@ -143,6 +143,9 @@ html, body { overflow-x: hidden; }
   .side-card { order: 3; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
   .side-card__title { margin: 0; font-size: 15px; font-weight: 800; }
   .side-card__text { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-muted); }
+  /* Sidebar footer: the server version, pinned to the bottom of the last (1fr) row. */
+  .side-version { order: 5; grid-column: 1; align-self: end; margin: 0 28px 28px;
+    font-size: 13px; color: var(--text-muted); }
 
   .app:not(.app--bare) .topbar__actions { order: 4; padding: 0 8px; align-items: center;
     justify-content: space-between; }

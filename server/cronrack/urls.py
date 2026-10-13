@@ -3,9 +3,11 @@ from django.contrib import admin
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
 
-from cronrack import dev_views
+from cronrack import dev_views, health
 
 urlpatterns = [
+    # Public: the Docker health check (answers "ok", nothing else).
+    path("healthz", health.healthz, name="healthz"),
     path("admin/", admin.site.urls),
     path("", include("accounts.urls")),
     path("", include("hosts.urls")),
@@ -19,7 +21,7 @@ urlpatterns = [
 
 # uvicorn does not serve static files (CSS/JS, the admin's styles) by itself.
 # In development (DEBUG=1) Django serves them from /static/. In production this
-# route doesn't exist; static files are served separately (deployment phase).
+# route doesn't exist: Caddy serves the collected files (see Caddyfile).
 # (staticfiles_urlpatterns() also checks DEBUG; the explicit `if` makes it obvious.)
 if settings.DEBUG:
     urlpatterns += staticfiles_urlpatterns()

@@ -1,0 +1,22 @@
+# What `docker compose build` may send to Docker (the build context is the repo root).
+#
+# An allowlist: ignore everything, then let in only the three folders the image uses.
+# That keeps out .git, .venv, .env, design-ref/, CLAUDE.md, PROJECT.md,
+# BACKEND-GUIDE.md, FRONTEND-HANDOFF.md and any other local notes, including
+# ones added later that nobody remembers to list here.
+*
+!server
+!agent
+!deploy
+
+# Inside those folders: no tests, fixtures, local data, secrets, caches or notes.
+**/tests
+**/fixtures
+server/data
+**/*.sqlite3
+**/*.sqlite3-*
+**/.env
+**/.env.*
+**/__pycache__
+**/*.pyc
+**/*.md

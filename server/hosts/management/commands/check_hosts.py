@@ -3,10 +3,14 @@
 Each pass marks hosts that stopped checking in as offline (the dead-man's switch),
 which records a status event and sends the alert. Runs as its own small process
 next to the web server. `--once` (the default without --loop) runs a single pass.
+
+`--heartbeat-file` (used in docker compose) touches a file after every successful
+pass, so the container's health check can tell a working loop from a stuck one.
 """
 
 import logging
 import time
+from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections
@@ -29,6 +33,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--every", type=int, default=30, help="Seconds between passes with --loop."
         )
+        parser.add_argument(
+            "--heartbeat-file",
+            help="With --loop: touch this file after every successful pass (for health checks).",
+        )
 
     def handle(self, *args, **options):
         every = options["every"]
@@ -44,6 +52,8 @@ class Command(BaseCommand):
                 close_old_connections()
                 try:
                     self.run_pass()
+                    if options["heartbeat_file"]:
+                        Path(options["heartbeat_file"]).touch()
                 except Exception:
                     # One failed pass (e.g. the database was locked) must not stop the
                     # dead-man's switch for good; log it and try again next time.

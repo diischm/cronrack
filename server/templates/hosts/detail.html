@@ -110,4 +110,6 @@
       {% endif %}
     </section>
   {% endif %}
+
+  <p class="muted">Agent {% if host.agent_version %}v{{ host.agent_version }}{% else %}version unknown (no report yet){% endif %} · Server v{{ server_version }}</p>
 {% endblock %}

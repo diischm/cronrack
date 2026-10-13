@@ -64,10 +64,6 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg>
         Overview
       </a>
-      <a class="seg" href="/security/" {% block nav_security %}{% endblock %}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.1 8 9 4.6-.9 8-4.5 8-9V6l-8-3z"></path></svg>
-        Security
-      </a>
       <a class="seg" href="/activity/" {% block nav_activity %}{% endblock %}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>
         Activity
@@ -83,6 +79,8 @@
       <p class="side-card__title">{{ shell_hosts.connected }} host{{ shell_hosts.connected|pluralize }} connected</p>
       <p class="side-card__text">{% if not shell_hosts.total %}No hosts yet. Add one to get started.{% elif shell_hosts.connected == shell_hosts.total %}Every agent is connected.{% else %}Out of {{ shell_hosts.total }} host{{ shell_hosts.total|pluralize }}.{% endif %}</p>
     </section>
+    {# Desktop sidebar footer only. #}
+    <p class="side-version">CronRack v{{ server_version }}</p>
     {% endif %}
   </div>
 </body>

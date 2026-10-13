@@ -5,6 +5,7 @@ get_owned_host(), which answers 404 for anyone else's host (IDOR protection).
 All views require login; POST views are CSRF-protected by CsrfViewMiddleware.
 """
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -22,6 +23,10 @@ from hosts.presenters import detail_context, overview_context
 from hosts.services import close_agent, request_collect
 
 AGENT_CONFIG_PATH = "/etc/cronrack/agent.toml"
+# Where Caddy keeps its own CA's root certificate (`tls internal`), inside the caddy container.
+CADDY_ROOT_CA = "/data/caddy/pki/authorities/local/root.crt"
+# The file name the instructions use for that certificate on the host.
+CA_FILE_NAME = "cronrack-ca.crt"
 
 
 def agent_setup(request: HttpRequest, host: Host, token: str) -> dict:
@@ -30,14 +35,27 @@ def agent_setup(request: HttpRequest, host: Host, token: str) -> dict:
     The token exists only in this response. It is never stored, logged or put in a URL,
     and the response is marked no-store so the browser doesn't cache it either.
     """
-    # The server's base URL as the browser reached it, e.g. "https://cronrack.lan".
+    # The server's base URL. In docker compose that's always https://<CRONRACK_DOMAIN>.
+    # Without CRONRACK_DOMAIN (local development) it's the URL the browser used;
     # get_host() is checked against ALLOWED_HOSTS, so it can't be a spoofed value.
-    server_url = request.build_absolute_uri("/").rstrip("/")
+    if settings.CRONRACK_DOMAIN:
+        server_url = f"https://{settings.CRONRACK_DOMAIN}"
+    else:
+        server_url = request.build_absolute_uri("/").rstrip("/")
     # The token is NOT in the command: install.sh asks for it with hidden input, so it
     # never lands in shell history or the process list.
     install_command = (
         f"curl -fsSL {server_url}/agent/install.sh | sudo bash -s -- --server {server_url}"
     )
+    # The same with Caddy's own CA (`tls internal`): curl and the agent trust exactly
+    # that root certificate, which the user copies to the host first.
+    install_command_ca = (
+        f"curl -fsSL --cacert {CA_FILE_NAME} {server_url}/agent/install.sh"
+        f" | sudo bash -s -- --server {server_url} --ca-file {CA_FILE_NAME}"
+    )
+    # Run on the CronRack server, in the folder with docker-compose.yml.
+    # -T: no terminal, so the file gets plain \n line endings.
+    ca_command = f"docker compose exec -T caddy cat {CADDY_ROOT_CA} > {CA_FILE_NAME}"
     config = f'server_url = "{server_url}"\ntoken = "{token}"\n'
     # Manual fallback (agent already installed, cronrack user exists). The file gets
     # its final owner and mode first; sudoedit then opens it in an editor, so the
@@ -51,6 +69,9 @@ def agent_setup(request: HttpRequest, host: Host, token: str) -> dict:
     return {
         "server_url": server_url,
         "install_command": install_command,
+        "install_command_ca": install_command_ca,
+        "ca_command": ca_command,
+        "ca_file_name": CA_FILE_NAME,
         "token": token,
         "agent_config": config,
         "agent_commands": commands,
