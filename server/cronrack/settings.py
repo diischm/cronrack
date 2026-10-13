@@ -82,6 +82,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # First: answers GET /healthz before the Host check, redirects or sessions
+    # (see cronrack/health.py).
+    "cronrack.health.HealthCheckMiddleware",
     "django.middleware.security.SecurityMiddleware",
     # Content-Security-Policy on every response.
     "cronrack.middleware.SecurityHeadersMiddleware",
@@ -191,9 +194,6 @@ if BEHIND_PROXY:
 
 # Redirect http -> https and tell browsers to use https only (HSTS).
 SECURE_SSL_REDIRECT = not DEBUG
-# Except /healthz: Docker's health check calls it over plain http inside the container.
-# It returns "ok" and nothing else.
-SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 SECURE_HSTS_SECONDS = 0 if DEBUG else 31_536_000  # one year
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 # Not preloaded: preloading is a public, hard-to-undo registration that only makes

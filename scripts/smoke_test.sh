@@ -7,9 +7,10 @@
 # scheduler, caddy) under a throwaway project name, then checks:
 #   1. /healthz answers "ok" through Caddy over HTTPS, verified against Caddy's own CA
 #   2. plain http redirects to https
-#   3. the agent WebSocket (/ws/agent/) refuses a handshake without a token
-#   4. only Caddy publishes ports; app and scheduler publish none
-#   5. all three containers become healthy
+#   3. a TLS handshake WITHOUT a server name (SNI) works, as when CRONRACK_DOMAIN is an IP
+#   4. the agent WebSocket (/ws/agent/) refuses a handshake without a token
+#   5. only Caddy publishes ports; app and scheduler publish none
+#   6. all three containers become healthy
 # and always tears everything down again (containers, network, volumes, its image).
 #
 # It never reads or changes your .env and never touches a running CronRack stack:
@@ -34,6 +35,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 cd "$(dirname "$0")/.."
 command -v docker >/dev/null || fail "docker is not installed"
 command -v curl >/dev/null || fail "curl is not installed"
+command -v openssl >/dev/null || fail "openssl is not installed"
 docker compose version >/dev/null 2>&1 || fail "the docker compose plugin is not installed"
 
 TMP="$(mktemp -d)"
@@ -120,7 +122,22 @@ case "$redirect" in
   *) fail "plain http did not redirect to https: $redirect" ;;
 esac
 
-# --- 3. the agent WebSocket needs a token -------------------------------------------------
+# --- 3. TLS without SNI ------------------------------------------------------------------
+
+# Browsers, curl and the agent send no server name when they connect to an IP address.
+# Without `default_sni` in the Caddyfile, Caddy then aborts with "tlsv1 alert internal
+# error". Connect by IP with -noservername; the certificate must still verify for the
+# domain. (Exit status AND "Verification: OK": on a failed handshake s_client still
+# prints "Verify return code: 0", because nothing was verified.)
+if ! no_sni="$(openssl s_client -connect "127.0.0.1:$HTTPS_PORT" -noservername \
+  -CAfile "$ROOT_CA" -verify_hostname localhost -verify_return_error </dev/null 2>&1)" \
+  || ! grep -q '^Verification: OK' <<<"$no_sni"; then
+  printf '%s\n' "$no_sni" | grep -Ei 'alert|error|verif' >&2 || true
+  fail "TLS handshake without SNI failed (default_sni missing from the Caddyfile?)"
+fi
+say "OK: a TLS handshake without SNI gets the certificate for localhost, verified"
+
+# --- 4. the agent WebSocket needs a token -------------------------------------------------
 
 # A complete WebSocket handshake, but no Authorization header. 101 would mean "accepted".
 # Sec-WebSocket-Key is a fresh nonce per handshake: 16 random bytes in base64.
@@ -131,7 +148,7 @@ ws_code="$(curl --http1.1 -sS --max-time 5 -o /dev/null -w '%{http_code}' --cace
 [ "$ws_code" = "403" ] || fail "/ws/agent/ without a token answered $ws_code, expected 403"
 say "OK: /ws/agent/ refuses a handshake without a token (403)"
 
-# --- 4. only Caddy publishes ports ------------------------------------------------------
+# --- 5. only Caddy publishes ports ------------------------------------------------------
 
 for service in app scheduler; do
   id="$(compose ps -q "$service")"
@@ -144,7 +161,7 @@ for port in "$HTTP_PORT" "$HTTPS_PORT"; do
 done
 say "OK: only caddy publishes ports ($caddy_ports)"
 
-# --- 5. every container healthy -------------------------------------------------------------
+# --- 6. every container healthy -------------------------------------------------------------
 
 say "Waiting for all three containers to be healthy"
 until [ "$(compose ps --format '{{.Health}}' | grep -c '^healthy$')" -eq 3 ]; do

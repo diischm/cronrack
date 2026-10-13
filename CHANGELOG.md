@@ -55,6 +55,14 @@ The first release: the MVP. One question, answered from your phone in seconds:
 - Every page and API only ever shows your own hosts. Login rate limiting; the first-run
   setup page locks itself after the first account.
 
+### Fixed
+
+- HTTPS failed with "internal error" (Firefox `SSL_ERROR_INTERNAL_ERROR_ALERT`) when
+  `CRONRACK_DOMAIN` was an IP address, such as a LAN or Tailscale IP: clients send no
+  server name (SNI) to an IP, so Caddy couldn't pick the certificate. The Caddyfile now
+  sets `default_sni`, moved to `caddy/Caddyfile` (the folder is mounted, so edits apply
+  with `docker compose restart caddy`; run `docker compose up -d` once after updating).
+
 ### Known issues
 
 Rough edges in 0.1.0, as found in the release check. None of them lose data or weaken
