@@ -118,6 +118,19 @@ def test_command_rejects_tiny_interval():
         call_command("check_hosts", "--loop", "--every", "1")
 
 
+def test_loop_touches_the_heartbeat_file(alice, tmp_path, monkeypatch):
+    from hosts.management.commands import check_hosts
+
+    # Stop the endless loop after the first pass, the way Ctrl+C would.
+    def stop(seconds):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(check_hosts.time, "sleep", stop)
+    heartbeat = tmp_path / "alive"
+    call_command("check_hosts", "--loop", "--heartbeat-file", str(heartbeat))
+    assert heartbeat.exists()
+
+
 def test_back_online_after_next_report(alice):
     from hosts.services import save_report
 

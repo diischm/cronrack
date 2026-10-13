@@ -6,6 +6,7 @@ Every value that differs between machines comes from environment variables
 """
 
 import os
+import re
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -39,9 +40,24 @@ if not SECRET_KEY:
     # Development only: a throwaway key per process. Logins reset on every restart.
     SECRET_KEY = get_random_secret_key()
 
-# Comma-separated, e.g. "cronrack.home.lan,localhost". With DEBUG=1 and nothing set,
-# only this machine: localhost, 127.0.0.1 and [::1].
+# The one name the server is reached by, e.g. "cronrack.home.lan" (docker compose sets
+# it from .env). It goes into ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS, and the
+# "Add host" page builds the agent's install command from it.
+# Same characters install.sh accepts: letters, digits, dots and dashes (no port).
+CRONRACK_DOMAIN = os.environ.get("CRONRACK_DOMAIN", "").strip().lower()
+if CRONRACK_DOMAIN and not re.fullmatch(r"[a-z0-9]([a-z0-9.-]*[a-z0-9])?", CRONRACK_DOMAIN):
+    raise ImproperlyConfigured(
+        "CRONRACK_DOMAIN must be a bare host name such as cronrack.home.lan "
+        "(no https://, no port, no path)."
+    )
+
+# Comma-separated extra names, e.g. "cronrack.home.lan,localhost". With DEBUG=1 and
+# nothing set, only this machine: localhost, 127.0.0.1 and [::1].
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")
+if CRONRACK_DOMAIN:
+    ALLOWED_HOSTS = [CRONRACK_DOMAIN, *(h for h in ALLOWED_HOSTS if h != CRONRACK_DOMAIN)]
+    # Forms may only be posted from https://<domain> (checked against the Origin header).
+    CSRF_TRUSTED_ORIGINS = [f"https://{CRONRACK_DOMAIN}"]
 if DEBUG and not ALLOWED_HOSTS:
     ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
 
@@ -93,6 +109,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "hosts.context_processors.shell",
+                "cronrack.context_processors.version",
             ],
         },
     },
@@ -152,6 +169,9 @@ USE_TZ = True
 STATIC_URL = "static/"
 # Project-wide CSS/JS/fonts live in server/static/cronrack/.
 STATICFILES_DIRS = [BASE_DIR / "static"]
+# Where `collectstatic` gathers every static file (ours and the admin's). The Docker
+# image runs it at build time; Caddy then serves those files, not Django.
+STATIC_ROOT = os.environ.get("STATIC_ROOT", str(BASE_DIR.parent / "staticfiles"))
 
 
 # --- Security ---------------------------------------------------------------
@@ -160,8 +180,20 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
+# Behind Caddy (docker compose sets BEHIND_PROXY=1), TLS ends at Caddy and the app
+# itself only sees plain http. Caddy says "this came in over https" with the
+# X-Forwarded-Proto header; trust it ONLY in that setup. Without a proxy in front,
+# anyone could send that header and make a plain-http request look secure.
+# (Only Caddy can reach the app: its port is never published, see docker-compose.yml.)
+BEHIND_PROXY = env_bool("BEHIND_PROXY", default=False)
+if BEHIND_PROXY:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # Redirect http -> https and tell browsers to use https only (HSTS).
 SECURE_SSL_REDIRECT = not DEBUG
+# Except /healthz: Docker's health check calls it over plain http inside the container.
+# It returns "ok" and nothing else.
+SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 SECURE_HSTS_SECONDS = 0 if DEBUG else 31_536_000  # one year
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 # Not preloaded: preloading is a public, hard-to-undo registration that only makes

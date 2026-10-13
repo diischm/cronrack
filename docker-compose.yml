@@ -1,0 +1,142 @@
+# CronRack server: `docker compose up -d` (after creating .env from .env.example).
+#
+#   caddy      the only service with published ports: 80 (redirects to https) and 443
+#   app        Django + Channels under uvicorn (pages, JSON, the agents' WebSocket)
+#   scheduler  marks hosts that stopped reporting as offline (dead-man's switch)
+#
+# app and scheduler run from the same image and share the SQLite database volume.
+
+name: cronrack
+
+# Caddy's fixed address on the cronrack network. The app believes X-Forwarded-*
+# headers (real client IP, "this was https") only from this address.
+x-caddy-ip: &caddy-ip 172.29.80.10
+
+# Hardening shared by app and scheduler.
+x-hardening: &hardening
+  # The container's filesystem is read-only; only the volumes and /tmp are writable.
+  read_only: true
+  tmpfs:
+    - /tmp
+  # Never gain privileges (blocks setuid binaries such as su).
+  security_opt:
+    - no-new-privileges:true
+  # Drop every Linux capability; a non-root Python web app needs none.
+  cap_drop:
+    - ALL
+  restart: unless-stopped
+
+# Built once from server/Dockerfile and used by both app and scheduler.
+x-build: &build
+  context: .
+  dockerfile: server/Dockerfile
+
+services:
+  app:
+    <<: *hardening
+    build: *build
+    image: cronrack-server:local
+    env_file: .env
+    environment:
+      FORWARDED_ALLOW_IPS: *caddy-ip
+    volumes:
+      - data:/app/server/data
+      # The app fills this on start; Caddy reads it (read-only) to serve /static/*.
+      - static:/srv/static
+    networks:
+      - cronrack
+    # No `ports:` on purpose. Port 8000 is reachable only inside the cronrack network.
+
+  scheduler:
+    <<: *hardening
+    build: *build
+    image: cronrack-server:local
+    command:
+      - python
+      - manage.py
+      - check_hosts
+      - --loop
+      - --every
+      - "30"
+      - --heartbeat-file
+      - /tmp/check_hosts.alive
+    env_file: .env
+    volumes:
+      - data:/app/server/data
+    networks:
+      - cronrack
+    # Start after the app has run the database migrations and is answering.
+    depends_on:
+      app:
+        condition: service_healthy
+    # Healthy while the loop keeps finishing passes (it touches the file every 30 s).
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os, sys, time; sys.exit(time.time() - os.stat('/tmp/check_hosts.alive').st_mtime > 120)"
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  caddy:
+    # Official image, exact version, pinned by digest (covers amd64 and arm64).
+    image: caddy:2.11.7@sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Only what Caddy needs: the site name. SECRET_KEY etc. never reach this container.
+      CRONRACK_DOMAIN: ${CRONRACK_DOMAIN:?set CRONRACK_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - static:/srv/static:ro
+      # Certificates and Caddy's own CA (keep this volume: agents trust that CA).
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      cronrack:
+        ipv4_address: *caddy-ip
+    depends_on:
+      - app
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Caddy runs as root inside its container (its volumes are root-owned); with every
+    # other capability dropped, binding ports 80 and 443 is the one thing it may do.
+    cap_add:
+      - NET_BIND_SERVICE
+    # Caddy's admin API listens on 127.0.0.1:2019 inside this container only.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+networks:
+  # A private network for the three services. Not `internal: true`: the app and the
+  # scheduler must reach Discord for alerts (and Caddy Let's Encrypt, with a real
+  # domain), and Docker blocks all outbound traffic on internal networks.
+  cronrack:
+    ipam:
+      config:
+        # Fixed so Caddy can have a fixed address. Docker hands out addresses to the
+        # other containers from ip_range only, so they can never take Caddy's.
+        # If this collides with another network on your machine, change all three
+        # values (subnet, ip_range, x-caddy-ip) to a free range.
+        - subnet: 172.29.80.0/24
+          ip_range: 172.29.80.128/25
+
+volumes:
+  data:
+  static:
+  caddy_data:
+  caddy_config:

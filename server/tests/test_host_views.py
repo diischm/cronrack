@@ -441,6 +441,7 @@ def test_detail_page_sections(alice_client: Client, alice):
 
     assert set(ctx["host"]) == {
         "id", "name", "status", "status_label", "last_seen_human", "has_report",
+        "agent_version",
     }  # fmt: skip
     assert ctx["updates"] == {"total": 12, "security": 3, "reboot_required": True}
     assert ctx["containers"]["problems"] == [
@@ -516,3 +517,16 @@ def test_500_page_is_fully_static():
     assert "{{" not in body
     assert "{%" not in body
     assert "Back to Overview" in render_to_string("500.html")
+
+
+# --- navigation ---------------------------------------------------------------------
+
+
+def test_every_nav_link_works(alice_client: Client):
+    """Every link in base.html's navigation must open a page, so a dead tab can't ship."""
+    html = alice_client.get("/").content.decode()
+    navs = re.findall(r"<nav\b.*?</nav>", html, flags=re.DOTALL)
+    links = [href for nav in navs for href in re.findall(r'href="([^"]+)"', nav)]
+    assert len(links) >= 3  # Overview, Activity, Settings
+    for href in links:
+        assert alice_client.get(href).status_code == 200, href

@@ -199,6 +199,9 @@ def detail_context(host: Host, now: datetime) -> dict[str, Any]:
             "status_label": STATUS_LABELS.get(host.status, host.status),
             "last_seen_human": ago(host.last_seen_at, now),
             "has_report": report is not None,
+            # From the agent's last report (validated, at most 32 characters); None
+            # until the first one arrives. The template escapes it like any agent data.
+            "agent_version": report.get("agent_version") if report else None,
         },
         "issues": [issue_dict(f) for f in top_issues(findings, n=len(findings))],
         "updates": None,

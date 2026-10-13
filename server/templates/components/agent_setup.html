@@ -10,6 +10,17 @@
   <p class="muted">The installer checks the download's SHA-256, creates the <code>cronrack</code> user,
     writes <code>{{ config_path }}</code> (root:cronrack, mode 640) and starts the service.</p>
   <details>
+    <summary>Server uses Caddy's own certificate (<code>tls internal</code>, the default)</summary>
+    <p class="muted">The host must trust Caddy's root certificate first. On the CronRack server,
+      in the folder with <code>docker-compose.yml</code>, run:</p>
+    <pre class="code well">{{ ca_command }}</pre>
+    <p class="muted">Copy <code>{{ ca_file_name }}</code> to the host (for example with
+      <code>scp</code>), then run this there instead of step 1:</p>
+    <pre class="code well">{{ install_command_ca }}</pre>
+    <p class="muted">The installer copies it to <code>/etc/cronrack/ca.crt</code> and the agent
+      trusts exactly that certificate.</p>
+  </details>
+  <details>
     <summary>Manual setup (agent already installed)</summary>
     <p class="muted">Create the config file with the right owner and mode, then paste this into the editor:</p>
     <pre class="code well">{{ agent_commands }}</pre>

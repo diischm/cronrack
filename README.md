@@ -27,6 +27,25 @@ cron job wrappers, approved remote actions, external heartbeat.
 - The server can only request actions by name; the allowlist lives on the host. Commands from the server are never executed.
 - Agent tokens are stored hashed, and all agent-reported data is treated as untrusted.
 
+## Run with Docker
+
+The server runs as three containers: Caddy (HTTPS, the only open ports: 80 and 443),
+the app and the scheduler. On a machine with Docker:
+
+    git clone https://github.com/diischm/cronrack.git
+    cd cronrack
+    cp .env.example .env     # then set CRONRACK_DOMAIN and SECRET_KEY (see the comments)
+    docker compose up -d
+    docker compose ps        # wait until all three are (healthy)
+
+Open `https://<CRONRACK_DOMAIN>/` and create your account. Then add a host and run the
+install command it shows on that host.
+
+**[docs/DEPLOY.md](docs/DEPLOY.md)** is the full step-by-step homelab guide: installing
+Docker on Ubuntu Server, choosing a name, certificates, the firewall, installing the
+agent on a Raspberry Pi, updates, backups and troubleshooting. See
+[CHANGELOG.md](CHANGELOG.md) for what's in each release.
+
 ## Run it locally
 
 Everything below runs on your own machine, for development. Commands are run from the
