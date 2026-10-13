@@ -92,7 +92,10 @@ services:
       # Only what Caddy needs: the site name. SECRET_KEY etc. never reach this container.
       CRONRACK_DOMAIN: ${CRONRACK_DOMAIN:?set CRONRACK_DOMAIN in .env}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The folder, not the single file: editors save by replacing the file, and a
+      # single-file mount would keep showing the container the old copy. caddy/ holds
+      # only the Caddyfile. After editing it: docker compose restart caddy
+      - ./caddy:/etc/caddy:ro
       - static:/srv/static:ro
       # Certificates and Caddy's own CA (keep this volume: agents trust that CA).
       - caddy_data:/data

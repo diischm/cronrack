@@ -1,6 +1,7 @@
 # Caddy: the only part of CronRack reachable from the network. It ends TLS (HTTPS for
 # browsers, WSS for agents), serves the static files itself and passes everything
-# else to the app container. docker-compose.yml mounts this file read-only.
+# else to the app container. docker-compose.yml mounts this folder (caddy/) read-only
+# at /etc/caddy. After editing this file: docker compose restart caddy
 #
 # Certificates: three ways, pick one by editing the `tls` line below.
 #
@@ -28,6 +29,11 @@
 #    files (mounted read-only), renewing them before they expire.
 
 {
+	# Clients connecting to an IP address send no server name (SNI) in the TLS handshake,
+	# so Caddy wouldn't know which certificate to use and would abort with "internal
+	# error". This tells it to use the one for CRONRACK_DOMAIN. Names are unaffected.
+	default_sni {$CRONRACK_DOMAIN}
+
 	# HTTP/1.1 and HTTP/2 only. HTTP/3 would need UDP port 443 published as well.
 	servers {
 		protocols h1 h2

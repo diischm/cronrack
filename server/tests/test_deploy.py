@@ -45,6 +45,26 @@ def test_healthz_is_get_only():
     assert Client().post("/healthz").status_code == 405
 
 
+@pytest.mark.parametrize("host", ["100.109.5.47", "192.168.1.50", "not-allowed.example", ""])
+@override_settings(ALLOWED_HOSTS=["cronrack.lan"])
+def test_healthz_ignores_the_host_header(alice, host):
+    # Docker's health check must pass whatever CRONRACK_DOMAIN is, so /healthz
+    # never looks at Host. Every other page still rejects an unknown one.
+    assert Client(HTTP_HOST=host).get("/healthz").content == b"ok"
+    assert Client(HTTP_HOST="not-allowed.example").get("/login/").status_code == 400
+
+
+def test_healthz_is_the_first_middleware():
+    from django.conf import settings
+
+    assert settings.MIDDLEWARE[0] == "cronrack.health.HealthCheckMiddleware"
+
+
+def test_only_the_exact_path_is_special(alice):
+    # Only "/healthz" itself is answered early; anything else goes through Django.
+    assert Client().get("/healthzx").status_code == 404
+
+
 @override_settings(SECURE_SSL_REDIRECT=True)
 def test_healthz_is_not_redirected_to_https(alice):
     # Docker's health check calls it over plain http inside the container.

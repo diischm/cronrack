@@ -75,10 +75,10 @@ USER 10001:10001
 # docker-compose.yml does NOT publish it; only Caddy can reach it.
 EXPOSE 8000
 
-# Docker marks the container unhealthy if /healthz stops answering. The Host header
-# must be a name in ALLOWED_HOSTS, so it uses CRONRACK_DOMAIN (set from .env).
+# Docker marks the container unhealthy if /healthz stops answering. /healthz is
+# answered before Django's Host check, so this works whatever CRONRACK_DOMAIN is.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD ["python", "-c", "import os, urllib.request as r; r.urlopen(r.Request('http://127.0.0.1:8000/healthz', headers={'Host': os.environ.get('CRONRACK_DOMAIN') or 'localhost'}), timeout=4)"]
+    CMD ["python", "-c", "import urllib.request as r; r.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
 
 # Run through sh so the script works whatever its file mode is.
 ENTRYPOINT ["/bin/sh", "/app/server/docker-entrypoint.sh"]

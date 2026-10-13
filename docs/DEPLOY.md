@@ -79,14 +79,18 @@ All further server commands run in this `~/cronrack` folder (the one with
 
 ### 1.3 Pick the name you'll use
 
-Browsers and agents must reach the server by **one name**, and the HTTPS certificate is
-made for exactly that name. Pick one:
+Browsers and agents must reach the server by **one name or IP address**, and the HTTPS
+certificate is made for exactly that. Names and IP addresses (a LAN IP or your Tailscale
+IP) both work for `CRONRACK_DOMAIN`. Pick one:
 
 | Option | Example | Works from |
 |---|---|---|
 | A local DNS name | `cronrack.home.lan` | your home network, if your router / Pi-hole / AdGuard resolves it |
 | Your Tailscale MagicDNS name | `homeserver.tail1234.ts.net` | every device in your tailnet, at home or away |
-| The server's IP address | `192.168.1.50` | your home network; nothing to set up, but harder to remember |
+| The server's LAN IP address | `192.168.1.50` | your home network; nothing to set up, but harder to remember |
+| The server's Tailscale IP | `100.101.102.103` (`tailscale ip -4`) | every device in your tailnet; nothing to set up |
+
+With an IP address, skip "Make the name resolve" below: there is nothing to resolve.
 
 **Make the name resolve.** For a local name, add a DNS record in your router or Pi-hole
 pointing the name at the server's IP. For a quick test on one Linux machine you can
@@ -165,7 +169,7 @@ this right after `docker compose up -d`. Afterwards `/setup/` answers "not found
 ### 1.7 The root certificate (trusting your server)
 
 By default Caddy runs its own small certificate authority (CA) and signs the certificate
-for your name with it (`tls internal` in the `Caddyfile`). Nothing trusts that CA until you
+for your name with it (`tls internal` in `caddy/Caddyfile`). Nothing trusts that CA until you
 tell it to. Its root certificate is in the `caddy_data` volume; print it to a file:
 
 ```bash
@@ -189,10 +193,11 @@ own devices. You'll use it for:
 The CA stays the same as long as the `caddy_data` volume exists. **Don't delete that volume**
 (`docker compose down -v` would): a new CA means every agent needs the new certificate.
 
-**Other certificate options** (edit the `tls` line in the `Caddyfile`; it explains all
+**Other certificate options** (edit the `tls` line in `caddy/Caddyfile`; it explains all
 three): a real public domain gets a trusted Let's Encrypt certificate automatically (then
 agents need no `--ca-file`), and Tailscale can issue trusted certificates for your
-`*.ts.net` name. Restart Caddy after editing: `docker compose restart caddy`.
+`*.ts.net` name. Restart Caddy after editing: `docker compose restart caddy` (see
+[Applying Caddyfile edits](#applying-caddyfile-edits)).
 
 ### 1.8 Firewall
 
@@ -433,11 +438,38 @@ Settings).
 - **`curl: (60) SSL certificate problem: unable to get local issuer certificate`** during
   install: the `--cacert cronrack-ca.crt` part is missing, or the file isn't in the
   current folder.
-- **`curl: (35) ... tlsv1 alert internal error`**: you used a name or IP that isn't
-  `CRONRACK_DOMAIN`. Caddy only has a certificate for that one name.
+- **Firefox `SSL_ERROR_INTERNAL_ERROR_ALERT`, or curl `TLS alert, internal error (592)` /
+  `tlsv1 alert internal error`**, every time:
+  - You opened a **name** that isn't `CRONRACK_DOMAIN`. Caddy only has a certificate for
+    that one name or IP. Use exactly that.
+  - `CRONRACK_DOMAIN` is an **IP address** and your `caddy/Caddyfile` has no
+    `default_sni {$CRONRACK_DOMAIN}` line in its first `{ ... }` block (Caddyfiles from
+    before this fix). Clients send no server name (SNI) when they connect to an IP, and
+    without that line Caddy can't pick the certificate, even though its log says the
+    certificate was obtained. Update to the current Caddyfile and apply it (next section).
+- **A certificate name mismatch** (curl `no alternative certificate subject name matches`,
+  Firefox `SSL_ERROR_BAD_CERT_DOMAIN`): you connected by an IP address while
+  `CRONRACK_DOMAIN` is a name (or the other way round). Use exactly `CRONRACK_DOMAIN`.
 - **It worked, and after rebuilding the server agents fail with "TLS certificate check
   failed"**: the `caddy_data` volume was deleted, so Caddy made a new CA. Restore the
   volume (3.3), or give every agent the new `cronrack-ca.crt` with `--ca-file`.
+
+### Applying Caddyfile edits
+
+`docker-compose.yml` mounts the whole `caddy/` folder (read-only) into the Caddy
+container, not the single file. That matters because most editors, `sed -i` and `mv`
+save by writing a *new* file: a single-file mount would keep showing Caddy the old copy.
+With the folder mount, an edit only needs:
+
+```bash
+docker compose restart caddy
+docker compose logs caddy --tail 20   # check for errors
+```
+
+**Once, when updating from an older version** that had the `Caddyfile` in the repository
+root: run `docker compose up -d` (not `restart`). The Caddy container has to be recreated
+to switch to the `caddy/` folder; a restart or a reboot keeps the old mount, whose file no
+longer exists.
 
 ### A blank white page, or "Bad Request (400)"
 
