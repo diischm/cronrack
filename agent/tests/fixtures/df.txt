@@ -1,0 +1,14 @@
+Filesystem                        Type     1024-blocks       Used Available Capacity Mounted on
+tmpfs                             tmpfs         803848       1772    802076       1% /run
+udev                              devtmpfs     3985232          0   3985232       0% /dev
+/dev/mapper/ubuntu--vg-ubuntu--lv ext4        98831908   41237564  52531964      44% /
+tmpfs                             tmpfs        4019232          0   4019232       0% /dev/shm
+tmpfs                             tmpfs           5120          0      5120       0% /run/lock
+efivarfs                          efivarfs         256         57       195      23% /sys/firmware/efi/efivars
+/dev/loop0                        squashfs       65536      65536         0     100% /snap/core22/1621
+/dev/loop1                        squashfs       91648      91648         0     100% /snap/lxd/29351
+/dev/sda2                         ext4         1992552     194232   1677080      11% /boot
+/dev/sda1                         vfat         1098632       6228   1092404       1% /boot/efi
+/dev/sdb1                         ext4      1921724676 1735311820  88721412      96% /mnt/data
+overlay                           overlay     98831908   41237564  52531964      44% /var/lib/docker/overlay2/4f7a1c9e0b2d63a8e5f1c47b9d0a2e6f3c8b1d5a7e9f0c2b4d6a8e1f3c5b7d9a/merged
+tmpfs                             tmpfs         803844         12    803832       1% /run/user/1000
