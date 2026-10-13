@@ -4,4 +4,5 @@ pip-audit
 pytest
 pytest-django==4.14.0
 pytest-asyncio==1.4.0
+daphne==4.2.3
 -r server/requirements.txt

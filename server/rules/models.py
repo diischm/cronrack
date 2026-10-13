@@ -1,5 +1,3 @@
-import hashlib
-
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
@@ -8,9 +6,10 @@ from django.utils import timezone
 
 from hosts.models import Host
 from prefs.models import Route
+from rules.base import fingerprint
 
 # Rule IDs look like "disk.usage" or "docker.container_restarting".
-# (Checking that the ID exists in the rule registry comes with the rule engine.)
+# (Checking that the ID exists in rules.registry comes with the rule views.)
 rule_id_validator = RegexValidator(
     r"^[a-z0-9_]+(\.[a-z0-9_]+)+\Z",
     "Rule IDs look like 'disk.usage': lowercase words joined by dots.",
@@ -26,7 +25,7 @@ class Severity(models.TextChoices):
 
 def fingerprint_for(rule_id: str, host_id: int, subject: str) -> str:
     """Stable ID of one finding: SHA-256 of 'rule_id|host_id|subject'."""
-    return hashlib.sha256(f"{rule_id}|{host_id}|{subject}".encode()).hexdigest()
+    return fingerprint(rule_id, host_id, subject)
 
 
 def _check_host_owner(obj) -> None:
