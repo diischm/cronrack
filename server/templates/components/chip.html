@@ -1,0 +1,3 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{# Status chip. Usage: {% include "components/chip.html" with status=host.status label=host.status_label %} #}
+<span class="chip {% if status == 'red' or status == 'offline' %}chip--red{% elif status == 'yellow' %}chip--amber{% elif status == 'green' %}chip--green{% else %}chip--neutral{% endif %}">{{ label }}</span>

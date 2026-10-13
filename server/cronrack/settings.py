@@ -78,7 +78,8 @@ ROOT_URLCONF = "cronrack.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        # Project-wide templates (base.html, components/, hosts/) live in server/templates/.
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -131,6 +132,8 @@ USE_TZ = True
 # --- Static files -----------------------------------------------------------
 
 STATIC_URL = "static/"
+# Project-wide CSS/JS/fonts live in server/static/cronrack/.
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 
 # --- Security ---------------------------------------------------------------

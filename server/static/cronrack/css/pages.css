@@ -1,0 +1,58 @@
+/* PLACEHOLDER — Apo owns the final version.
+   Page layout only: spacing, widths, ordering. Colors and depth live in
+   tokens.css / components.css. Measurements follow design-ref/cronrack-dashboard.html. */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+
+/* One phone-width column, centered on bigger screens */
+.app { width: 100%; max-width: 480px; min-height: 100vh; margin: 0 auto;
+  display: flex; flex-direction: column; }
+
+/* Top bar */
+.topbar { padding: 20px 20px 8px; display: flex; align-items: center; justify-content: space-between; }
+.topbar__actions { display: flex; gap: 12px; }
+
+/* Main content */
+.app-main { flex: 1 1 auto; padding: 8px 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.page-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+.page-title { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 800; letter-spacing: -0.01em; }
+.page-sub { margin: 0; font-size: 15px; color: var(--text-muted); }
+
+/* Host cards */
+.host-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.host-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.host-card__title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.host-card__name { font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
+.host-card__issues { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;
+  gap: 6px; font-size: 15px; color: var(--text-muted); }
+.host-card__issues li { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
+
+/* Section heading with an optional link on the right */
+.section-head { margin: 12px 0 0; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.section-title { margin: 0; font-size: 17px; font-weight: 800; }
+.section-link { font-size: 15px; font-weight: 700; }
+
+/* "While you were away" list */
+.activity { margin: 0; padding: 4px 16px; list-style: none; display: flex; flex-direction: column; }
+.activity__row { padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
+.activity__text { overflow-wrap: anywhere; }
+.activity__time { color: var(--text-muted); white-space: nowrap; }
+
+/* Empty state */
+.empty { padding: 24px 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.empty__title { margin: 0; font-size: 19px; font-weight: 800; }
+.empty__text { margin: 0; font-size: 15px; color: var(--text-muted); }
+
+/* Bottom nav: four segments in one recessed track */
+.bottom-nav { margin: 8px 16px 20px; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: row; }
+
+/* Toasts float at the top, inside the column width */
+.toasts { position: fixed; top: 12px; left: 0; right: 0; z-index: 10; margin: 0 auto;
+  width: calc(100% - 32px); max-width: 448px; display: flex; flex-direction: column; gap: 8px; }
+
+/* Full-page loader, centered on the ground */
+.page-loader { min-height: 60vh; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 16px; }
+.page-loader__text { margin: 0; font-size: 15px; color: var(--text-muted); }

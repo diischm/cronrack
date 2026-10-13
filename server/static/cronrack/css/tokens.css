@@ -1,0 +1,56 @@
+/* PLACEHOLDER — Apo owns the final version.
+   Copied verbatim from FRONTEND-HANDOFF.md section 4.1 (source of truth). */
+
+:root {
+  --ground: #E4E4E8;
+  --surface-hi: #EEEEF1;  --surface-lo: #DADADF;
+  --well: #DADADF;        --well-pressed: #DCDCE0;
+  --text: #1E1B2E;        --text-muted: #4B4662;
+  --accent: #D9541E;      --accent-text: #B8460F;
+  --accent-hi: #F08551;   --accent-mid: #E0612C;   --accent-lo: #CC501F;  --accent-pressed: #D3591F;
+  --on-accent: #FFFFFF;
+  --code-bg: #1E1B2E;     --code-text: #FCE3D4;
+  --divider: #D6D5DC;
+
+  /* status (always paired with a label) */
+  --red: #B3261E;    --red-chip-bg: #FBE4E2;    --red-chip-text: #8C1D18;
+  --amber: #E0A100;  --amber-chip-bg: #FFF1CC;  --amber-chip-text: #6B4A00;
+  --green: #2E7D4F;  --green-chip-bg: #E2F2E8;  --green-chip-text: #1F5A38;
+
+  /* depth */
+  --shadow-dark: rgba(150,150,166,.42);
+  --shadow-light: rgba(255,255,255,.9);
+  --rim-light: rgba(255,255,255,.85);
+  --rim-dark: rgba(150,150,166,.28);
+  --lip: rgba(110,110,128,.38);
+  --lip-side: rgba(110,110,128,.22);
+  --catch: rgba(255,255,255,.95);
+  --lamp-bezel: #5F5F69; --lamp-bezel-hi: #A9A9B3; --lamp-recess: #D6D6DB;
+
+  --radius-card: 22px; --radius-key: 16px; --radius-chip: 999px;
+  --ease: 160ms ease;
+  --font-ui: "Nunito", system-ui, sans-serif;
+  --font-code: "JetBrains Mono", ui-monospace, monospace;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #2A2A30;
+  --surface-hi: #34343B;  --surface-lo: #232328;
+  --well: #222227;        --well-pressed: #222227;
+  --text: #ECEBF0;        --text-muted: #A9A7B6;
+  --accent-text: #FF8C55;
+  --code-bg: #17171B;
+  --divider: #3A3A42;
+  --red-chip-bg: #4B2522;   --red-chip-text: #FFB3A6;
+  --amber-chip-bg: #47380F; --amber-chip-text: #FFD97A;
+  --green-chip-bg: #1E3A29; --green-chip-text: #9BE3B4;
+  --shadow-dark: rgba(0,0,0,.55);
+  --shadow-light: rgba(255,255,255,.045);
+  --rim-light: rgba(255,255,255,.07);
+  --rim-dark: rgba(0,0,0,.45);
+  --lip: rgba(0,0,0,.65);
+  --lip-side: rgba(0,0,0,.45);
+  --catch: rgba(255,255,255,.06);
+  --lamp-bezel: #0E0E11; --lamp-bezel-hi: #4A4A52; --lamp-recess: #222227;
+}
