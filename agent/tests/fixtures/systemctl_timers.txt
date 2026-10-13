@@ -1,0 +1,9 @@
+Sun 2026-10-11 19:42:10 UTC 27min    Sun 2026-10-11 18:42:10 UTC 32min ago  anacron.timer           anacron.service
+Sun 2026-10-11 20:31:44 UTC 1h 16min Sun 2026-10-11 08:02:17 UTC 11h ago    apt-daily.timer         apt-daily.service
+Mon 2026-10-12 00:00:00 UTC 4h 45min Sun 2026-10-11 00:00:01 UTC 19h ago    logrotate.timer         logrotate.service
+Mon 2026-10-12 00:57:03 UTC 5h 42min Mon 2026-10-05 00:12:40 UTC 6 days ago fstrim.timer            fstrim.service
+Mon 2026-10-12 03:30:00 UTC 8h       Sun 2026-10-11 03:30:02 UTC 15h ago    backup-nightly.timer    backup-nightly.service
+Mon 2026-10-12 04:00:00 UTC 8h       -                           -          db-dump.timer           db-dump.service
+Mon 2026-10-12 06:41:09 UTC 11h      Sun 2026-10-11 06:12:45 UTC 13h ago    apt-daily-upgrade.timer apt-daily-upgrade.service
+Sun 2026-10-18 03:10:52 UTC 6 days   Sun 2026-10-11 03:10:22 UTC 16h ago    e2scrub_all.timer       e2scrub_all.service
+-                           -        Fri 2026-10-09 02:00:04 UTC 2 days ago offsite-sync.timer      offsite-sync.service
