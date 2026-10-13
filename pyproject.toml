@@ -1,8 +1,18 @@
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+src = [".", "server"]
+
+[tool.ruff.lint.per-file-ignores]
+# Django's generated migrations use class-level lists by design
+"server/*/migrations/*.py" = ["RUF012"]
 
 [tool.pytest.ini_options]
-testpaths = ["agent/tests"]
+testpaths = ["agent/tests", "server"]
+# Lets "import hosts" / "import cronrack" work, like running from server/.
+pythonpath = ["server"]
+# pytest-django: which settings to load for the server tests.
+DJANGO_SETTINGS_MODULE = "cronrack.settings_test"
+django_find_project = false
 [tool.bandit]
 skips = ["B404"]  # importing subprocess is expected: the agent wraps standard CLI tools by design
