@@ -1,0 +1,17 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}Add host · CronRack{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">Add a host</h1>
+    <p class="page-sub">Step 1 of 3: name the host.</p>
+  </div>
+  <form class="surface panel form" method="post" action="{% url 'host-add' %}" novalidate>
+    {% csrf_token %}
+    {% include "components/form_errors.html" with form=form %}
+    {% include "components/field.html" with field=form.name %}
+    <button type="submit" class="btn btn--primary">Create</button>
+  </form>
+{% endblock %}

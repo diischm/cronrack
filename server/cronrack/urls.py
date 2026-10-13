@@ -1,12 +1,16 @@
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
-from django.urls import path
+from django.urls import include, path
 
 from cronrack import dev_views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("", include("accounts.urls")),
+    path("", include("hosts.urls")),
+    path("", include("activity.urls")),
+    path("", include("prefs.urls")),
     # Dev-only: 404 unless DEBUG=1 (checked inside the view).
     path("dev/preview/", dev_views.preview, name="dev-preview"),
 ]

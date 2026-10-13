@@ -9,15 +9,21 @@ from channels.layers import get_channel_layer
 from django.db import transaction
 from django.utils import timezone
 
+from hosts.humanize import duration
 from hosts.models import Host
-from rules.base import Finding
+from rules.base import Finding, fingerprint
 from rules.engine import (
+    OFFLINE_RULE,
     apply_suppressions,
     compute_status,
     evaluate,
     load_overrides,
     load_suppressions,
 )
+from rules.registry import get_rule
+
+# How often a connected agent reports (sent to it in the "welcome" message).
+REPORT_INTERVAL_SECONDS = 60
 
 # WebSocket close codes the server uses (backend guide section 6).
 CLOSE_INVALID_MESSAGE = 4400
@@ -99,3 +105,83 @@ def request_collect(host: Host) -> None:
 def close_agent(host: Host, code: int = CLOSE_TOKEN_REVOKED) -> None:
     """Close the host's agent connection (token rotated or revoked, host deleted)."""
     _group_send(host, {"type": "host.close", "code": code})
+
+
+# --- dead-man's switch (run by the check_hosts scheduler) -----------------------------
+
+# A connected agent that sends nothing for this many report intervals is stuck.
+STUCK_AFTER_INTERVALS = 3
+
+
+def _offline_finding(host: Host, text: str) -> Finding:
+    rule = get_rule(OFFLINE_RULE)
+    return Finding(
+        rule_id=rule.id,
+        subject="",
+        severity=rule.default_severity,
+        text=text,
+        why=rule.why,
+        fix="",
+        fingerprint=fingerprint(rule.id, host.pk, ""),
+    )
+
+
+def silence_reason(host: Host, now: datetime, silent_after_seconds: int) -> str | None:
+    """Why this host counts as offline right now, or None if it doesn't.
+
+    - not connected, and silent for longer than the user's threshold, or
+    - connected, but no report for more than 3 report intervals (a stuck agent,
+      or a "connected" flag left over from a server restart).
+    A host that never reported is "waiting", never offline.
+    """
+    if host.last_seen_at is None or host.report_received_at is None:
+        return None
+    if not host.connected:
+        silent = (now - host.last_seen_at).total_seconds()
+        if silent > silent_after_seconds:
+            return f"Last seen {duration(silent)} ago"
+        return None
+    quiet = (now - host.report_received_at).total_seconds()
+    if quiet > STUCK_AFTER_INTERVALS * REPORT_INTERVAL_SECONDS:
+        return f"Connected, but no report for {duration(quiet)}"
+    return None
+
+
+def mark_silent_hosts_offline(now: datetime | None = None) -> list[Host]:
+    """Mark every host that stopped checking in as offline; record and alert each change.
+
+    Hosts already offline, still waiting for their first report, or in maintenance
+    are skipped, so each outage produces exactly one event and one alert. A host
+    comes back from offline by itself when its next report is saved.
+    """
+    # Imported here: activity.events -> alerts -> prefs would otherwise load during
+    # hosts app setup.
+    from activity.events import record_status_change
+    from prefs.models import Prefs
+
+    if now is None:
+        now = timezone.now()
+    default_silent = Prefs._meta.get_field("silent_after_seconds").default
+    silent_after = dict(Prefs.objects.values_list("owner_id", "silent_after_seconds"))
+
+    candidates = Host.objects.exclude(
+        status__in=[Host.Status.WAITING, Host.Status.OFFLINE, Host.Status.MAINTENANCE]
+    ).values_list("pk", "owner_id")
+
+    marked = []
+    for host_id, owner_id in candidates:
+        threshold = silent_after.get(owner_id, default_silent)
+        with transaction.atomic():
+            # Re-read under a lock: a report may have arrived since the query above.
+            host = Host.objects.select_for_update().filter(pk=host_id).first()
+            if host is None or host.status in (Host.Status.OFFLINE, Host.Status.WAITING):
+                continue
+            reason = silence_reason(host, now, threshold)
+            if reason is None:
+                continue
+            old_status = host.status
+            host.status = Host.Status.OFFLINE
+            host.save(update_fields=["status"])
+            record_status_change(host, old_status, host.status, [_offline_finding(host, reason)])
+        marked.append(host)
+    return marked

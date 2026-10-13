@@ -1,0 +1,114 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}{{ host.name }} · CronRack{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <div class="detail-head">
+      <a class="btn btn--icon" href="{% url 'overview' %}" aria-label="Back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+      </a>
+      <a class="btn btn--icon" href="{% url 'host-settings' host.id %}" aria-label="Host settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg>
+      </a>
+    </div>
+    <h1 class="page-title">{{ host.name }}</h1>
+    <p class="page-sub">
+      {% include "components/lamp.html" with status=host.status %}
+      {% include "components/chip.html" with status=host.status label=host.status_label %}
+      Last report: {{ host.last_seen_human }}
+    </p>
+    {# Apo: send this with fetch + X-CSRFToken, then poll status.json (handoff 5.4). Without JS it returns JSON. #}
+    <form method="post" action="{% url 'host-collect' host.id %}">
+      {% csrf_token %}
+      <button type="submit" class="btn">Check now</button>
+    </form>
+  </div>
+
+  {% if not host.has_report %}
+    <section class="surface panel">
+      {% include "components/loader.html" %}
+      <p>Waiting for {{ host.name }} to check in…</p>
+    </section>
+  {% else %}
+    <section class="surface panel">
+      <h2 class="section-title">Problems</h2>
+      {% if issues %}
+        <ul class="rows plain-list">
+          {% for issue in issues %}
+            <li>{% include "components/chip.html" with status=issue.severity label=issue.severity %} {{ issue.text }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">Nothing needs you.</p>
+      {% endif %}
+    </section>
+
+    <section class="surface panel">
+      <h2 class="section-title">Updates</h2>
+      {% if updates is None %}
+        <p class="muted">Not available on this host</p>
+      {% else %}
+        <p>{{ updates.total }} pending, {{ updates.security }} security</p>
+        {% if updates.reboot_required %}{% include "components/chip.html" with status="yellow" label="Reboot needed" %}{% endif %}
+      {% endif %}
+    </section>
+
+    <section class="surface panel">
+      <h2 class="section-title">Containers</h2>
+      {% if containers is None %}
+        <p class="muted">Not available on this host</p>
+      {% else %}
+        <ul class="rows plain-list">
+          {% for c in containers.problems %}<li><strong>{{ c.name }}</strong> · {{ c.state }} · {{ c.status }}</li>{% endfor %}
+        </ul>
+        {% if containers.healthy %}
+          <details>
+            <summary>Show {{ containers.healthy|length }} healthy</summary>
+            <ul class="rows plain-list">
+              {% for c in containers.healthy %}<li>{{ c.name }} · {{ c.status }}</li>{% endfor %}
+            </ul>
+          </details>
+        {% endif %}
+      {% endif %}
+    </section>
+
+    <section class="surface panel">
+      <h2 class="section-title">Systemd</h2>
+      {% if failed_units is None %}
+        <p class="muted">Failed units: not available on this host</p>
+      {% elif failed_units %}
+        <ul class="rows plain-list">{% for unit in failed_units %}<li>{{ unit }} failed</li>{% endfor %}</ul>
+      {% else %}
+        <p class="muted">No failed units.</p>
+      {% endif %}
+      {% if timers is None %}
+        <p class="muted">Timers: not available on this host</p>
+      {% elif timers %}
+        <div class="well table-scroll">
+          <table>
+            <thead><tr><th scope="col">Timer</th><th scope="col">Last run</th><th scope="col">Next run</th></tr></thead>
+            <tbody>
+              {% for t in timers %}<tr><td>{{ t.name }}</td><td>{{ t.last_run }}</td><td>{{ t.next_run }}</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="surface panel">
+      <h2 class="section-title">Disk</h2>
+      {% if disks is None %}
+        <p class="muted">Not available on this host</p>
+      {% else %}
+        <ul class="rows plain-list">
+          {% for d in disks %}
+            {# Apo: meter track + fill. No inline style attributes (CSP); use the meter or width classes. #}
+            <li>{{ d.mount }} <meter min="0" max="100" value="{{ d.percent }}"></meter> {{ d.percent }}%{% if d.level != "green" %} {% include "components/chip.html" with status=d.level label=d.level %}{% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}

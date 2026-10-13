@@ -1,0 +1,43 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}Settings · CronRack{% endblock %}
+{% block nav_settings %}aria-current="page"{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">Settings</h1>
+  </div>
+
+  <form class="surface panel form" method="post" action="{% url 'prefs' %}" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="form" value="prefs">
+    <h2 class="section-title">Alerts</h2>
+    {% include "components/form_errors.html" with form=prefs_form %}
+    {% include "components/field.html" with field=prefs_form.discord_webhook_url %}
+    {% include "components/field.html" with field=prefs_form.silent_after_seconds %}
+    <button type="submit" class="btn btn--primary">Save</button>
+  </form>
+
+  {# Apo: "Send test alert" = fetch POST with X-CSRFToken, show {ok, error} inline. #}
+  <form class="surface panel form" method="post" action="{% url 'test-alert' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn">Send test alert</button>
+  </form>
+
+  <form class="surface panel form" method="post" action="{% url 'prefs' %}" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="form" value="password">
+    <h2 class="section-title">Change password</h2>
+    {% include "components/form_errors.html" with form=password_form %}
+    {% include "components/field.html" with field=password_form.old_password %}
+    {% include "components/field.html" with field=password_form.new_password1 %}
+    {% include "components/field.html" with field=password_form.new_password2 %}
+    <button type="submit" class="btn">Update password</button>
+  </form>
+
+  <form class="surface panel form" method="post" action="{% url 'logout' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn">Sign out</button>
+  </form>
+{% endblock %}
