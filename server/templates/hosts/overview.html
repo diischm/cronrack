@@ -1,0 +1,37 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}Overview · CronRack{% endblock %}
+{% block nav_overview %}aria-current="page"{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">{% if attention_count %}{{ attention_count }} thing{{ attention_count|pluralize }} need{{ attention_count|pluralize:"s," }} you{% else %}All good{% endif %}</h1>
+    <p class="page-sub">{{ hosts|length }} host{{ hosts|length|pluralize }} · updated {{ updated_human }}</p>
+  </div>
+
+  {% for host in hosts %}
+    {% include "components/host_card.html" with host=host %}
+  {% empty %}
+    <section class="surface empty">
+      <h2 class="empty__title">No hosts yet</h2>
+      <p class="empty__text">Install the agent on a machine and it shows up here.</p>
+      <a class="btn btn--primary" href="/hosts/add/">Add your first host</a>
+    </section>
+  {% endfor %}
+
+  {% if activity %}
+    <div class="section-head">
+      <h2 class="section-title">While you were away</h2>
+      <a class="section-link" href="/activity/">See all</a>
+    </div>
+    <ul class="surface activity rows">
+      {% for entry in activity|slice:":3" %}
+        <li class="activity__row">
+          <span class="activity__text">{{ entry.text }}</span>
+          <span class="activity__time">{{ entry.time_human }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

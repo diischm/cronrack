@@ -1,0 +1,22 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{# One tappable host card. Usage: {% include "components/host_card.html" with host=host %} #}
+{# Everything in `host` comes from agent reports or user input: plain {{ }} output only, so Django escapes it. #}
+<a class="surface card-press host-card" href="{{ host.url }}">
+  <div class="host-card__head">
+    <div class="host-card__title">
+      {% include "components/lamp.html" with status=host.status %}
+      <span class="host-card__name">{{ host.name }}</span>
+    </div>
+    {% include "components/chip.html" with status=host.status label=host.status_label %}
+  </div>
+  {% if host.issues %}
+    <ul class="host-card__issues">
+      {% for issue in host.issues|slice:":3" %}
+        <li>
+          {% if issue.severity == "red" %}<svg class="issue-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>{% endif %}
+          <span>{{ issue.text }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</a>
