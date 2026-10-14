@@ -9,6 +9,7 @@ filtered by the host's owner.
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from datetime import datetime
+from operator import attrgetter
 from typing import Any
 
 from django.db.models import Q
@@ -208,6 +209,34 @@ def compute_status(active_findings: Iterable[Finding], host, now: datetime) -> s
     return max(colours, key=lambda f: SEVERITY_RANK[f.severity]).severity
 
 
+def effective_status(host, now: datetime, silent_after_seconds: int | None = None) -> str:
+    """The status to show right now, even when the scheduler isn't running.
+
+    The stored status only turns "offline" when check_hosts runs. This applies the
+    same silence test at read time: not connected and silent for longer than the
+    owner's silent_after_seconds -> offline. Waiting and maintenance still win, in
+    the same order as compute_status. Otherwise the stored status is returned.
+    """
+    if host.latest_report is None:
+        return WAITING
+    if host.maintenance_until is not None and host.maintenance_until > now:
+        return MAINTENANCE
+    if not host.connected and host.last_seen_at is not None:
+        if silent_after_seconds is None:
+            from prefs.models import Prefs
+
+            silent_after_seconds = (
+                Prefs.objects.filter(owner_id=host.owner_id)
+                .values_list("silent_after_seconds", flat=True)
+                .first()
+            )
+            if silent_after_seconds is None:
+                silent_after_seconds = Prefs._meta.get_field("silent_after_seconds").default
+        if (now - host.last_seen_at).total_seconds() > silent_after_seconds:
+            return OFFLINE
+    return host.status
+
+
 def top_issues(findings: Iterable[Finding], n: int = 3) -> list[Finding]:
     """The n most urgent findings (red first), ignoring severity "ignore".
 
@@ -218,6 +247,11 @@ def top_issues(findings: Iterable[Finding], n: int = 3) -> list[Finding]:
     return shown[:n]
 
 
-def sort_hosts(hosts: Iterable) -> list:
-    """Order for the overview: red, offline, yellow, waiting, maintenance, green; then name."""
-    return sorted(hosts, key=lambda h: (STATUS_ORDER.get(h.status, 99), h.name.lower(), h.pk))
+def sort_hosts(hosts: Iterable, status_of=None) -> list:
+    """Order for the overview: red, offline, yellow, waiting, maintenance, green; then name.
+
+    `status_of(host)` picks the status to sort by (default: the stored one).
+    """
+    if status_of is None:
+        status_of = attrgetter("status")
+    return sorted(hosts, key=lambda h: (STATUS_ORDER.get(status_of(h), 99), h.name.lower(), h.pk))

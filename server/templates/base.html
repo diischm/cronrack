@@ -5,6 +5,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}CronRack{% endblock %}</title>
+  {# Tab icon: SVG for modern browsers, a 32px PNG for the rest, and a 180px tile for iOS home screens. #}
+  <link rel="icon" href="{% static 'cronrack/favicon.svg' %}" type="image/svg+xml">
+  <link rel="icon" href="{% static 'cronrack/favicon-32.png' %}" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="{% static 'cronrack/apple-touch-icon.png' %}">
   {# Must stay first and must not be deferred: sets data-theme before first paint. #}
   <script src="{% static 'cronrack/js/theme-init.js' %}"></script>
   <link rel="stylesheet" href="{% static 'cronrack/css/tokens.css' %}">
@@ -12,6 +16,7 @@
   <link rel="stylesheet" href="{% static 'cronrack/css/pages.css' %}">
   <script src="{% static 'cronrack/js/theme.js' %}" defer></script>
   <script src="{% static 'cronrack/js/messages.js' %}" defer></script>
+  <script src="{% static 'cronrack/js/copy.js' %}" defer></script>
   {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -83,5 +88,7 @@
     </nav>
     {% endif %}
   </div>
+  {# Shared screen-reader announcer for Copy keys (copy.js). Visually hidden, not display:none. #}
+  <p class="visually-hidden" id="copy-status" aria-live="polite"></p>
 </body>
 </html>

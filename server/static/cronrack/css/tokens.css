@@ -83,6 +83,10 @@
   --lamp-red-lens: radial-gradient(circle at 36% 30%, #FFE3D6 0%, #FF7A55 18%, #D8341F 48%, #8E1A10 78%, #4A0A05 100%);
   --lamp-amber-lens: radial-gradient(circle at 36% 30%, #FFF6D8 0%, #FFD25A 18%, #F0A000 48%, #A86800 78%, #553300 100%);
   --lamp-green-lens: radial-gradient(circle at 36% 30%, #E4FFE0 0%, #7FE38E 18%, #34A856 48%, #1C6436 78%, #0A2E18 100%);
+  /* Switched off (host offline): dark smoky glass. A small specular dot on top keeps it
+     reading as glass; it has no glow. */
+  --lamp-off-lens: radial-gradient(circle at 34% 28%, rgba(255,255,255,.8) 0, rgba(255,255,255,.8) 1px, rgba(255,255,255,0) 2.2px),
+                   radial-gradient(circle at 36% 30%, #9A9AA4 0%, #55555E 25%, #2E2E35 65%, #18181C 100%);
   --lamp-shade: rgba(0,0,0,.45);
   --lamp-spec: rgba(255,255,255,.55);
   --lamp-glow-size: 10px;

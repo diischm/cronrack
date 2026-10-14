@@ -16,9 +16,14 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
         </a>
         <h1 class="page-title host-head__name">{{ host.name }}</h1>
-        <span class="lamp-label">{% include "components/lamp.html" with status=host.status %}{% include "components/chip.html" with status=host.status label=host.status_label %}</span>
+        {% if host.status == "offline" %}
+          {% include "components/lamp.html" with status="off" %}
+        {% else %}
+          <span class="lamp-label">{% include "components/lamp.html" with status=host.status %}{% include "components/chip.html" with status=host.status label=host.status_label %}</span>
+        {% endif %}
       </div>
-      <p class="host-head__meta">Last report {{ host.last_seen_human }} · Agent {% if host.agent_version %}v{{ host.agent_version }}{% else %}version unknown (no report yet){% endif %} · Server v{{ server_version }}</p>
+      {# Offline: no chip, so this line carries the status in words (faint, "Offline" in bold). #}
+      <p class="host-head__meta{% if host.status == 'offline' %} offline-note{% endif %}">{% if host.status == "offline" %}<strong>Offline</strong> · last report{% else %}Last report{% endif %} {{ host.last_seen_human }} · Agent {% if host.agent_version %}v{{ host.agent_version }}{% else %}version unknown (no report yet){% endif %} · Server v{{ server_version }}</p>
     </div>
     <div class="host-head__actions">
       {# Apo: send this with fetch + X-CSRFToken, then poll status.json (handoff 5.4). Without JS it returns JSON. #}
@@ -44,13 +49,29 @@
   {% else %}
     <section class="surface panel">
       <h2 class="section-title">Problems</h2>
+      {% if host.status == "offline" %}
+        {# Fixed text, not host data. The commands are copy-only: CronRack never runs them. #}
+        <ul class="rows plain-list">
+          <li class="issue-row">
+            <svg class="issue-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>
+            {% include "components/chip.html" with status="red" label="red" %}
+            <span>This host stopped reporting. Last report {{ host.last_seen_human }}.</span>
+          </li>
+        </ul>
+        <div class="code-head">
+          <p class="muted">Check the agent on the host</p>
+          <button type="button" class="btn btn--sm js-copy" aria-controls="agent-check-{{ host.id }}">Copy</button>
+        </div>
+        <pre class="code well" id="agent-check-{{ host.id }}">sudo systemctl status cronrack-agent
+sudo journalctl -u cronrack-agent -n 50 --no-pager</pre>
+      {% endif %}
       {% if issues %}
         <ul class="rows plain-list">
           {% for issue in issues %}
             <li>{% include "components/chip.html" with status=issue.severity label=issue.severity %} {{ issue.text }}</li>
           {% endfor %}
         </ul>
-      {% else %}
+      {% elif host.status != "offline" %}
         <p class="muted">Nothing needs you.</p>
       {% endif %}
     </section>

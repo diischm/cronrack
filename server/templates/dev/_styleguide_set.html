@@ -1,5 +1,6 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {# One full set of components in one theme. Usage: {% include "dev/_styleguide_set.html" with theme="dark" %} #}
+{% load static %}
 <section class="sg-theme" data-theme="{{ theme }}" aria-label="{{ theme|capfirst }} theme">
   <h2 class="section-title">{{ theme|capfirst }}</h2>
 
@@ -92,12 +93,27 @@
       <span class="lamp-label">{% include "components/lamp.html" with status="red" %}{% include "components/chip.html" with status="red" label="Needs you" %}</span>
       <span class="lamp-label">{% include "components/lamp.html" with status="yellow" %}{% include "components/chip.html" with status="yellow" label="Heads up" %}</span>
       <span class="lamp-label">{% include "components/lamp.html" with status="green" %}{% include "components/chip.html" with status="green" label="All good" %}</span>
-      <span class="lamp-label">{% include "components/lamp.html" with status="offline" %}{% include "components/chip.html" with status="offline" label="Offline" %}</span>
       {% include "components/chip.html" with status="waiting" label="Waiting" %}
     </div>
+    <p class="sg-row">Host offline right now: unlit lamp, no chip, the text says it.
+      <span class="lamp-label">{% include "components/lamp.html" with status="off" %}<span class="offline-note"><strong>Offline</strong> · last report 28 h ago</span></span></p>
+    <p class="sg-row">Lit next to unlit:
+      {% include "components/lamp.html" with status="red" %}{% include "components/lamp.html" with status="yellow" %}{% include "components/lamp.html" with status="green" %}{% include "components/lamp.html" with status="off" %}</p>
     <p class="muted sg-row">Lamp next to text:
       <span class="lamp-label">{% include "components/lamp.html" with status="red" %}homeserver went red</span>
       <span class="lamp-label">{% include "components/lamp.html" with status="green" %}nas back online</span></p>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Favicon (browser tab icon) at 16, 32 and 64px</h3>
+    <div class="sg-row sg-icons">
+      <img src="{% static 'cronrack/favicon.svg' %}" width="16" height="16" alt="">
+      <img src="{% static 'cronrack/favicon.svg' %}" width="32" height="32" alt="">
+      <img src="{% static 'cronrack/favicon.svg' %}" width="64" height="64" alt="">
+      <img src="{% static 'cronrack/favicon-32.png' %}" width="32" height="32" alt="">
+      <img src="{% static 'cronrack/apple-touch-icon.png' %}" width="64" height="64" alt="">
+    </div>
+    <p class="sg-faint sg-text">SVG at 16 / 32 / 64, then the 32px PNG fallback and the iOS home-screen tile.</p>
   </div>
 
   <div class="sg-block">

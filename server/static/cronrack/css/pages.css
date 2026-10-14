@@ -32,6 +32,9 @@ html, body { overflow-x: hidden; }
 .host-card__issues { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;
   gap: 6px; font-size: 15px; color: var(--text-muted); }
 .host-card__issues li { display: flex; gap: var(--gap-icon); align-items: center; overflow-wrap: anywhere; }
+/* Offline: the last known issues stay visible but muted (they may be out of date). */
+.host-card--offline .host-card__issues,
+.host-card--offline .issue-icon { color: var(--text-faint); }
 
 /* Section heading with an optional link on the right */
 .section-head { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
@@ -90,6 +93,7 @@ html, body { overflow-x: hidden; }
 .host-head__title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); min-width: 0; }
 .host-head__name { min-width: 0; overflow-wrap: anywhere; }
 .host-head__meta { margin: 0; font-size: 15px; color: var(--text-muted); }
+.host-head__meta.offline-note { color: var(--text-faint); }
 .host-head__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .host-head__actions form { display: flex; }
 @container host-head (max-width: 599.98px) {
@@ -99,6 +103,11 @@ html, body { overflow-x: hidden; }
 }
 .plain-list { margin: 0; padding: 0; list-style: none; }
 .plain-list li { padding: 8px 0; overflow-wrap: anywhere; }
+/* Detail page: the fixed "stopped reporting" row (warning icon, chip, text). */
+.issue-row { display: flex; align-items: center; gap: var(--gap-icon); }
+/* Label on the left, Copy key (and its hint) on the right, above a code well. */
+.code-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.code-head > p { margin: 0; flex: 1 1 auto; }
 .table-scroll { overflow-x: auto; padding: 8px; border-radius: 14px; }
 .table-scroll table { border-collapse: collapse; white-space: nowrap; font-size: 14px; }
 .table-scroll th, .table-scroll td { padding: 6px 10px; text-align: left; }
@@ -219,6 +228,7 @@ html, body { overflow-x: hidden; }
   .tile__icon { flex: none; color: var(--accent-text); }
   .tile__value { margin: 0; font-size: 34px; font-weight: 800; line-height: 1; }
   .tile__unit { font-size: 15px; font-weight: 700; color: var(--text-faint); }
+  .tile .offline-note { font-size: 14px; }
 
   /* Overview: one column, no right rail. Desktop order: header, tiles, "While you were away",
      hosts. The HTML keeps the hosts first so phones show status first; `order: -1` lifts the

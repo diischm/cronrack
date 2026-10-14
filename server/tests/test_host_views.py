@@ -208,7 +208,7 @@ def test_overview_json_shape_and_order(alice_client: Client, alice, bob):
 
     assert set(data) == OVERVIEW_KEYS
     assert data["attention_count"] == 3
-    assert data["status_counts"] == {"red": 2, "yellow": 1, "green": 1}
+    assert data["status_counts"] == {"red": 2, "yellow": 1, "green": 1, "offline": 0}
     assert data["hosts_online"] == 4  # bob's host is not counted
     assert [h["name"] for h in data["hosts"]] == ["a-red", "b-red", "a-yellow", "zz-green"]
     for h in data["hosts"]:
@@ -238,13 +238,15 @@ def test_overview_empty_state(alice_client: Client):
 
 
 def test_offline_host_shows_last_seen(alice_client: Client, alice):
+    """Marked offline by the scheduler: the time is in last_seen_human, not an issue line."""
     host = make_host(alice, "pi-01", "offline", make_report())
     Host.objects.filter(pk=host.pk).update(
         connected=False, last_seen_at=timezone.now() - timedelta(minutes=14)
     )
     card = alice_client.get("/api/v1/overview.json").json()["hosts"][0]
     assert card["status_label"] == "Offline"
-    assert card["issues"][0] == {"text": "Last seen 14 min ago", "severity": "red"}
+    assert card["last_seen_human"] == "14 min ago"
+    assert card["issues"] == []
 
 
 def test_overview_card_numbers(alice_client: Client, alice):
@@ -282,7 +284,7 @@ def test_overview_card_numbers_can_be_missing(alice_client: Client, alice):
 
 
 def test_overview_summary_counts(alice_client: Client, alice):
-    """Offline counts as red (red lamp); "online" means the agent is connected."""
+    """Offline has its own count (unlit lamp); "online" means the agent is connected."""
     make_host(alice, "a", "red", make_report())
     make_host(alice, "b", "offline", make_report())
     Host.objects.filter(name="b").update(connected=False)
@@ -291,8 +293,153 @@ def test_overview_summary_counts(alice_client: Client, alice):
 
     data = alice_client.get("/api/v1/overview.json").json()
 
-    assert data["status_counts"] == {"red": 2, "yellow": 0, "green": 1}
+    assert data["status_counts"] == {"red": 1, "yellow": 0, "green": 1, "offline": 1}
     assert data["hosts_online"] == 2
+
+
+# --- offline worked out at read time (the scheduler may not be running) ------------
+
+
+def make_silent_host(owner, name="pi-01", hours=28, status="green"):
+    """A host whose stored status is still `status`, but that went quiet `hours` ago."""
+    host = make_host(owner, name, status, make_report())
+    Host.objects.filter(pk=host.pk).update(
+        connected=False, last_seen_at=timezone.now() - timedelta(hours=hours)
+    )
+    return Host.objects.get(pk=host.pk)
+
+
+def test_silent_host_is_offline_everywhere(alice_client: Client, alice):
+    host = make_silent_host(alice)
+    assert host.status == "green"  # nothing rewrote the stored status
+
+    card = alice_client.get("/api/v1/overview.json").json()["hosts"][0]
+    status = alice_client.get(f"/api/v1/hosts/{host.pk}/status.json").json()
+    detail = alice_client.get(f"/hosts/{host.pk}/").content.decode()
+    overview = alice_client.get("/").content.decode()
+
+    assert card["status"] == status["status"] == "offline"
+    assert card["status_label"] == "Offline"
+    assert card["issues"] == []  # "Offline · last report …" says it, no issue line repeats it
+    for html in (overview, detail):
+        assert "lamp--off" in html
+        assert "<strong>Offline</strong> · last report 28 h ago" in html
+        # No status chip (issue rows on the detail page keep their severity chips).
+        assert not re.search(r'class="chip[^"]*">(All good|Needs you|Heads up|Offline)<', html)
+    assert Host.objects.get(pk=host.pk).status == "green"  # reading never writes
+
+
+def test_offline_host_lists_no_offline_issue_but_keeps_the_others(alice_client: Client, alice):
+    from hosts.presenters import detail_context, overview_context
+
+    report = make_report(reboot_required=True, failed_units=["backup.service"])
+    host = make_host(alice, "pi-01", "red", report)
+    Host.objects.filter(pk=host.pk).update(
+        connected=False, last_seen_at=timezone.now() - timedelta(hours=28)
+    )
+    host = Host.objects.get(pk=host.pk)
+    now = timezone.now()
+    others = {"backup.service failed", "Reboot required"}
+
+    card = overview_context(alice, now)["hosts"][0]
+    assert card["status"] == "offline"
+    assert {i["text"] for i in card["issues"]} == others
+
+    json_card = alice_client.get("/api/v1/overview.json").json()["hosts"][0]
+    assert {i["text"] for i in json_card["issues"]} == others
+
+    detail = detail_context(host, now)
+    assert detail["host"]["status"] == "offline"
+    assert {i["text"] for i in detail["issues"]} == others
+    assert all(i["rule_id"] != "connectivity.offline" for i in detail["issues"])
+
+    for html in (
+        alice_client.get("/").content.decode(),
+        alice_client.get(f"/hosts/{host.pk}/").content.decode(),
+    ):
+        assert "Last seen" not in html
+        assert "backup.service failed" in html
+
+
+def test_online_host_issues_are_unchanged(alice_client: Client, alice):
+    from hosts.presenters import detail_context, overview_context
+
+    report = make_report(reboot_required=True, failed_units=["backup.service"])
+    host = make_host(alice, "pi-01", "red", report)
+    now = timezone.now()
+    expected = [
+        {"text": "backup.service failed", "severity": "red"},
+        {"text": "Reboot required", "severity": "yellow"},
+    ]
+
+    assert overview_context(alice, now)["hosts"][0]["issues"] == expected
+    assert alice_client.get("/api/v1/overview.json").json()["hosts"][0]["issues"] == expected
+    detail_issues = detail_context(host, now)["issues"]
+    assert [{"text": i["text"], "severity": i["severity"]} for i in detail_issues] == expected
+
+
+def test_silent_host_under_threshold_keeps_its_status(alice_client: Client, alice):
+    host = make_host(alice, "pi-01", "yellow", make_report(reboot_required=True))
+    Host.objects.filter(pk=host.pk).update(
+        connected=False, last_seen_at=timezone.now() - timedelta(seconds=30)
+    )
+
+    assert alice_client.get("/api/v1/overview.json").json()["hosts"][0]["status"] == "yellow"
+    assert alice_client.get(f"/api/v1/hosts/{host.pk}/status.json").json()["status"] == "yellow"
+
+
+def test_silent_host_threshold_comes_from_prefs(alice_client: Client, alice):
+    from prefs.models import Prefs
+
+    Prefs.objects.create(owner=alice, silent_after_seconds=2 * 24 * 3600)
+    host = make_silent_host(alice)
+
+    assert alice_client.get("/api/v1/overview.json").json()["hosts"][0]["status"] == "green"
+    assert alice_client.get(f"/api/v1/hosts/{host.pk}/status.json").json()["status"] == "green"
+
+
+def test_attention_count_includes_offline_hosts(alice_client: Client, alice):
+    make_silent_host(alice, "diicpi")
+    make_host(alice, "nas", "green", make_report())
+
+    data = alice_client.get("/api/v1/overview.json").json()
+    html = alice_client.get("/").content.decode()
+
+    assert data["attention_count"] == 1
+    assert data["status_counts"] == {"red": 0, "yellow": 0, "green": 1, "offline": 1}
+    assert data["hosts_online"] == 1
+    assert [h["name"] for h in data["hosts"]] == ["diicpi", "nas"]  # offline sorts first
+    assert "1 thing needs you" in html
+
+
+def test_overview_html_and_json_agree_on_offline(alice_client: Client, alice):
+    make_silent_host(alice, "diicpi")
+    make_host(alice, "nas", "green", make_report())
+
+    data = alice_client.get("/api/v1/overview.json").json()
+    html = alice_client.get("/").content.decode()
+
+    statuses = {h["name"]: h["status"] for h in data["hosts"]}
+    assert statuses == {"diicpi": "offline", "nas": "green"}
+    assert html.count("lamp--off") == 2  # diicpi's card + the "Hosts online" tile
+    assert "<strong>Offline</strong> · last report 28 h ago" in html
+    assert "<strong>Offline</strong> · 1 host" in html
+    assert html.count('class="chip chip--green">All good</span>') == 1  # nas keeps its chip
+
+
+def test_waiting_and_maintenance_win_over_offline(alice_client: Client, alice):
+    waiting = make_host(alice, "new", "waiting")
+    Host.objects.filter(pk=waiting.pk).update(last_seen_at=timezone.now() - timedelta(days=2))
+    mnt = make_silent_host(alice, "mnt", status="maintenance")
+    Host.objects.filter(pk=mnt.pk).update(maintenance_until=timezone.now() + timedelta(hours=1))
+
+    statuses = {
+        h["name"]: h["status"] for h in alice_client.get("/api/v1/overview.json").json()["hosts"]
+    }
+    assert statuses == {"new": "waiting", "mnt": "maintenance"}
+    for h in (waiting, mnt):
+        status = alice_client.get(f"/api/v1/hosts/{h.pk}/status.json").json()["status"]
+        assert status == statuses[h.name]
 
 
 # --- both layouts (CSS switches at 900px; the HTML is the same) --------------------
@@ -530,3 +677,84 @@ def test_every_nav_link_works(alice_client: Client):
     assert len(links) >= 3  # Overview, Activity, Settings
     for href in links:
         assert alice_client.get(href).status_code == 200, href
+
+
+# --- offline never says "Nothing needs you" ----------------------------------------
+
+AGENT_CHECK = (
+    "sudo systemctl status cronrack-agent\nsudo journalctl -u cronrack-agent -n 50 --no-pager"
+)
+
+
+def test_offline_host_without_issues_never_says_nothing_needs_you(alice_client: Client, alice):
+    host = make_silent_host(alice)
+
+    overview = alice_client.get("/").content.decode()
+    detail = alice_client.get(f"/hosts/{host.pk}/").content.decode()
+
+    for html in (overview, detail):
+        assert "Nothing needs you" not in html
+    assert "This host stopped reporting. Last report 28 h ago." in detail
+    assert "Check the agent on the host" in detail
+    assert f'<pre class="code well" id="agent-check-{host.pk}">{AGENT_CHECK}</pre>' in detail
+
+
+def test_offline_host_detail_lists_other_issues_after_the_fixed_row(alice_client: Client, alice):
+    host = make_silent_host(alice)
+    Host.objects.filter(pk=host.pk).update(
+        latest_report=make_report(failed_units=["backup.service"])
+    )
+
+    detail = alice_client.get(f"/hosts/{host.pk}/").content.decode()
+
+    assert detail.index("This host stopped reporting") < detail.index("backup.service failed")
+    assert "Nothing needs you" not in detail
+
+
+def test_online_host_without_issues_still_says_nothing_needs_you(alice_client: Client, alice):
+    host = make_host(alice, "pi-01", "green", make_report())
+
+    detail = alice_client.get(f"/hosts/{host.pk}/").content.decode()
+
+    assert "Nothing needs you" in alice_client.get("/").content.decode()
+    assert "Nothing needs you" in detail
+    assert "stopped reporting" not in detail
+    assert "cronrack-agent" not in detail
+
+
+# --- Copy key (static/cronrack/js/copy.js) ------------------------------------------
+
+COPY_JS = Path(__file__).resolve().parent.parent / "static/cronrack/js/copy.js"
+
+
+def test_offline_detail_copy_key_points_at_the_code_well(alice_client: Client, alice):
+    from .test_preview import scan
+
+    host = make_silent_host(alice)
+    html = alice_client.get(f"/hosts/{host.pk}/").content.decode()
+
+    target = f"agent-check-{host.pk}"  # from the host id, never the (untrusted) name
+    button = re.search(
+        r'<button type="button" class="btn btn--sm js-copy" aria-controls="([^"]+)">Copy</button>',
+        html,
+    )
+    assert button and button.group(1) == target
+    assert html.count(f'id="{target}"') == 1
+    assert f'<pre class="code well" id="{target}">{AGENT_CHECK}</pre>' in html
+    # One shared live region; copy.js is an external, deferred script.
+    assert html.count('id="copy-status" aria-live="polite"') == 1
+    assert '<script src="/static/cronrack/js/copy.js" defer></script>' in html
+
+    page = scan(html)
+    assert all(script.get("src") for script in page.scripts)
+    assert page.inline_script_text == ""
+    assert page.inline_styles == []
+    assert page.event_handlers == []
+
+
+def test_copy_js_never_uses_inner_html_or_the_console():
+    source = COPY_JS.read_text()
+    assert "innerHTML" not in source
+    assert "outerHTML" not in source
+    assert "console." not in source
+    assert "dataset" not in source  # nothing stored in data- attributes

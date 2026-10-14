@@ -2,14 +2,16 @@
 {# One tappable host card. Usage: {% include "components/host_card.html" with host=host %} #}
 {# Everything in `host` comes from agent reports or user input: plain {{ }} output only, so Django escapes it. #}
 {# The detail strip and the "Last report" line are desktop-only (pages.css, >= 900px). #}
-<a class="surface card-press host-card" href="{{ host.url }}">
+{# Offline: unlit lamp, no chip; the "Offline · last report …" line is the text label. #}
+<a class="surface card-press host-card{% if host.status == 'offline' %} host-card--offline{% endif %}" href="{{ host.url }}">
   <div class="host-card__head">
     <div class="host-card__title lamp-label">
-      {% include "components/lamp.html" with status=host.status %}
+      {% if host.status == "offline" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=host.status %}{% endif %}
       <span class="host-card__name">{{ host.name }}</span>
     </div>
-    {% include "components/chip.html" with status=host.status label=host.status_label %}
+    {% if host.status != "offline" %}{% include "components/chip.html" with status=host.status label=host.status_label %}{% endif %}
   </div>
+  {% if host.status == "offline" %}<p class="offline-note"><strong>Offline</strong> · last report {{ host.last_seen_human }}</p>{% endif %}
   {% if host.issues %}
     <ul class="host-card__issues">
       {% for issue in host.issues|slice:":3" %}
@@ -19,7 +21,8 @@
         </li>
       {% endfor %}
     </ul>
-  {% else %}
+  {% elif host.status != "offline" %}
+    {# Offline with no issues: no line here, the "Offline · last report …" line says it. #}
     <ul class="host-card__issues desk-only">
       <li><span>{% if host.status == "waiting" %}Waiting for the first report{% else %}Nothing needs you{% endif %}</span></li>
     </ul>
@@ -43,5 +46,5 @@
       {% endif %}
     </div>
   </dl>
-  <p class="host-card__seen desk-only">{% if host.status == "waiting" %}No report yet{% else %}Last report {{ host.last_seen_human }}{% endif %}</p>
+  {% if host.status != "offline" %}<p class="host-card__seen desk-only">{% if host.status == "waiting" %}No report yet{% else %}Last report {{ host.last_seen_human }}{% endif %}</p>{% endif %}
 </a>

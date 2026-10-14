@@ -15,10 +15,16 @@ from django.urls import reverse
 from activity.models import StatusEvent
 from hosts.humanize import ago, clock, day, user_zone
 from hosts.models import Host
-from hosts.services import silence_reason
 from prefs.models import Prefs
 from rules.base import Finding
-from rules.engine import OFFLINE_RULE, apply_suppressions, evaluate, sort_hosts, top_issues
+from rules.engine import (
+    OFFLINE_RULE,
+    apply_suppressions,
+    effective_status,
+    evaluate,
+    sort_hosts,
+    top_issues,
+)
 from rules.models import RuleOverride, Suppression
 from rules.registry import get_rule
 
@@ -43,26 +49,23 @@ class OwnerData:
         self.overrides = list(RuleOverride.objects.filter(owner=owner))
         self.suppressions = list(Suppression.objects.filter(owner=owner))
 
+    def status(self, host: Host, now: datetime) -> str:
+        """What the UI shows: offline is worked out now, not only by the scheduler."""
+        return effective_status(host, now, self.prefs.silent_after_seconds)
+
 
 def active_findings(host: Host, now: datetime, data: OwnerData) -> list[Finding]:
     """The host's current problems, after overrides and suppressions.
 
-    The stored status is the source of truth for "offline" (the scheduler sets it),
-    so the rule engine's own offline finding is replaced by one that matches it.
+    The connectivity.offline finding is never listed: whether a host is offline comes
+    from OwnerData.status, and the UI says it in the host's "Offline · last report …"
+    line, so an issue line would only repeat it.
     """
     if host.latest_report is None:
         return []
     findings = evaluate(host, host.latest_report, now, overrides=data.overrides)
     active, _ = apply_suppressions(findings, host, now, suppressions=data.suppressions)
-    active = [f for f in active if f.rule_id != OFFLINE_RULE]
-    if host.status == Host.Status.OFFLINE:
-        text = silence_reason(host, now, 0) or "Not reporting"
-        rule = get_rule(OFFLINE_RULE)
-        active.insert(
-            0,
-            Finding(OFFLINE_RULE, "", rule.default_severity, text, rule.why, "", ""),
-        )
-    return active
+    return [f for f in active if f.rule_id != OFFLINE_RULE]
 
 
 def issue_dict(finding: Finding) -> dict[str, Any]:
@@ -112,13 +115,14 @@ def _card_numbers(report: dict | None, findings: list[Finding]) -> dict[str, Any
 
 def host_summary(host: Host, now: datetime, data: OwnerData) -> dict[str, Any]:
     """One host card on the overview."""
+    status = data.status(host, now)
     findings = active_findings(host, now, data)
     issues = top_issues(findings)
     return {
         "id": host.pk,
         "name": host.name,
-        "status": host.status,
-        "status_label": STATUS_LABELS.get(host.status, host.status),
+        "status": status,
+        "status_label": STATUS_LABELS.get(status, status),
         "issues": [{"text": f.text, "severity": f.severity} for f in issues],
         "last_seen_human": ago(host.last_seen_at, now),
         "url": reverse("host-detail", args=[host.pk]),
@@ -139,18 +143,22 @@ def activity_entry(event: StatusEvent, now: datetime, data: OwnerData, with_day=
 
 def overview_context(user, now: datetime) -> dict[str, Any]:
     data = OwnerData(user)
-    hosts = sort_hosts(Host.objects.filter(owner=user))
+    owned = list(Host.objects.filter(owner=user))
+    status_of = {h.pk: data.status(h, now) for h in owned}
+    hosts = sort_hosts(owned, status_of=lambda h: status_of[h.pk])
     newest = max((h.last_seen_at for h in hosts if h.last_seen_at), default=None)
     events = StatusEvent.objects.filter(host__owner=user).select_related("host")
-    statuses = [h.status for h in hosts]
+    statuses = list(status_of.values())
     return {
         "attention_count": sum(1 for s in statuses if s in NEEDS_ATTENTION),
         "updated_human": ago(newest, now),
-        # The desktop summary tiles. An offline host has a red lamp, so it counts as red.
+        # The desktop summary tiles. An offline host has an unlit lamp, so it isn't
+        # counted as red; the "Hosts online" tile shows it instead.
         "status_counts": {
-            "red": sum(1 for s in statuses if s in ("red", "offline")),
+            "red": statuses.count("red"),
             "yellow": statuses.count("yellow"),
             "green": statuses.count("green"),
+            "offline": statuses.count("offline"),
         },
         "hosts_online": sum(1 for h in hosts if h.connected),
         "hosts": [host_summary(h, now, data) for h in hosts],
@@ -189,14 +197,15 @@ def _disk_rows(report: dict, findings: list[Finding]):
 
 def detail_context(host: Host, now: datetime) -> dict[str, Any]:
     data = OwnerData(host.owner)
+    status = data.status(host, now)
     findings = active_findings(host, now, data)
     report = host.latest_report
     context: dict[str, Any] = {
         "host": {
             "id": host.pk,
             "name": host.name,
-            "status": host.status,
-            "status_label": STATUS_LABELS.get(host.status, host.status),
+            "status": status,
+            "status_label": STATUS_LABELS.get(status, status),
             "last_seen_human": ago(host.last_seen_at, now),
             "has_report": report is not None,
             # From the agent's last report (validated, at most 32 characters); None

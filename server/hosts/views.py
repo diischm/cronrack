@@ -21,6 +21,7 @@ from hosts.humanize import ago
 from hosts.models import AgentToken, Host
 from hosts.presenters import detail_context, overview_context
 from hosts.services import close_agent, request_collect
+from rules.engine import effective_status
 
 AGENT_CONFIG_PATH = "/etc/cronrack/agent.toml"
 # Where Caddy keeps its own CA's root certificate (`tls internal`), inside the caddy container.
@@ -108,8 +109,9 @@ def host_detail(request: HttpRequest, host_id: int) -> HttpResponse:
 @require_GET
 def host_status_json(request: HttpRequest, host_id: int) -> JsonResponse:
     host = get_owned_host(request.user, host_id)
+    now = timezone.now()
     return JsonResponse(
-        {"status": host.status, "last_seen_human": ago(host.last_seen_at, timezone.now())}
+        {"status": effective_status(host, now), "last_seen_human": ago(host.last_seen_at, now)}
     )
 
 
