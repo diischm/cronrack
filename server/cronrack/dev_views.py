@@ -97,3 +97,13 @@ def preview(request: HttpRequest) -> HttpResponse:
             activity=[],
         )
     return render(request, "hosts/overview.html", context)
+
+
+def styleguide(request: HttpRequest) -> HttpResponse:
+    """Every design-system component in every state, in both themes.
+
+    Same guard as preview(): the URL always exists, but answers 404 unless DEBUG is on.
+    """
+    if not settings.DEBUG:
+        raise Http404
+    return render(request, "dev/styleguide.html")

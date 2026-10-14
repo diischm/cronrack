@@ -13,8 +13,9 @@ urlpatterns = [
     path("", include("prefs.urls")),
     # Public: install.sh and the agent package (no secrets inside).
     path("", include("agents.urls")),
-    # Dev-only: 404 unless DEBUG=1 (checked inside the view).
+    # Dev-only: 404 unless DEBUG=1 (checked inside each view).
     path("dev/preview/", dev_views.preview, name="dev-preview"),
+    path("dev/styleguide/", dev_views.styleguide, name="dev-styleguide"),
 ]
 
 # uvicorn does not serve static files (CSS/JS, the admin's styles) by itself.

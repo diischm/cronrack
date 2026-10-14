@@ -1,0 +1,145 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{# One full set of components in one theme. Usage: {% include "dev/_styleguide_set.html" with theme="dark" %} #}
+<section class="sg-theme" data-theme="{{ theme }}" aria-label="{{ theme|capfirst }} theme">
+  <h2 class="section-title">{{ theme|capfirst }}</h2>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Surface (raised) and tappable card</h3>
+    <div class="sg-row">
+      <div class="surface sg-box">Raised surface</div>
+      <a class="surface card-press sg-box" href="#{{ theme }}-card">Card</a>
+      <a class="surface card-press sg-box is-pressed" href="#{{ theme }}-card">Card pressed</a>
+      <a class="surface card-press sg-box is-focus" href="#{{ theme }}-card">Card focus</a>
+    </div>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Key</h3>
+    <div class="sg-row">
+      <button type="button" class="btn">Default</button>
+      <button type="button" class="btn is-hover">Hover</button>
+      <button type="button" class="btn is-pressed">Pressed</button>
+      <button type="button" class="btn is-focus">Focus</button>
+      <button type="button" class="btn" disabled>Disabled</button>
+      <button type="button" class="btn btn--danger">Danger</button>
+    </div>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Primary key (always 19px / 800)</h3>
+    <div class="sg-row">
+      <button type="button" class="btn btn--primary">Default</button>
+      <button type="button" class="btn btn--primary is-hover">Hover</button>
+      <button type="button" class="btn btn--primary is-pressed">Pressed</button>
+      <button type="button" class="btn btn--primary is-focus">Focus</button>
+      <button type="button" class="btn btn--primary" disabled>Disabled</button>
+    </div>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Icon key (44×44)</h3>
+    <div class="sg-row">
+      <button type="button" class="btn btn--icon" aria-label="Add (default)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+      <button type="button" class="btn btn--icon is-pressed" aria-label="Add (pressed)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+      <button type="button" class="btn btn--icon is-focus" aria-label="Add (focus)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+      <button type="button" class="btn btn--icon" aria-label="Add (disabled)" disabled><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+    </div>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Inputs (recessed wells)</h3>
+    <div class="sg-grid">
+      <div class="field">
+        <label class="field__label" for="sg-{{ theme }}-empty">Empty</label>
+        <input class="well" id="sg-{{ theme }}-empty" type="text" placeholder="homeserver">
+      </div>
+      <div class="field">
+        <label class="field__label" for="sg-{{ theme }}-filled">Filled</label>
+        <input class="well" id="sg-{{ theme }}-filled" type="text" value="pi-01">
+      </div>
+      <div class="field">
+        <label class="field__label" for="sg-{{ theme }}-focus">Focus</label>
+        <input class="well is-focus" id="sg-{{ theme }}-focus" type="text" value="nas">
+      </div>
+      <div class="field">
+        <label class="field__label" for="sg-{{ theme }}-disabled">Disabled</label>
+        <input class="well" id="sg-{{ theme }}-disabled" type="text" value="media-box" disabled>
+      </div>
+      <div class="field">
+        <label class="field__label" for="sg-{{ theme }}-error">With error</label>
+        <input class="well" id="sg-{{ theme }}-error" type="text" value="bad name!" aria-invalid="true" aria-describedby="sg-{{ theme }}-error-msg">
+        <p class="field__error" id="sg-{{ theme }}-error-msg">Use letters, digits, '-' and '_'.</p>
+      </div>
+      <div class="field">
+        <label class="field__label" for="sg-{{ theme }}-select">Select</label>
+        <select class="well" id="sg-{{ theme }}-select"><option>Instant</option><option>Digest</option></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Segmented control</h3>
+    <nav class="seg-track well sg-seg" aria-label="Segmented control example ({{ theme }})">
+      <a class="seg" href="#{{ theme }}-seg">Light</a>
+      <a class="seg" href="#{{ theme }}-seg" aria-current="page">Dark</a>
+      <a class="seg is-focus" href="#{{ theme }}-seg">System (focus)</a>
+    </nav>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Lamps and chips (a lamp always has a label)</h3>
+    <div class="sg-row">
+      <span class="sg-pair">{% include "components/lamp.html" with status="red" %}{% include "components/chip.html" with status="red" label="Needs you" %}</span>
+      <span class="sg-pair">{% include "components/lamp.html" with status="yellow" %}{% include "components/chip.html" with status="yellow" label="Heads up" %}</span>
+      <span class="sg-pair">{% include "components/lamp.html" with status="green" %}{% include "components/chip.html" with status="green" label="All good" %}</span>
+      <span class="sg-pair">{% include "components/lamp.html" with status="offline" %}{% include "components/chip.html" with status="offline" label="Offline" %}</span>
+      {% include "components/chip.html" with status="waiting" label="Waiting" %}
+    </div>
+    <p class="muted">Lamp inside running text: {% include "components/lamp.html" with status="red" %} homeserver went red,
+      {% include "components/lamp.html" with status="green" %} nas back online.</p>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Text tokens</h3>
+    <p class="sg-text">Body text · <span class="muted">muted text</span> · <span class="sg-faint">faint text</span> · <a href="#{{ theme }}-text">accent link</a></p>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Colour swatches</h3>
+    <div class="sg-row">
+      <span class="sg-pair"><span class="sg-swatch sg-swatch--accent" aria-hidden="true"></span>Accent (brand: logo, loader)</span>
+      <span class="sg-pair"><span class="sg-swatch sg-swatch--focus" aria-hidden="true"></span>Focus ring (--focus)</span>
+    </div>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Rows (spacing, no divider lines)</h3>
+    <ul class="surface activity rows">
+      <li class="activity__row"><span class="activity__text">homeserver went red</span><span class="activity__time">14:32</span></li>
+      <li class="activity__row"><span class="activity__text">nas back online</span><span class="activity__time">11:05</span></li>
+      <li class="activity__row"><span class="activity__text">Nightly backup timer ran</span><span class="activity__time">03:00</span></li>
+    </ul>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Code well</h3>
+    <pre class="code">sudo apt update &amp;&amp; sudo apt upgrade -y</pre>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Disk meter</h3>
+    <div class="sg-meters">
+      {% include "components/meter.html" with percent=48 label="Disk 48%" %}
+      {% include "components/meter.html" with percent=87 label="Disk 87%" %}
+      {% include "components/meter.html" with percent=96 label="Disk 96%" %}
+    </div>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Loader (72px tile, and the 36px small version)</h3>
+    <div class="sg-row">
+      <div class="loader surface" role="status" aria-label="Loading"><span></span><span></span><span></span></div>
+      <span class="loader loader--sm surface" role="status" aria-label="Loading"><span></span><span></span><span></span></span>
+    </div>
+  </div>
+</section>

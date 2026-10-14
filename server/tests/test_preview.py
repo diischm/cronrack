@@ -65,6 +65,28 @@ def test_preview_is_404_without_debug(client: Client) -> None:
     assert client.get("/dev/preview/").status_code == 404
 
 
+@override_settings(DEBUG=False)
+@pytest.mark.django_db
+def test_styleguide_is_404_without_debug(client: Client) -> None:
+    assert client.get("/dev/styleguide/").status_code == 404
+
+
+@override_settings(DEBUG=True)
+@pytest.mark.django_db
+def test_styleguide_renders_with_debug_and_is_csp_clean(client: Client) -> None:
+    response = client.get("/dev/styleguide/")
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    for component in ("btn--primary", "lamp--red", "lamp--amber", "lamp--green", "loader", "code"):
+        assert component in html
+    page = scan(html)
+    assert all(script.get("src") for script in page.scripts)
+    assert page.inline_script_text == ""
+    assert page.inline_styles == []
+    assert page.event_handlers == []
+
+
 @override_settings(DEBUG=True)
 @pytest.mark.django_db
 def test_preview_renders_with_debug(client: Client) -> None:

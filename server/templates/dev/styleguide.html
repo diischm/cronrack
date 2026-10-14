@@ -1,0 +1,24 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Styleguide · CronRack{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'cronrack/css/styleguide.css' %}">{% endblock %}
+{% block main_class %}app-main--wide{% endblock %}
+
+{% comment %}
+  Dev-only (404 unless DEBUG=1): every design-system component in every state.
+  The same set is rendered twice, inside data-theme="light" and data-theme="dark",
+  so both themes can be compared side by side whatever the page theme is.
+  Hover / pressed / focus are shown with the .is-hover / .is-pressed / .is-focus classes.
+{% endcomment %}
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">Styleguide</h1>
+    <p class="page-sub">Design system components, light and dark. Dev only.</p>
+  </div>
+  <div class="sg-themes">
+    {% include "dev/_styleguide_set.html" with theme="light" %}
+    {% include "dev/_styleguide_set.html" with theme="dark" %}
+  </div>
+{% endblock %}

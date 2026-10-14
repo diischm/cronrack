@@ -1,0 +1,25 @@
+/* PLACEHOLDER — Apo owns the final version.
+   Layout for the dev-only /dev/styleguide/ page. Only spacing and placement: every colour and
+   depth comes from tokens.css / components.css, so the guide shows the real components. */
+
+.sg-themes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 24px; }
+
+/* Each theme block paints its own ground, so a dark block reads as dark on a light page. */
+.sg-theme { background: var(--ground); color: var(--text); border-radius: var(--radius-card);
+  padding: 20px 16px; display: flex; flex-direction: column; gap: 24px; }
+
+.sg-block { display: flex; flex-direction: column; gap: 12px; }
+.sg-label { margin: 0; font-size: 13px; font-weight: 800; color: var(--text-muted); }
+.sg-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.sg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+.sg-box { padding: 18px 20px; font-weight: 700; }
+.sg-pair { display: inline-flex; align-items: center; gap: 10px; }
+.sg-seg { max-width: 420px; }
+.sg-text { margin: 0; font-size: 15px; }
+.sg-faint { color: var(--text-faint); }
+.sg-meters { display: flex; flex-direction: column; gap: 12px; max-width: 320px; }
+
+/* Colour swatches: a small chip of the token colour next to its name. */
+.sg-swatch { display: inline-block; width: 32px; height: 20px; border-radius: 6px; flex: none; }
+.sg-swatch--accent { background: var(--accent); }
+.sg-swatch--focus { background: var(--focus); }
