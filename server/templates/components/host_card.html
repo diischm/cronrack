@@ -4,7 +4,7 @@
 {# The detail strip and the "Last report" line are desktop-only (pages.css, >= 900px). #}
 <a class="surface card-press host-card" href="{{ host.url }}">
   <div class="host-card__head">
-    <div class="host-card__title">
+    <div class="host-card__title lamp-label">
       {% include "components/lamp.html" with status=host.status %}
       <span class="host-card__name">{{ host.name }}</span>
     </div>

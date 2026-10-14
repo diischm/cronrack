@@ -34,7 +34,7 @@ body { margin: 0; background: var(--ground); color: var(--text); font-family: va
   appearance: none; border: 0; cursor: pointer;
   min-height: 44px; padding: 12px 20px; border-radius: var(--radius-key);
   font: 700 16px/1.2 var(--font-ui); color: var(--text); text-decoration: none;
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--gap-icon);
   background: linear-gradient(145deg, var(--surface-hi) 0%, var(--ground) 50%, var(--surface-lo) 100%);
   box-shadow:
     inset 1px 1px 2px var(--rim-light),
@@ -97,7 +97,9 @@ input.well:disabled, select.well:disabled, textarea.well:disabled { opacity: .55
   box-shadow: inset 1px 1px 2px var(--rim-light), 3px 4px 8px var(--shadow-dark), -3px -3px 7px var(--shadow-light); }
 
 /* Status chip (label next to every lamp) */
-.chip { padding: 4px 10px; border-radius: var(--radius-chip); font: 800 13px var(--font-ui); }
+/* nowrap: a status label like "Needs you" must never break over two lines. */
+.chip { padding: 4px 10px; border-radius: var(--radius-chip); font: 800 13px var(--font-ui);
+  white-space: nowrap; }
 .chip--red   { background: var(--red-chip-bg);   color: var(--red-chip-text); }
 .chip--amber { background: var(--amber-chip-bg); color: var(--amber-chip-text); }
 .chip--green { background: var(--green-chip-bg); color: var(--green-chip-text); }
@@ -114,6 +116,12 @@ input.well:disabled, select.well:disabled, textarea.well:disabled { opacity: .55
 .lamp--red   { background: var(--lamp-red-lens);   --glow: var(--lamp-red-glow); }
 .lamp--amber { background: var(--lamp-amber-lens); --glow: var(--lamp-amber-glow); }
 .lamp--green { background: var(--lamp-green-lens); --glow: var(--lamp-green-glow); }
+
+/* Lamp + its label (text or chip). The bezel and recess ring are box-shadows that draw ~5.5px
+   OUTSIDE the 14px box, so a normal gap looks cramped: --gap-lamp (14px) leaves ~8px of air
+   after the ring. Put the lamp and its label inside one .lamp-label. A missing lamp (e.g.
+   "waiting") simply leaves the label on its own. */
+.lamp-label { display: inline-flex; align-items: center; gap: var(--gap-lamp); min-width: 0; }
 
 /* Code well */
 .code { margin: 0; padding: 16px; border-radius: 14px; overflow-x: auto;
@@ -148,7 +156,8 @@ input.well:disabled, select.well:disabled, textarea.well:disabled { opacity: .55
 a { color: var(--accent-text); }
 
 /* Logo: three orange bars, fading out (handoff 5.0 + reference) */
-.brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none;
+/* min-height: the logo is a link to the overview, so it gets a 44px touch target. */
+.brand { display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--text); text-decoration: none;
   font-size: 19px; font-weight: 800; border-radius: 8px; }
 .brand__bars { display: flex; flex-direction: column; gap: 3px; }
 .brand__bars span { display: block; width: 18px; height: 3px; border-radius: 2px; background: var(--accent); }
@@ -170,7 +179,11 @@ a { color: var(--accent-text); }
 .issue-icon { flex: none; color: var(--red-chip-text); }
 
 /* Rows inside a raised panel: separated by spacing only (no-lines rule). */
-.rows { display: flex; flex-direction: column; gap: 4px; }
+.rows { display: flex; flex-direction: column; gap: var(--space-1); }
+
+/* <details> toggles: the browser's summary is ~22px tall. 11px top/bottom makes it a 44px
+   touch target and keeps the native disclosure triangle. */
+summary { padding-block: 11px; cursor: pointer; }
 
 /* Flash message toast: small raised panel at the top (handoff 5.0) */
 .toast { display: flex; align-items: center; justify-content: space-between; gap: 12px;

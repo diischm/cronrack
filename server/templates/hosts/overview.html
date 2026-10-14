@@ -39,15 +39,15 @@
 
   <section class="summary desk-only" aria-label="Summary">
     <div class="surface tile">
-      <div class="tile__label">{% include "components/lamp.html" with status="red" %}<span>Needs you</span></div>
+      <div class="tile__label lamp-label">{% include "components/lamp.html" with status="red" %}<span>Needs you</span></div>
       <p class="tile__value">{{ status_counts.red }} <span class="tile__unit">host{{ status_counts.red|pluralize }}</span></p>
     </div>
     <div class="surface tile">
-      <div class="tile__label">{% include "components/lamp.html" with status="yellow" %}<span>Heads up</span></div>
+      <div class="tile__label lamp-label">{% include "components/lamp.html" with status="yellow" %}<span>Heads up</span></div>
       <p class="tile__value">{{ status_counts.yellow }} <span class="tile__unit">host{{ status_counts.yellow|pluralize }}</span></p>
     </div>
     <div class="surface tile">
-      <div class="tile__label">{% include "components/lamp.html" with status="green" %}<span>All good</span></div>
+      <div class="tile__label lamp-label">{% include "components/lamp.html" with status="green" %}<span>All good</span></div>
       <p class="tile__value">{{ status_counts.green }} <span class="tile__unit">host{{ status_counts.green|pluralize }}</span></p>
     </div>
     <div class="surface tile">
@@ -84,8 +84,7 @@
         <ul class="surface activity rows">
           {% for entry in activity|slice:":3" %}
             <li class="activity__row">
-              <span class="activity__lamp desk-only">{% include "components/lamp.html" with status=entry.status %}</span>
-              <span class="activity__text">{{ entry.text }}</span>
+              <span class="activity__text lamp-label"><span class="activity__lamp desk-only">{% include "components/lamp.html" with status=entry.status %}</span>{{ entry.text }}</span>
               <span class="activity__time">{{ entry.time_human }}</span>
             </li>
           {% endfor %}

@@ -33,7 +33,8 @@
     From 900px (pages.css): the logo, nav, hosts card and theme toggle stack into a
     left sidebar and the content sits to the right. No JS involved.
   {% endcomment %}
-  <div class="app">
+  {# Logged out (login, setup): no sidebar, so use the centered phone column at every width. #}
+  <div class="app{% if not user.is_authenticated %} app--bare{% endif %}">
     <header class="topbar">
       <a class="brand" href="/" aria-label="CronRack overview">
         <span class="brand__bars" aria-hidden="true"><span></span><span></span><span></span></span>
