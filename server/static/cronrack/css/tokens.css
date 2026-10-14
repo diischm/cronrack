@@ -1,16 +1,58 @@
 /* PLACEHOLDER — Apo owns the final version.
-   Copied verbatim from FRONTEND-HANDOFF.md section 4.1 (source of truth). */
+   Based on FRONTEND-HANDOFF.md section 4.1 (source of truth). Values that differ from the
+   handoff are marked "Design system PR" with the reason. */
 
-:root {
+/* --- Fonts (self-hosted, no third-party requests) ---------------------------------------
+   Variable fonts: one file covers every weight in its range. unicode-range lets the browser
+   download latin-ext only when a page actually uses one of those characters.
+   URLs are relative to this file, so they work under /static/ and after collectstatic.
+   Licences: fonts/OFL-Nunito.txt, fonts/OFL-JetBrainsMono.txt. */
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url("../fonts/nunito-latin-ext-wght.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url("../fonts/nunito-latin-wght.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin-wght.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Light theme. [data-theme="light"] is listed too, so a light block can sit inside a dark
+   page (the styleguide shows both themes side by side). */
+:root, [data-theme="light"] {
+  color-scheme: light;
   --ground: #E4E4E8;
   --surface-hi: #EEEEF1;  --surface-lo: #DADADF;
   --well: #DADADF;        --well-pressed: #DCDCE0;
   --text: #1E1B2E;        --text-muted: #4B4662;
-  --accent: #D9541E;      --accent-text: #B8460F;
+  /* Design system PR: --accent-text #B8460F -> #A33D0C. It's link/nav text and needs 4.5:1
+     (was 4.22:1 on ground). Same hue. --accent stays the brand orange (logo bars, loader). */
+  --accent: #D9541E;      --accent-text: #A33D0C;
+  /* Focus ring colour, used only by the global :focus-visible outline. A touch darker than
+     --accent because the ring needs 3:1 against ground AND wells (#D9541E is 2.88:1 on a well). */
+  --focus: #CF4F1C;
   --accent-hi: #F08551;   --accent-mid: #E0612C;   --accent-lo: #CC501F;  --accent-pressed: #D3591F;
   --on-accent: #FFFFFF;
   --code-bg: #1E1B2E;     --code-text: #FCE3D4;
-  --divider: #D6D5DC;
 
   /* status (always paired with a label) */
   --red: #B3261E;    --red-chip-bg: #FBE4E2;    --red-chip-text: #8C1D18;
@@ -25,7 +67,37 @@
   --lip: rgba(110,110,128,.38);
   --lip-side: rgba(110,110,128,.22);
   --catch: rgba(255,255,255,.95);
+  /* Light catch on the bottom rim INSIDE a well or pressed key. Was a fixed
+     rgba(255,255,255,.55) in components, which drew a bright line in dark mode. */
+  --catch-in: rgba(255,255,255,.55);
   --lamp-bezel: #5F5F69; --lamp-bezel-hi: #A9A9B3; --lamp-recess: #D6D6DB;
+
+  /* Primary (orange) key depth: the same in both themes, it sits on its own orange face. */
+  --primary-rim-light: rgba(255,255,255,.45);
+  --primary-rim-dark: rgba(110,35,5,.25);
+  --primary-lip: rgba(80,22,0,.45);
+  --primary-lip-side: rgba(80,22,0,.28);
+  --primary-catch-in: rgba(255,255,255,.25);
+
+  /* Pilot lamps: glass lens (same in both themes), shading and glow (stronger in dark). */
+  --lamp-red-lens: radial-gradient(circle at 36% 30%, #FFE3D6 0%, #FF7A55 18%, #D8341F 48%, #8E1A10 78%, #4A0A05 100%);
+  --lamp-amber-lens: radial-gradient(circle at 36% 30%, #FFF6D8 0%, #FFD25A 18%, #F0A000 48%, #A86800 78%, #553300 100%);
+  --lamp-green-lens: radial-gradient(circle at 36% 30%, #E4FFE0 0%, #7FE38E 18%, #34A856 48%, #1C6436 78%, #0A2E18 100%);
+  --lamp-shade: rgba(0,0,0,.45);
+  --lamp-spec: rgba(255,255,255,.55);
+  --lamp-glow-size: 10px;
+  --lamp-red-glow: rgba(255,90,50,.45);
+  --lamp-amber-glow: rgba(255,175,30,.45);
+  --lamp-green-glow: rgba(80,210,110,.38);
+
+  /* Code well depth */
+  --code-shade: rgba(0,0,0,.55);
+  --code-rim: rgba(255,255,255,.08);
+
+  /* From design-ref/cronrack-dashboard-desktop.html: secondary text and disk-meter fills.
+     Design system PR: --text-faint #6A6580 -> #5E5973 (was 3.98:1 on surfaces, now >= 4.78:1). */
+  --text-faint: #5E5973;
+  --meter-fill: #A3A0B3; --meter-amber: #E0A100; --meter-red: #D8341F;
 
   --radius-card: 22px; --radius-key: 16px; --radius-chip: 999px;
   --ease: 160ms ease;
@@ -39,9 +111,10 @@
   --surface-hi: #34343B;  --surface-lo: #232328;
   --well: #222227;        --well-pressed: #222227;
   --text: #ECEBF0;        --text-muted: #A9A7B6;
+  /* Focus ring = the brand orange in dark: 3.08:1 or more on every dark surface. */
+  --focus: #D9541E;
   --accent-text: #FF8C55;
   --code-bg: #17171B;
-  --divider: #3A3A42;
   --red-chip-bg: #4B2522;   --red-chip-text: #FFB3A6;
   --amber-chip-bg: #47380F; --amber-chip-text: #FFD97A;
   --green-chip-bg: #1E3A29; --green-chip-text: #9BE3B4;
@@ -52,12 +125,16 @@
   --lip: rgba(0,0,0,.65);
   --lip-side: rgba(0,0,0,.45);
   --catch: rgba(255,255,255,.06);
+  --catch-in: rgba(255,255,255,.05);
   --lamp-bezel: #0E0E11; --lamp-bezel-hi: #4A4A52; --lamp-recess: #222227;
+  /* Dark mockup: lamps glow a little wider and stronger on graphite. */
+  --lamp-glow-size: 12px;
+  --lamp-red-glow: rgba(255,90,50,.55);
+  --lamp-amber-glow: rgba(255,175,30,.55);
+  --lamp-green-glow: rgba(80,210,110,.48);
+  --code-shade: rgba(0,0,0,.7);
+  --code-rim: rgba(255,255,255,.03);
+  /* Design system PR: #8D8A9C -> #A09DB0 (was 3.67:1 on the raised surface, now >= 4.67:1). */
+  --text-faint: #A09DB0;
+  --meter-fill: #6F6C80;
 }
-
-/* Added in Phase 6b, from design-ref/cronrack-dashboard-desktop.html:
-   faint text (tile units, card labels), the disk-meter fills, and the light
-   catch on a well's bottom rim (much dimmer in dark mode). */
-:root { --text-faint: #6A6580; --meter-fill: #A3A0B3; --meter-amber: #E0A100; --meter-red: #D8341F;
-  --catch-in: rgba(255,255,255,.55); }
-[data-theme="dark"] { --text-faint: #8D8A9C; --meter-fill: #6F6C80; --catch-in: rgba(255,255,255,.05); }

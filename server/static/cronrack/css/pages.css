@@ -138,7 +138,6 @@ html, body { overflow-x: hidden; }
   .bottom-nav .seg { min-height: 48px; padding: 0 16px; flex-direction: row;
     justify-content: flex-start; gap: 12px; font-size: 15px; transition: color var(--ease); }
   .bottom-nav .seg:hover { color: var(--accent-text); }
-  .bottom-nav .seg:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 
   .side-card { order: 3; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
   .side-card__title { margin: 0; font-size: 15px; font-weight: 800; }
@@ -168,8 +167,11 @@ html, body { overflow-x: hidden; }
   .overview-head__text { gap: 6px; }
   .overview-head__sub { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   .overview-head__actions { display: flex; flex-wrap: wrap; gap: 14px; }
-  .btn--head { min-height: 48px; padding: 0 20px; font-size: 15px; }
-  .btn--primary.btn--head { padding: 0 22px; font-size: 16px; }
+  /* Header keys: 15px label, except the primary key, which keeps 19px / 800 from
+     components.css (white on orange must stay large text). */
+  .btn--head { min-height: 48px; padding: 0 20px; }
+  .btn--head:not(.btn--primary) { font-size: 15px; }
+  .btn--primary.btn--head { padding: 0 22px; }
 
   /* Summary tiles: 2 per row on narrow desktops, 4 from 1200px. */
   .summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
@@ -214,7 +216,6 @@ html, body { overflow-x: hidden; }
   .away .section-head { margin: 0; align-items: center; }
   .away .section-link { font-size: 14px; }
   .away .activity { padding: 0; gap: 12px; border-radius: 0; background: none; box-shadow: none; }
-  .away .activity.rows > * + * { box-shadow: none; }
   .away .activity__row { padding: 8px 0; align-items: center; gap: 12px; }
   .activity__lamp { display: flex; }
   .away .activity__text { flex: 1 1 auto; margin-left: 4px; }
