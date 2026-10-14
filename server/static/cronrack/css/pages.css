@@ -10,38 +10,49 @@ html, body { overflow-x: hidden; }
   display: flex; flex-direction: column; }
 
 /* Top bar */
-.topbar { padding: 20px 20px 8px; display: flex; align-items: center; justify-content: space-between; }
-.topbar__actions { display: flex; gap: 12px; }
+.topbar { padding: var(--space-5) var(--space-5) var(--space-2); display: flex; align-items: center; justify-content: space-between; }
+.topbar__actions { display: flex; gap: var(--space-3); }
 
-/* Main content */
-.app-main { flex: 1 1 auto; padding: 8px 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+/* Main content. --stack-gap is the space between stacked blocks (cards, sections); a heading
+   directly inside the stack pulls the next block up to --space-3 (see .section-title below). */
+.app-main { --stack-gap: var(--space-5); flex: 1 1 auto;
+  padding: var(--space-2) var(--space-5) var(--space-4);
+  display: flex; flex-direction: column; gap: var(--stack-gap); }
 
 .page-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
 .page-title { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 800; letter-spacing: -0.01em; }
 .page-sub { margin: 0; font-size: 15px; color: var(--text-muted); }
 
 /* Host cards */
-.host-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-.host-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.host-card__title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.host-card { padding: var(--pad-card); display: flex; flex-direction: column; gap: var(--space-4); }
+.host-card__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* The title is also a .lamp-label: the lamp-to-name gap comes from the component. */
+.host-card__title { display: flex; min-width: 0; }
 .host-card__name { font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
 .host-card__issues { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;
   gap: 6px; font-size: 15px; color: var(--text-muted); }
-.host-card__issues li { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.host-card__issues li { display: flex; gap: var(--gap-icon); align-items: center; overflow-wrap: anywhere; }
 
 /* Section heading with an optional link on the right */
-.section-head { margin: 12px 0 0; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.section-head { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .section-title { margin: 0; font-size: 17px; font-weight: 800; }
-.section-link { font-size: 15px; font-weight: 700; }
+/* Headings get --space-3 (12px) below them: inside a stack whose gap is --stack-gap, a
+   negative bottom margin takes the difference back off. */
+:is(.app-main, .panel) > :is(.section-title, .section-head) { margin-bottom: calc(var(--space-3) - var(--stack-gap)); }
+/* "See all": a 44×44 touch target, the text stays where it was. */
+.section-link { font-size: 15px; font-weight: 700; display: inline-flex; align-items: center;
+  justify-content: center; min-height: 44px; min-width: 44px; }
 
 /* "While you were away" list */
-.activity { margin: 0; padding: 4px 16px; list-style: none; display: flex; flex-direction: column; }
+.activity { margin: 0; padding: var(--space-2) var(--pad-card); list-style: none; display: flex; flex-direction: column; }
 .activity__row { padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
 .activity__text { overflow-wrap: anywhere; }
 .activity__time { color: var(--text-muted); white-space: nowrap; }
 
 /* Empty state */
-.empty { padding: 24px 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+/* Empty states and error pages: one card, never wider than 440px, centered. */
+.empty { width: 100%; max-width: 440px; margin-inline: auto; padding: var(--pad-card);
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); }
 .empty__title { margin: 0; font-size: 19px; font-weight: 800; }
 .empty__text { margin: 0; font-size: 15px; color: var(--text-muted); }
 
@@ -58,8 +69,8 @@ html, body { overflow-x: hidden; }
 .page-loader__text { margin: 0; font-size: 15px; color: var(--text-muted); }
 
 /* Phase 6 placeholder pages: panels, forms, detail sections */
-.panel { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-.form { gap: 14px; }
+.panel { --stack-gap: var(--space-4); padding: var(--pad-card); display: flex; flex-direction: column; gap: var(--stack-gap); }
+.form { gap: var(--space-4); }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field__label { font-size: 15px; font-weight: 700; }
 .field__help { font-size: 13px; color: var(--text-muted); }
@@ -68,6 +79,8 @@ html, body { overflow-x: hidden; }
 .warning { margin: 0; font-weight: 800; color: var(--amber-chip-text); }
 .btn--danger { color: var(--red-chip-text); }
 .detail-head { display: flex; justify-content: space-between; }
+/* Host detail status line: lamp + chip (a .lamp-label), then "Last report". */
+.page-sub--status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-icon); }
 .plain-list { margin: 0; padding: 0; list-style: none; }
 .plain-list li { padding: 8px 0; overflow-wrap: anywhere; }
 .table-scroll { overflow-x: auto; padding: 8px; border-radius: 14px; }
@@ -89,7 +102,9 @@ html, body { overflow-x: hidden; }
 
 /* Overview wrappers: on phones they stack exactly like the old flat list did. */
 .overview-head__text, .overview-body, .overview-hosts, .host-grid, .away {
-  display: flex; flex-direction: column; gap: 12px; }
+  display: flex; flex-direction: column; gap: var(--space-5); }
+/* Heading + content stacks: 12px under the heading. */
+.overview-hosts, .away { gap: var(--space-3); }
 .overview-head__text { gap: 4px; }
 .overview-head__error { font-size: 14px; font-weight: 700; color: var(--red-chip-text); }
 
@@ -136,7 +151,7 @@ html, body { overflow-x: hidden; }
   /* Nav: the same recessed track, now vertical, with the active item raised. */
   .bottom-nav { order: 2; padding: 8px; grid-template-columns: minmax(0, 1fr); }
   .bottom-nav .seg { min-height: 48px; padding: 0 16px; flex-direction: row;
-    justify-content: flex-start; gap: 12px; font-size: 15px; transition: color var(--ease); }
+    justify-content: flex-start; gap: var(--gap-icon); font-size: 15px; transition: color var(--ease); }
   .bottom-nav .seg:hover { color: var(--accent-text); }
 
   .side-card { order: 3; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
@@ -151,12 +166,17 @@ html, body { overflow-x: hidden; }
   .theme-label { font-size: 14px; font-weight: 700; color: var(--text-muted); }
   .add-key { display: none; }
 
-  /* Content column: at most 1400px of content. Pages other than the overview
-     keep a readable 720px column, so forms and lists never stretch edge to edge. */
+  /* Content column: at most 1200px of content, CENTERED in the space right of the sidebar
+     (margin-inline: auto on a grid item centers it in its cell). Pages other than the
+     overview keep a readable 720px column, also centered. */
   .app:not(.app--bare) .app-main { grid-column: 2; grid-row: 1 / -1; width: 100%;
-    max-width: calc(1400px + 80px); padding: 32px 48px 56px 32px; gap: 24px; }
-  .app-main:not(.app-main--wide) > * { max-width: 720px; }
-  .app:not(.app--bare) .app-main--wide { gap: 32px; }
+    max-width: calc(1200px + 2 * var(--space-8)); margin-inline: auto;
+    padding: var(--space-8) var(--space-8) 56px; --stack-gap: var(--space-6); }
+  .app-main:not(.app-main--wide) > * { width: 100%; max-width: 720px; margin-inline: auto; }
+  .app:not(.app--bare) .app-main--wide { --stack-gap: var(--space-8); }
+  .panel, .empty { padding: var(--pad-card-desk); }
+  /* Logged-out pages use the bare phone column, without the desktop-only label. */
+  .app--bare .theme-label { display: none; }
 
   .page-title { font-size: 40px; line-height: 1.1; }
   .page-sub { font-size: 16px; }
@@ -176,26 +196,26 @@ html, body { overflow-x: hidden; }
   /* Summary tiles: 2 per row on narrow desktops, 4 from 1200px. */
   .summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
   .tile { padding: 20px 22px; display: flex; flex-direction: column; gap: 10px; }
-  .tile__label { display: flex; align-items: center; gap: 10px; font-size: 14px;
+  /* Lamp tiles are .lamp-label (gap from the component); the icon tile uses --gap-icon. */
+  .tile__label { display: flex; align-items: center; font-size: 14px;
     font-weight: 700; color: var(--text-muted); }
-  .tile__label .lamp + span { margin-left: 4px; }
+  .tile__label--icon { gap: var(--gap-icon); }
   .tile__icon { flex: none; color: var(--accent-text); }
   .tile__value { margin: 0; font-size: 34px; font-weight: 800; line-height: 1; }
   .tile__unit { font-size: 15px; font-weight: 700; color: var(--text-faint); }
 
   /* Hosts grid + right rail. The rail drops under the grid when space runs out. */
   .overview-body { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 28px; }
-  .overview-hosts { flex: 999 1 560px; min-width: 0; gap: 16px; }
+  .overview-hosts { flex: 999 1 560px; min-width: 0; }
   .host-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 22px; }
+    gap: var(--gap-cards-desk); }
   .host-grid > .empty { grid-column: 1 / -1; }
 
   /* Host card: roomier, with a recessed detail strip and a "Last report" line. */
-  .host-card { padding: 22px; gap: 16px; }
+  .host-card { padding: var(--pad-card-desk); }
   .host-card:hover:not(:active) { box-shadow: inset 1px 1px 2px var(--rim-light), inset -1px -1px 3px var(--rim-dark),
     9px 11px 18px var(--shadow-dark), -9px -9px 18px var(--shadow-light); }
-  .host-card__head { gap: 10px; }
-  .host-card__title .lamp + .host-card__name { margin-left: 4px; }
+  .host-card__head { gap: var(--gap-icon); }
   .host-card__name { font-size: 19px; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; overflow-wrap: normal; }
   .host-card__issues { min-height: 52px; gap: 8px; color: var(--text); }
@@ -209,7 +229,7 @@ html, body { overflow-x: hidden; }
   .host-card__seen { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-faint); }
 
   /* "While you were away": the whole section becomes one raised panel. */
-  .away { flex: 1 1 320px; min-width: 0; padding: 22px; border-radius: 26px;
+  .away { flex: 1 1 320px; min-width: 0; padding: var(--pad-card-desk); border-radius: 26px;
     background: linear-gradient(145deg, var(--surface-hi) 0%, var(--ground) 50%, var(--surface-lo) 100%);
     box-shadow: inset 1px 1px 2px var(--rim-light), inset -1px -1px 3px var(--rim-dark),
       7px 8px 14px var(--shadow-dark), -7px -7px 14px var(--shadow-light); }
@@ -218,7 +238,7 @@ html, body { overflow-x: hidden; }
   .away .activity { padding: 0; gap: 12px; border-radius: 0; background: none; box-shadow: none; }
   .away .activity__row { padding: 8px 0; align-items: center; gap: 12px; }
   .activity__lamp { display: flex; }
-  .away .activity__text { flex: 1 1 auto; margin-left: 4px; }
+  .away .activity__text { flex: 1 1 auto; }
   .away .activity__time { font-size: 14px; color: var(--text-faint); }
 }
 
@@ -229,3 +249,10 @@ html, body { overflow-x: hidden; }
 @media (min-width: 900px) and (prefers-reduced-motion: reduce) {
   .bottom-nav .seg { transition: none; }
 }
+
+/* --- Single-card pages (login, setup, error pages, add host) ---------------------------
+   Placed last so it wins over the 720px column above. The card (and its heading) is at most
+   440px wide, centered horizontally, and starts in the upper-middle of the viewport. */
+/* .app prefix: must out-rank the desktop `.app:not(.app--bare) .app-main` padding. */
+.app .app-main.app-main--single { padding-top: clamp(var(--space-6), 10vh, 96px); }
+.app-main.app-main--single > * { width: 100%; max-width: 440px; margin-inline: auto; }

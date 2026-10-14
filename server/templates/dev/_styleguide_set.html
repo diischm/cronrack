@@ -89,19 +89,21 @@
   <div class="sg-block">
     <h3 class="sg-label">Lamps and chips (a lamp always has a label)</h3>
     <div class="sg-row">
-      <span class="sg-pair">{% include "components/lamp.html" with status="red" %}{% include "components/chip.html" with status="red" label="Needs you" %}</span>
-      <span class="sg-pair">{% include "components/lamp.html" with status="yellow" %}{% include "components/chip.html" with status="yellow" label="Heads up" %}</span>
-      <span class="sg-pair">{% include "components/lamp.html" with status="green" %}{% include "components/chip.html" with status="green" label="All good" %}</span>
-      <span class="sg-pair">{% include "components/lamp.html" with status="offline" %}{% include "components/chip.html" with status="offline" label="Offline" %}</span>
+      <span class="lamp-label">{% include "components/lamp.html" with status="red" %}{% include "components/chip.html" with status="red" label="Needs you" %}</span>
+      <span class="lamp-label">{% include "components/lamp.html" with status="yellow" %}{% include "components/chip.html" with status="yellow" label="Heads up" %}</span>
+      <span class="lamp-label">{% include "components/lamp.html" with status="green" %}{% include "components/chip.html" with status="green" label="All good" %}</span>
+      <span class="lamp-label">{% include "components/lamp.html" with status="offline" %}{% include "components/chip.html" with status="offline" label="Offline" %}</span>
       {% include "components/chip.html" with status="waiting" label="Waiting" %}
     </div>
-    <p class="muted">Lamp inside running text: {% include "components/lamp.html" with status="red" %} homeserver went red,
-      {% include "components/lamp.html" with status="green" %} nas back online.</p>
+    <p class="muted sg-row">Lamp next to text:
+      <span class="lamp-label">{% include "components/lamp.html" with status="red" %}homeserver went red</span>
+      <span class="lamp-label">{% include "components/lamp.html" with status="green" %}nas back online</span></p>
   </div>
 
   <div class="sg-block">
     <h3 class="sg-label">Text tokens</h3>
-    <p class="sg-text">Body text · <span class="muted">muted text</span> · <span class="sg-faint">faint text</span> · <a href="#{{ theme }}-text">accent link</a></p>
+    <p class="sg-text">Body text · <span class="muted">muted text</span> · <span class="sg-faint">faint text</span></p>
+    <a class="section-link" href="#{{ theme }}-text">Accent link (44px target)</a>
   </div>
 
   <div class="sg-block">

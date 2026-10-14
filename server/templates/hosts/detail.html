@@ -14,10 +14,9 @@
       </a>
     </div>
     <h1 class="page-title">{{ host.name }}</h1>
-    <p class="page-sub">
-      {% include "components/lamp.html" with status=host.status %}
-      {% include "components/chip.html" with status=host.status label=host.status_label %}
-      Last report: {{ host.last_seen_human }}
+    <p class="page-sub page-sub--status">
+      <span class="lamp-label">{% include "components/lamp.html" with status=host.status %}{% include "components/chip.html" with status=host.status label=host.status_label %}</span>
+      <span>Last report: {{ host.last_seen_human }}</span>
     </p>
     {# Apo: send this with fetch + X-CSRFToken, then poll status.json (handoff 5.4). Without JS it returns JSON. #}
     <form method="post" action="{% url 'host-collect' host.id %}">
