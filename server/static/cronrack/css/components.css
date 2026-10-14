@@ -65,6 +65,10 @@ body { margin: 0; background: var(--ground); color: var(--text); font-family: va
   box-shadow: inset 0 3px 5px -1px var(--primary-lip), inset 3px 0 5px -2px var(--primary-lip-side),
               inset 0 -1px 1px var(--primary-catch-in), 0 1px 1px var(--catch); }
 
+/* Small key (Copy). Still a 44px touch target; min-width keeps the width when the label
+   changes to "Copied". */
+.btn--sm { padding: 8px 14px; font-size: 14px; min-width: 88px; }
+
 /* Icon-only key (44×44) */
 .btn--icon { width: 44px; height: 44px; padding: 0; border-radius: 14px; }
 
@@ -116,6 +120,8 @@ input.well:disabled, select.well:disabled, textarea.well:disabled { opacity: .55
 .lamp--red   { background: var(--lamp-red-lens);   --glow: var(--lamp-red-glow); }
 .lamp--amber { background: var(--lamp-amber-lens); --glow: var(--lamp-amber-glow); }
 .lamp--green { background: var(--lamp-green-lens); --glow: var(--lamp-green-glow); }
+/* Unlit (host offline): same bezel and recess, dark glass, no glow. */
+.lamp--off   { background: var(--lamp-off-lens);   --glow: transparent; }
 
 /* Lamp + its label (text or chip). The bezel and recess ring are box-shadows that draw ~5.5px
    OUTSIDE the 14px box, so a normal gap looks cramped: --gap-lamp (14px) leaves ~8px of air
@@ -174,6 +180,18 @@ a { color: var(--accent-text); }
 
 /* Status chip for states without a color (e.g. waiting for the first report) */
 .chip--neutral { background: var(--well); color: var(--text-muted); }
+
+/* "Offline · last report 28 h ago": the text label an unlit lamp needs (no chip). */
+.offline-note { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-faint); }
+.offline-note strong { font-weight: 800; }
+
+/* Visible to screen readers only (e.g. the shared aria-live region). Not display:none,
+   which would hide it from screen readers too. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* "Press Ctrl+C to copy": shown next to a Copy key when the clipboard API isn't allowed. */
+.copy-hint { font-size: 14px; font-weight: 700; color: var(--text-muted); }
 
 /* Warning icon in front of red issues */
 .issue-icon { flex: none; color: var(--red-chip-text); }

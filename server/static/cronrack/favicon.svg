@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- CronRack logo: three orange bars, fading. Opacities raised from the top-bar logo
+       (1 / .6 / .35) to 1 / .75 / .55 so the third bar survives 16px on a dark browser tab. -->
+  <g fill="#D9541E">
+    <rect x="3" y="3" width="26" height="6" rx="3"/>
+    <rect x="3" y="13" width="26" height="6" rx="3" opacity=".75"/>
+    <rect x="3" y="23" width="26" height="6" rx="3" opacity=".55"/>
+  </g>
+</svg>

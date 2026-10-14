@@ -56,6 +56,9 @@
         <span>Hosts online</span>
       </div>
       <p class="tile__value">{{ hosts_online }} <span class="tile__unit">of {{ hosts|length }}</span></p>
+      {% if status_counts.offline %}
+        <p class="offline-note lamp-label">{% include "components/lamp.html" with status="off" %}<span><strong>Offline</strong> · {{ status_counts.offline }} host{{ status_counts.offline|pluralize }}</span></p>
+      {% endif %}
     </div>
   </section>
 

@@ -11,6 +11,7 @@ from rules.base import fingerprint
 from rules.engine import (
     apply_suppressions,
     compute_status,
+    effective_status,
     evaluate,
     resolve_override,
     sort_hosts,
@@ -552,6 +553,116 @@ def test_suppressed_finding_turns_status_green():
     rules = [suppression(fingerprint("systemd.unit_failed", HOST_ID, "unit:x.service"))]
 
     assert status_for(report, suppressions=rules) == "green"
+
+
+# --- effective_status: offline worked out at read time --------------------------
+
+SILENT_AFTER = 90
+
+
+def test_effective_status_silent_past_threshold_is_offline():
+    host = fake_host(connected=False, last_seen_at=NOW - timedelta(hours=28))
+
+    assert effective_status(host, NOW, SILENT_AFTER) == "offline"
+
+
+def test_effective_status_connected_keeps_the_stored_status():
+    host = fake_host(status="yellow", connected=True, last_seen_at=NOW - timedelta(hours=28))
+
+    assert effective_status(host, NOW, SILENT_AFTER) == "yellow"
+
+
+def test_effective_status_silent_under_threshold_keeps_the_stored_status():
+    host = fake_host(status="red", connected=False, last_seen_at=NOW - timedelta(seconds=60))
+
+    assert effective_status(host, NOW, SILENT_AFTER) == "red"
+
+
+def test_effective_status_exactly_at_threshold_is_not_offline_yet():
+    host = fake_host(connected=False, last_seen_at=NOW - timedelta(seconds=SILENT_AFTER))
+
+    assert effective_status(host, NOW, SILENT_AFTER) == "green"
+
+
+def test_effective_status_never_reported_is_waiting():
+    host = fake_host(status="waiting", latest_report=None, connected=False, last_seen_at=None)
+
+    assert effective_status(host, NOW, SILENT_AFTER) == "waiting"
+
+
+def test_effective_status_waiting_wins_even_if_silent():
+    # A host that connected once but never sent a report is still "waiting".
+    host = fake_host(latest_report=None, connected=False, last_seen_at=NOW - timedelta(days=2))
+
+    assert effective_status(host, NOW, SILENT_AFTER) == "waiting"
+
+
+def test_effective_status_maintenance_wins_over_offline():
+    host = fake_host(
+        status="maintenance",
+        maintenance_until=NOW + timedelta(hours=1),
+        connected=False,
+        last_seen_at=NOW - timedelta(hours=28),
+    )
+
+    assert effective_status(host, NOW, SILENT_AFTER) == "maintenance"
+
+
+def test_effective_status_after_maintenance_ends_can_be_offline():
+    host = fake_host(
+        maintenance_until=NOW - timedelta(seconds=1),
+        connected=False,
+        last_seen_at=NOW - timedelta(hours=28),
+    )
+
+    assert effective_status(host, NOW, SILENT_AFTER) == "offline"
+
+
+def test_effective_status_matches_compute_status_order():
+    """Same precedence as compute_status: waiting -> maintenance -> offline."""
+    silent = {"connected": False, "last_seen_at": NOW - timedelta(minutes=10)}
+    for host in (
+        fake_host(**silent),
+        fake_host(latest_report=None, **silent),
+        fake_host(maintenance_until=NOW + timedelta(hours=1), **silent),
+    ):
+        assert effective_status(host, NOW, SILENT_AFTER) == status_for(host=host)
+
+
+@pytest.mark.django_db
+def test_effective_status_loads_the_owners_threshold(alice, bob):
+    from hosts.models import Host
+    from prefs.models import Prefs
+
+    Prefs.objects.create(owner=alice, silent_after_seconds=3600)
+    Prefs.objects.create(owner=bob, silent_after_seconds=60)  # must not be used
+    host = Host.objects.create(
+        owner=alice,
+        name="pi",
+        status="green",
+        latest_report=make_report(),
+        connected=False,
+        last_seen_at=NOW - timedelta(minutes=30),
+    )
+
+    assert effective_status(host, NOW) == "green"
+    assert effective_status(host, NOW + timedelta(minutes=31)) == "offline"
+
+
+@pytest.mark.django_db
+def test_effective_status_uses_the_default_without_prefs(alice):
+    from hosts.models import Host
+
+    host = Host.objects.create(
+        owner=alice,
+        name="pi",
+        status="green",
+        latest_report=make_report(),
+        connected=False,
+        last_seen_at=NOW - timedelta(seconds=91),
+    )
+
+    assert effective_status(host, NOW) == "offline"  # default silent_after_seconds is 90
 
 
 # --- top_issues and sort_hosts -------------------------------------------------

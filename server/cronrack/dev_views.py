@@ -10,7 +10,7 @@ from django.shortcuts import render
 PREVIEW_CONTEXT = {
     "attention_count": 2,
     "updated_human": "30s ago",
-    "status_counts": {"red": 1, "yellow": 1, "green": 2},
+    "status_counts": {"red": 1, "yellow": 1, "green": 2, "offline": 0},
     "hosts_online": 4,
     # Normally set by hosts.context_processors.shell from the database.
     "shell_hosts": {"connected": 4, "total": 4},
@@ -90,7 +90,7 @@ def preview(request: HttpRequest) -> HttpResponse:
     if request.GET.get("state") == "empty":
         context.update(
             attention_count=0,
-            status_counts={"red": 0, "yellow": 0, "green": 0},
+            status_counts={"red": 0, "yellow": 0, "green": 0, "offline": 0},
             hosts_online=0,
             shell_hosts={"connected": 0, "total": 0},
             hosts=[],
