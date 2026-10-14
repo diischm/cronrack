@@ -315,8 +315,7 @@ def test_overview_has_phone_and_desktop_pieces(alice_client: Client, alice):
     assert "2 things need you" in html
     assert 'class="bottom-nav seg-track well"' in html
     assert "While you were away" in html
-    # Desktop: sidebar card, header actions, tiles, card strip with a meter
-    assert "2 hosts connected" in html
+    # Desktop: header actions, tiles, card strip with a meter
     assert "Check all now" in html
     assert 'action="/hosts/collect-all/"' in html
     assert "csrfmiddlewaretoken" in html
@@ -345,20 +344,21 @@ def test_detail_page_renders_in_the_shell(alice_client: Client, alice):
     html = alice_client.get(f"/hosts/{host.pk}/").content.decode()
 
     assert 'class="bottom-nav seg-track well"' in html
-    assert "1 host connected" in html
+    assert 'class="surface host-head"' in html
     assert 'class="meter well meter--red"' in html
 
 
-def test_sidebar_counts_only_my_hosts(alice_client: Client, alice, bob):
+def test_shell_counts_only_my_hosts(alice_client: Client, alice, bob):
+    """The shell's host counts (context processor) must be owner-scoped: Bob's hosts never count."""
     make_host(alice, "mine", "green", make_report())
     Host.objects.create(owner=alice, name="mine-offline")
     make_host(bob, "bobs-1", "green", make_report())
     make_host(bob, "bobs-2", "green", make_report())
 
-    html = alice_client.get("/activity/").content.decode()
+    response = alice_client.get("/activity/")
 
-    assert "1 host connected" in html
-    assert "Out of 2 hosts." in html
+    assert response.context["shell_hosts"]["connected"] == 1
+    assert response.context["shell_hosts"]["total"] == 2
 
 
 def test_layout_breakpoint_is_in_the_css():

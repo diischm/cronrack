@@ -30,10 +30,10 @@
 
   {% comment %}
     One set of markup for both layouts. Below 900px: top bar, content, bottom nav.
-    From 900px (pages.css): the logo, nav, hosts card and theme toggle stack into a
-    left sidebar and the content sits to the right. No JS involved.
+    From 900px (pages.css): one top bar (logo left, nav centered, version + theme key
+    right) above a centered content column. No JS involved.
   {% endcomment %}
-  {# Logged out (login, setup): no sidebar, so use the centered phone column at every width. #}
+  {# Logged out (login, setup): no nav, so use the centered phone column at every width. #}
   <div class="app{% if not user.is_authenticated %} app--bare{% endif %}">
     <header class="topbar">
       <a class="brand" href="/" aria-label="CronRack overview">
@@ -41,7 +41,10 @@
         <span>CronRack</span>
       </a>
       <div class="topbar__actions">
-        <span class="theme-label" aria-hidden="true">Dark mode</span>
+        {% if user.is_authenticated %}
+        {# Desktop only (hidden below 900px): the server version, muted, left of the theme key. #}
+        <p class="side-version">CronRack v{{ server_version }}</p>
+        {% endif %}
         <button type="button" class="btn btn--icon theme-toggle" aria-label="Dark mode" aria-pressed="false" data-theme-toggle>
           <svg class="ico-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
           <svg class="ico-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
@@ -59,7 +62,11 @@
     </main>
 
     {% if user.is_authenticated %}
-    {# Each page marks its own tab by overriding one nav_* block with aria-current="page". #}
+    {% comment %}
+      Main navigation. Phone: a segmented track at the bottom (after <main>). Desktop
+      (pages.css, >= 900px): the same element moves into the top bar's center column.
+      Each page marks its own tab by overriding one nav_* block with aria-current="page".
+    {% endcomment %}
     <nav class="bottom-nav seg-track well" aria-label="Main">
       <a class="seg" href="/" {% block nav_overview %}{% endblock %}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg>
@@ -74,14 +81,6 @@
         Settings
       </a>
     </nav>
-
-    {# Desktop sidebar only (hidden below 900px). #}
-    <section class="side-card surface" aria-label="Agents">
-      <p class="side-card__title">{{ shell_hosts.connected }} host{{ shell_hosts.connected|pluralize }} connected</p>
-      <p class="side-card__text">{% if not shell_hosts.total %}No hosts yet. Add one to get started.{% elif shell_hosts.connected == shell_hosts.total %}Every agent is connected.{% else %}Out of {{ shell_hosts.total }} host{{ shell_hosts.total|pluralize }}.{% endif %}</p>
-    </section>
-    {# Desktop sidebar footer only. #}
-    <p class="side-version">CronRack v{{ server_version }}</p>
     {% endif %}
   </div>
 </body>
