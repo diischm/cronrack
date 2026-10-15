@@ -149,8 +149,10 @@ def test_delete_requires_the_typed_name(alice_client: Client, host):
 
 
 def test_collect_returns_202(alice_client: Client, host):
+    Host.objects.filter(pk=host.pk).update(connected=True)
+    host.refresh_from_db()
     with mock.patch("hosts.views.request_collect") as collect:
-        response = alice_client.post(f"/hosts/{host.pk}/collect/")
+        response = alice_client.post(f"/hosts/{host.pk}/collect/", HTTP_ACCEPT="application/json")
     assert response.status_code == 202
     assert response.json() == {"ok": True}
     collect.assert_called_once_with(host)
@@ -162,9 +164,10 @@ def test_collect_all_only_asks_my_connected_hosts(alice_client: Client, alice, b
     Host.objects.create(owner=bob, name="bobs", connected=True)
 
     with mock.patch("hosts.views.request_collect") as collect:
-        response = alice_client.post("/hosts/collect-all/")
+        response = alice_client.post("/hosts/collect-all/", HTTP_ACCEPT="application/json")
 
     assert response.status_code == 202
+    assert response.json() == {"ok": True, "asked": 1, "offline": 1}
     assert [c.args[0] for c in collect.call_args_list] == [mine]
 
 
@@ -540,7 +543,7 @@ def test_collect_all_requires_csrf(alice):
 
 
 def test_collect_all_works_with_the_csrf_header(alice):
-    """What overview.js sends: the form's token in an X-CSRFToken header."""
+    """What actions.js sends: the form's token in an X-CSRFToken header."""
     Host.objects.create(owner=alice, name="on", connected=True)
     client = Client(enforce_csrf_checks=True)
     client.force_login(alice)
@@ -548,7 +551,9 @@ def test_collect_all_works_with_the_csrf_header(alice):
     token = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', page).group(1)
 
     with mock.patch("hosts.views.request_collect") as collect:
-        response = client.post("/hosts/collect-all/", HTTP_X_CSRFTOKEN=token)
+        response = client.post(
+            "/hosts/collect-all/", HTTP_X_CSRFTOKEN=token, HTTP_ACCEPT="application/json"
+        )
 
     assert response.status_code == 202
     assert collect.call_count == 1
@@ -556,7 +561,7 @@ def test_collect_all_works_with_the_csrf_header(alice):
 
 def test_status_json_shape(alice_client: Client, host):
     data = alice_client.get(f"/api/v1/hosts/{host.pk}/status.json").json()
-    assert data == {"status": "waiting", "last_seen_human": "never"}
+    assert data == {"status": "waiting", "last_seen_human": "never", "report_received_at": None}
 
 
 def test_detail_page_sections(alice_client: Client, alice):

@@ -15,6 +15,7 @@ from .sample import make_report
 pytestmark = pytest.mark.django_db
 
 GOOD_URL = "https://discord.com/api/webhooks/123456789/abcDEF_-xyz"
+JSON = "application/json"
 
 
 # --- the SSRF allowlist ------------------------------------------------------------
@@ -220,7 +221,7 @@ def test_password_change_needs_the_old_password(alice_client: Client, alice):
 
 
 def test_test_alert_without_webhook(alice_client: Client):
-    data = alice_client.post("/settings/test-alert/").json()
+    data = alice_client.post("/settings/test-alert/", HTTP_ACCEPT=JSON).json()
     assert data["ok"] is False
     assert data["error"]
 
@@ -228,7 +229,7 @@ def test_test_alert_without_webhook(alice_client: Client):
 def test_test_alert_sends_to_the_saved_url_only(alice_client: Client, webhook):
     with mock.patch("prefs.views.send_discord", return_value=True) as send:
         data = alice_client.post(
-            "/settings/test-alert/", {"discord_webhook_url": "http://10.0.0.1/"}
+            "/settings/test-alert/", {"discord_webhook_url": "http://10.0.0.1/"}, HTTP_ACCEPT=JSON
         ).json()
     assert data == {"ok": True, "error": ""}
     assert send.call_args.args[0] == GOOD_URL
@@ -236,6 +237,6 @@ def test_test_alert_sends_to_the_saved_url_only(alice_client: Client, webhook):
 
 def test_test_alert_reports_failure(alice_client: Client, webhook):
     with mock.patch("prefs.views.send_discord", return_value=False):
-        data = alice_client.post("/settings/test-alert/").json()
+        data = alice_client.post("/settings/test-alert/", HTTP_ACCEPT=JSON).json()
     assert data["ok"] is False
     assert data["error"]

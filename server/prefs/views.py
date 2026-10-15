@@ -7,6 +7,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
 from alerts.discord import is_allowed_webhook, send_discord
+from cronrack.http import wants_json
 from prefs.forms import PrefsForm
 from prefs.models import Prefs
 
@@ -57,18 +58,31 @@ def prefs_index(request: HttpRequest) -> HttpResponse:
     )
 
 
-@login_required
-@require_POST
-def test_alert(request: HttpRequest) -> JsonResponse:
-    """Send a test message to the SAVED webhook (never to a URL from the request)."""
-    prefs = Prefs.objects.filter(owner=request.user).first()
+def _send_test_alert(prefs: Prefs | None) -> str:
+    """Send a test message to the SAVED webhook (never to a URL from the request).
+
+    Returns the error text for the user, or "" when Discord accepted it.
+    """
     url = prefs.discord_webhook_url if prefs else ""
     if not url:
-        return JsonResponse({"ok": False, "error": "Save a Discord webhook URL first."})
+        return "Save a Discord webhook URL first."
     if not is_allowed_webhook(url):
-        return JsonResponse({"ok": False, "error": "Only Discord webhook URLs are allowed."})
+        return "Only Discord webhook URLs are allowed."
     if not send_discord(url, "✅ Test alert from CronRack. Alerts are working."):
-        return JsonResponse(
-            {"ok": False, "error": "Discord didn't accept the message. Check the URL."}
-        )
-    return JsonResponse({"ok": True, "error": ""})
+        return "Discord didn't accept the message. Check the URL."
+    return ""
+
+
+@login_required
+@require_POST
+def test_alert(request: HttpRequest) -> HttpResponse:
+    """fetch (Accept: application/json) gets {ok, error}; a plain form POST is
+    redirected back to the settings page (a fixed URL) with a flash message."""
+    error = _send_test_alert(Prefs.objects.filter(owner=request.user).first())
+    if wants_json(request):
+        return JsonResponse({"ok": not error, "error": error})
+    if error:
+        messages.error(request, error)
+    else:
+        messages.success(request, "Test alert sent.")
+    return redirect("prefs")
