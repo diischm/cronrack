@@ -19,4 +19,9 @@ urlpatterns = [
         views.host_status_json,
         name="host-status-json",
     ),
+    path(
+        "api/v1/hosts/<int:host_id>/summary.json",
+        views.host_summary_json,
+        name="host-summary-json",
+    ),
 ]

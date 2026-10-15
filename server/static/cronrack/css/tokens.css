@@ -104,6 +104,8 @@
      Design system PR: --text-faint #6A6580 -> #5E5973 (was 3.98:1 on surfaces, now >= 4.78:1). */
   --text-faint: #5E5973;
   --meter-fill: #A3A0B3; --meter-amber: #E0A100; --meter-red: #D8341F;
+  /* Dimmed page behind a modal dialog (the overview's host preview). */
+  --backdrop: rgba(30,27,46,.42);
 
   --radius-card: 22px; --radius-key: 16px; --radius-chip: 999px;
 
@@ -153,4 +155,5 @@
   /* Design system PR: #8D8A9C -> #A09DB0 (was 3.67:1 on the raised surface, now >= 4.67:1). */
   --text-faint: #A09DB0;
   --meter-fill: #6F6C80;
+  --backdrop: rgba(0,0,0,.6);
 }
