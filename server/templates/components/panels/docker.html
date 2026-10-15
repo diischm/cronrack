@@ -1,0 +1,41 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "components/app_panel.html" %}
+{% comment %}
+  Docker panel. data = detail_context()["containers"]:
+    {"problems": [{"name", "state", "status"}], "healthy": [{"name", "status"}]}
+  Problem containers first (the first 8 shown, the rest behind "Show N more"), healthy ones
+  behind "Show N healthy". The state chip takes its color from that container's issue
+  ("container:<name>"), the same "first match, else fallback" trick as the panel chip.
+  Running / stopped counts need each container's state, which only problem containers
+  have in the context, so the facts line says total and failing.
+{% endcomment %}
+{% block icon %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8z"></path><path d="M3 8l9 5 9-5M12 13v8"></path></svg>{% endblock %}
+{% block facts %}{% with failing=data.problems|length healthy=data.healthy|length %}{% with total=failing|add:healthy %}{{ total }} container{{ total|pluralize }} · {{ failing }} failing{% endwith %}{% endwith %}{% endblock %}
+{% block body %}
+  {% if data.problems %}
+    <ul class="item-list plain-list">
+      {% for c in data.problems|slice:":8" %}{% include "components/panels/container_row.html" %}{% endfor %}
+    </ul>
+    {% if data.problems|length > 8 %}
+      {% include "components/show_more.html" with target="docker-more" count=data.problems|length|add:"-8" noun="more" %}
+      <ul class="item-list plain-list" id="docker-more">
+        {% for c in data.problems|slice:"8:" %}{% include "components/panels/container_row.html" %}{% endfor %}
+      </ul>
+    {% endif %}
+  {% elif data.healthy %}
+    <p class="muted">No failing containers.</p>
+  {% else %}
+    <p class="muted">No containers on this host.</p>
+  {% endif %}
+  {% if data.healthy %}
+    {% include "components/show_more.html" with target="docker-healthy" count=data.healthy|length noun="healthy" %}
+    <ul class="item-list plain-list" id="docker-healthy">
+      {% for c in data.healthy %}
+        <li class="item-row">
+          <span class="item-row__name mono">{{ c.name }}</span>
+          <span class="item-row__note">{{ c.status }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

@@ -104,6 +104,8 @@
      Design system PR: --text-faint #6A6580 -> #5E5973 (was 3.98:1 on surfaces, now >= 4.78:1). */
   --text-faint: #5E5973;
   --meter-fill: #A3A0B3; --meter-amber: #E0A100; --meter-red: #D8341F;
+  /* Raised meter fill (host detail disks): light top, shade at the bottom, a bright top rim. */
+  --fill-hi: rgba(255,255,255,.38); --fill-shade: rgba(0,0,0,.14); --fill-rim: rgba(255,255,255,.45);
   /* Dimmed page behind a modal dialog (the overview's host preview). */
   --backdrop: rgba(30,27,46,.42);
 
@@ -155,5 +157,6 @@
   /* Design system PR: #8D8A9C -> #A09DB0 (was 3.67:1 on the raised surface, now >= 4.67:1). */
   --text-faint: #A09DB0;
   --meter-fill: #6F6C80;
+  --fill-hi: rgba(255,255,255,.2); --fill-shade: rgba(0,0,0,.3); --fill-rim: rgba(255,255,255,.18);
   --backdrop: rgba(0,0,0,.6);
 }

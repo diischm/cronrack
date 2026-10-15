@@ -1,0 +1,54 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "components/app_panel.html" %}
+{% comment %}
+  Systemd panel. Two context keys, each None when the host can't report it:
+    failed_units  ["backup.service", ...]
+    timers        [{"name", "last_run", "next_run"}, ...]
+  detail.html passes data=failed_units|default_if_none:timers, so the panel exists when at
+  least one of them is known; each part below only appears when its own key is not None.
+  The timers table sits in a recessed well that scrolls sideways on its own on a phone,
+  so the page never does.
+{% endcomment %}
+{% block icon %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 2.5M9 2h6"></path></svg>{% endblock %}
+{% block facts %}{% if failed_units is not None %}{{ failed_units|length }} failed unit{{ failed_units|length|pluralize }}{% endif %}{% if failed_units is not None and timers is not None %} · {% endif %}{% if timers is not None %}{{ timers|length }} timer{{ timers|length|pluralize }}{% endif %}{% endblock %}
+{% block body %}
+  {% if failed_units is not None %}
+    {% if failed_units %}
+      <ul class="item-list plain-list">
+        {% for unit in failed_units|slice:":8" %}{% include "components/panels/unit_row.html" %}{% endfor %}
+      </ul>
+      {% if failed_units|length > 8 %}
+        {% include "components/show_more.html" with target="units-more" count=failed_units|length|add:"-8" noun="more" %}
+        <ul class="item-list plain-list" id="units-more">
+          {% for unit in failed_units|slice:"8:" %}{% include "components/panels/unit_row.html" %}{% endfor %}
+        </ul>
+      {% endif %}
+    {% else %}
+      <p class="muted">No failed units.</p>
+    {% endif %}
+  {% endif %}
+  {% if timers is not None %}
+    <h3 class="app-panel__subtitle" id="timers-title">Timers</h3>
+    {% if timers %}
+      {# tabindex: a scrolling region must be reachable by keyboard to scroll it. #}
+      <div class="well table-scroll" role="region" aria-labelledby="timers-title" tabindex="0">
+        <table class="timers">
+          <thead><tr><th scope="col">Timer</th><th scope="col">Last run</th><th scope="col">Next run</th></tr></thead>
+          <tbody>
+            {% for t in timers|slice:":8" %}<tr><td class="mono">{{ t.name }}</td><td>{{ t.last_run }}</td><td>{{ t.next_run }}</td></tr>{% endfor %}
+          </tbody>
+          {% if timers|length > 8 %}
+          <tbody id="timers-more">
+            {% for t in timers|slice:"8:" %}<tr><td class="mono">{{ t.name }}</td><td>{{ t.last_run }}</td><td>{{ t.next_run }}</td></tr>{% endfor %}
+          </tbody>
+          {% endif %}
+        </table>
+      </div>
+      {% if timers|length > 8 %}
+        {% include "components/show_more.html" with target="timers-more" count=timers|length|add:"-8" noun="more" %}
+      {% endif %}
+    {% else %}
+      <p class="muted">No timers.</p>
+    {% endif %}
+  {% endif %}
+{% endblock %}

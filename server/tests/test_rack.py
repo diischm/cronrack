@@ -10,6 +10,7 @@ from django.test import Client, override_settings
 from hosts.models import Host
 from hosts.samples import EXAMPLE_DETAIL_CONTEXT, PREVIEW_CONTEXT
 
+from .test_host_views import headings, item_text
 from .test_preview import scan
 
 STATIC = Path(__file__).resolve().parent.parent / "static/cronrack/js"
@@ -29,13 +30,14 @@ def test_example_page_renders_for_a_user_without_hosts(alice_client: Client):
     assert '<a class="btn btn--primary" href="/hosts/add/">Add your first host</a>' in html
     assert EXAMPLE_NAME in html
     # Two yellow issues (no red), so the header says "Heads up" like the amber Welcome lamp.
-    assert re.search(r'class="chip chip--amber">yellow</span>\s*Reboot required', html)
-    assert re.search(r'class="chip chip--amber">yellow</span>\s*Disk / at 87%', html)
+    # Each issue row says its severity in words, next to the issue text.
+    for issue in EXAMPLE_DETAIL_CONTEXT["issues"]:
+        assert "Heads up" in item_text(html, issue["text"])
     assert "chip--red" not in html
     assert '<span class="lamp lamp--amber" aria-hidden="true"></span>' in html
     assert '<span class="chip chip--amber">Heads up</span>' in html
-    for section in ("Containers", "Systemd", "Disk"):
-        assert f'<h2 class="section-title">{section}</h2>' in html
+    for section in ("Docker", "Systemd", "Disks"):
+        assert section in headings(html)
     # No agent and no settings behind it: both keys are hidden.
     assert "Check now" not in html
     assert "Host settings" not in html

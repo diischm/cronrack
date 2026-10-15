@@ -1,0 +1,6 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{# One failed systemd unit (Systemd panel): a red row. `unit` = the unit name. #}
+<li class="item-row item-row--red">
+  <span class="item-row__name mono"><svg class="issue-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg><span>{{ unit }}</span></span>
+  <span class="item-row__chip">{% include "components/chip.html" with status="red" label="Failed" %}</span>
+</li>

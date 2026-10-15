@@ -1,5 +1,7 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {# Recessed disk meter. Usage: {% include "components/meter.html" with percent=87 label="Disk /" %} #}
 {# A native <meter>: its fill width comes from the value attribute, so no inline style is needed (CSP). #}
-{# Fill: neutral below 85%, amber from 85%, red from 95%. The percentage is always also shown as text. #}
-<meter class="meter well{% if percent >= 95 %} meter--red{% elif percent >= 85 %} meter--amber{% endif %}" min="0" max="100" value="{{ percent }}" aria-label="{{ label }}">{{ percent }}%</meter>
+{# Fill: neutral, amber or red. With level= (the backend's "green" | "yellow" | "red" for that disk, #}
+{# after the user's thresholds and overrides) the color follows it; without one it falls back to #}
+{# the default thresholds: amber from 85%, red from 95%. The percentage is always also shown as text. #}
+<meter class="meter well{% if level %}{% if level == 'red' %} meter--red{% elif level == 'yellow' %} meter--amber{% endif %}{% elif percent >= 95 %} meter--red{% elif percent >= 85 %} meter--amber{% endif %}" min="0" max="100" value="{{ percent }}" aria-label="{{ label }}">{{ percent }}%</meter>

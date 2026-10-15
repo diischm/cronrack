@@ -1,0 +1,31 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "components/app_panel.html" %}
+{% comment %}
+  System panel. data = detail_context()["updates"]: {"total", "security", "reboot_required"}.
+  The agent version comes from host.agent_version. OS, kernel and uptime are not in the
+  context yet (handoff 6.2 "system", v1), so they aren't shown.
+{% endcomment %}
+{% block icon %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg>{% endblock %}
+{% block facts %}{{ data.total }} update{{ data.total|pluralize }} ({{ data.security }} security) · {% if data.reboot_required %}reboot needed{% else %}no reboot needed{% endif %}{% endblock %}
+{% block body %}
+  <dl class="readouts">
+    <div class="readout-well well">
+      <dt class="readout-well__label">Updates</dt>
+      <dd class="readout-well__value">{{ data.total }}</dd>
+    </div>
+    <div class="readout-well well">
+      <dt class="readout-well__label">Security</dt>
+      <dd class="readout-well__value">{{ data.security }}</dd>
+    </div>
+    <div class="readout-well well">
+      <dt class="readout-well__label">Reboot required</dt>
+      <dd class="readout-well__value">{% if data.reboot_required %}Yes{% else %}No{% endif %}</dd>
+    </div>
+    {% if host.agent_version %}
+    <div class="readout-well well">
+      <dt class="readout-well__label">Agent</dt>
+      <dd class="readout-well__value">v{{ host.agent_version }}</dd>
+    </div>
+    {% endif %}
+  </dl>
+{% endblock %}

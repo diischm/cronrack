@@ -108,29 +108,41 @@ html, body { overflow-x: hidden; }
 .muted { margin: 0; font-size: 15px; color: var(--text-muted); }
 .warning { margin: 0; font-weight: 800; color: var(--amber-chip-text); }
 .btn--danger { color: var(--red-chip-text); }
-/* Host detail header card. Two flex groups that wrap: left = back key, name, lamp + chip,
-   with the meta line under them; right = Check now + Host settings, vertically centered.
-   It's a size container: the keys go full-width (50/50, or stacked if they don't fit) when
-   the CARD is narrower than 600px, whatever the viewport (phone column is 480px up to 899px). */
-.host-head { container: host-head / inline-size; padding: var(--pad-card);
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-  gap: var(--space-4); }
-.host-head__main { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column;
-  gap: var(--space-3); }
-.host-head__title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); min-width: 0; }
+/* Host detail header card (detail.html). The card is a size container; .host-head__grid lays
+   it out. Desktop: back key | title group | keys, 20px between the back key and the title
+   group. Title group: lamp + name (--gap-lamp, centered), chip 12px after the name, and the
+   meta line 8px under that row, lined up with the NAME text (indented by the lamp's 14px +
+   --gap-lamp), not with the lamp or the back key. Keys vertically centered on the right.
+   Card narrower than 600px: back key, title row, meta line, keys, each on its own line,
+   at least 12px apart (see the @container rule below). */
+.host-head { container: host-head / inline-size; padding: var(--pad-card); }
+.host-head__grid { display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "back main actions"; column-gap: var(--space-5); row-gap: var(--space-4);
+  align-items: center; }
+/* Top of the card, so it lines up with the name row (44px key, 44px desktop title line). */
+.host-head__back { grid-area: back; align-self: start; }
+.host-head__main { grid-area: main; min-width: 0; display: flex; flex-direction: column;
+  gap: var(--space-2); }
+.host-head__title { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-3);
+  row-gap: var(--space-2); min-width: 0; }
+.host-head__ident { display: flex; align-items: center; gap: var(--gap-lamp); min-width: 0; }
 .host-head__name { min-width: 0; overflow-wrap: anywhere; }
+.host-head__report, .host-head__note { margin-left: calc(14px + var(--gap-lamp)); }
 .host-head__meta { margin: 0; font-size: 15px; color: var(--text-muted); }
 .host-head__meta.offline-note { color: var(--text-faint); }
-.host-head__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.host-head__actions { grid-area: actions; display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--space-3); }
 .host-head__actions form { display: flex; }
 @container host-head (max-width: 599.98px) {
-  .host-head__actions { flex: 1 1 100%; }
+  .host-head__grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "back" "main" "actions"; }
+  .host-head__back { justify-self: start; }
+  .host-head__main, .host-head__title { gap: var(--space-3); }
   .host-head__actions > * { flex: 1 1 150px; }
   .host-head__actions .btn { width: 100%; }
 }
 .plain-list { margin: 0; padding: 0; list-style: none; }
 .plain-list li { padding: 8px 0; overflow-wrap: anywhere; }
-/* Detail page: the fixed "stopped reporting" row (warning icon, chip, text). */
+/* Host preview: the fixed "stopped reporting" row (warning icon, chip, text). */
 .issue-row { display: flex; align-items: center; gap: var(--gap-icon); }
 /* Label on the left, Copy key (and its hint) on the right, above a code well. */
 .code-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
