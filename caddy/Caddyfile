@@ -54,10 +54,20 @@
 	# it yet", so the static files get it too, and no response ever has it twice.
 	header ?Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
+	# Static file names with a content hash, e.g. components.3f9a2c81b4d0.css (Django's
+	# manifest storage adds 12 hex characters before the extension). A changed file gets a
+	# new name, so a hashed URL always means the same bytes: browsers may keep it a year
+	# and never ask again (`immutable`). Everything else under /static/ (the plain names,
+	# used by the 500 page) must be checked with the server before each use (`no-cache`).
+	@hashed path_regexp \.[0-9a-f]{12}\.[A-Za-z0-9]+$
+	@unhashed not path_regexp \.[0-9a-f]{12}\.[A-Za-z0-9]+$
+
 	# CSS, JS and fonts, straight from the shared "static" volume (read-only here).
 	# No directory listings: file_server only lists folders when told to (`browse`).
 	handle /static/* {
 		header ?X-Content-Type-Options "nosniff"
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		header @unhashed Cache-Control "no-cache"
 		root * /srv
 		file_server
 	}
@@ -65,7 +75,11 @@
 	# Everything else, including the agents' WebSocket (/ws/agent/), goes to the app.
 	# reverse_proxy passes WebSocket upgrades through and sets X-Forwarded-For and
 	# X-Forwarded-Proto itself (any such headers a client sends are replaced).
+	# Pages (HTML) and JSON: `no-cache` (browser asks again every time) unless the app
+	# already set its own Cache-Control (some views send a stricter one); the `?` means
+	# "only if missing". A page must never be stale: it names the current hashed files.
 	handle {
+		header ?Cache-Control "no-cache"
 		reverse_proxy app:8000
 	}
 }

@@ -16,9 +16,12 @@ python manage.py migrate --noinput
 
 # Caddy serves /static/* from the shared "static" volume. Refresh it from this image
 # on every start, so an upgraded image never leaves Caddy serving old CSS/JS.
+# staticfiles.json (the manifest: plain name -> hashed name) is read by Django from
+# /app/staticfiles; browsers never need it, so Caddy doesn't get a copy.
 if [ -d /srv/static ]; then
     find /srv/static -mindepth 1 -delete
     cp -R /app/staticfiles/. /srv/static/
+    rm -f /srv/static/staticfiles.json
 fi
 
 # exec: uvicorn replaces this shell, so it gets Docker's stop signal directly.
