@@ -535,3 +535,7 @@ pytest
 pre-commit runs the same linters as on every commit (ruff, gitleaks, file checks);
 pytest runs the agent and server tests. CI runs both, so run them before you push. Skipping the hooks with `--no-verify` won't get
 anything past review.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

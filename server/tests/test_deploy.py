@@ -45,7 +45,7 @@ def test_healthz_is_get_only():
     assert Client().post("/healthz").status_code == 405
 
 
-@pytest.mark.parametrize("host", ["100.109.5.47", "192.168.1.50", "not-allowed.example", ""])
+@pytest.mark.parametrize("host", ["100.64.0.7", "192.168.1.50", "not-allowed.example", ""])
 @override_settings(ALLOWED_HOSTS=["cronrack.lan"])
 def test_healthz_ignores_the_host_header(alice, host):
     # Docker's health check must pass whatever CRONRACK_DOMAIN is, so /healthz
