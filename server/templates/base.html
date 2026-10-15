@@ -3,7 +3,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# viewport-fit=cover: env(safe-area-inset-bottom) reports the iPhone home bar (floating nav, pages.css). #}
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}CronRack{% endblock %}</title>
   {# Tab icon: SVG for modern browsers, a 32px PNG for the rest, and a 180px tile for iOS home screens. #}
   <link rel="icon" href="{% static 'cronrack/favicon.svg' %}" type="image/svg+xml">
@@ -18,6 +19,7 @@
   <script src="{% static 'cronrack/js/messages.js' %}" defer></script>
   <script src="{% static 'cronrack/js/copy.js' %}" defer></script>
   <script src="{% static 'cronrack/js/actions.js' %}" defer></script>
+  <script src="{% static 'cronrack/js/nav.js' %}" defer></script>
   {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -69,10 +71,13 @@
 
     {% if user.is_authenticated %}
     {% comment %}
-      Main navigation. Phone: a segmented track at the bottom (after <main>). Desktop
-      (pages.css, >= 900px): the same element moves into the top bar's center column.
+      Main navigation. Phone (< 900px): .nav-dock is a raised bar fixed to the bottom of the
+      screen, holding the recessed segmented track; nav.js slides it away while scrolling
+      down and back on scrolling up. Desktop (pages.css, >= 900px): the dock has no box of
+      its own (display: contents) and the <nav> moves into the top bar's center column.
       Each page marks its own tab by overriding one nav_* block with aria-current="page".
     {% endcomment %}
+    <div class="nav-dock" id="nav-dock">
     <nav class="bottom-nav seg-track well" aria-label="Main">
       <a class="seg" href="/" {% block nav_overview %}{% endblock %}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg>
@@ -87,6 +92,7 @@
         Settings
       </a>
     </nav>
+    </div>
     {% endif %}
   </div>
   {# Shared screen-reader announcer for Copy keys (copy.js). Visually hidden, not display:none. #}

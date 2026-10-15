@@ -176,6 +176,18 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 # image runs it at build time; Caddy then serves those files, not Django.
 STATIC_ROOT = os.environ.get("STATIC_ROOT", str(BASE_DIR.parent / "staticfiles"))
 
+# Cache-busting: collectstatic saves every file twice, as-is (components.css) and with a
+# hash of its content in the name (components.3f9a2c81b4d0.css), and writes the mapping
+# to STATIC_ROOT/staticfiles.json (the "manifest"). {% static %} looks names up there, so
+# pages always point at the current hashed file, and a changed file gets a new URL.
+# URLs inside CSS (fonts) are rewritten to the hashed names too. With DEBUG=1, {% static %}
+# returns the plain names and Django serves the source files: no collectstatic needed.
+# Caddy may cache the hashed files "forever" (see caddy/Caddyfile).
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"},
+}
+
 
 # --- Security ---------------------------------------------------------------
 

@@ -56,7 +56,10 @@ COPY server/ server/
 COPY agent/ agent/
 COPY deploy/ deploy/
 
-# - collectstatic: gather all CSS/JS (ours and the admin's) into /app/staticfiles.
+# - collectstatic: gather all CSS/JS (ours and the admin's) into /app/staticfiles, each
+#   file also under a content-hashed name, plus the manifest staticfiles.json that
+#   {% static %} reads at runtime (settings.STORAGES). Built into the image, so every
+#   image has a manifest that matches its own files.
 #   Settings need a SECRET_KEY to load; this throwaway one exists only for this one
 #   command and is not stored in the image.
 # - compileall: precompile .py to .pyc now, since nothing can be written at runtime.
