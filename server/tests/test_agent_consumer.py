@@ -1,6 +1,6 @@
 """The agent WebSocket endpoint, tested through the real ASGI application.
 
-WebsocketCommunicator plays the agent: it opens /ws/agent/ with a token header,
+WebSocketClient (tests/ws.py) plays the agent: it opens /ws/agent/ with a token header,
 sends JSON and reads what the server sends back. The consumer talks to the
 database from worker threads, so these tests need transaction=True.
 """
@@ -9,7 +9,6 @@ import pytest
 import pytest_asyncio
 from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
-from channels.testing import WebsocketCommunicator
 
 from activity.models import StatusEvent
 from agents.consumers import ENABLED_CHECKS, AgentConsumer, bearer_token
@@ -18,6 +17,7 @@ from hosts.models import AgentToken, Host
 from hosts.services import close_agent, request_collect
 
 from .sample import make_report
+from .ws import WebSocketClient
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
 
@@ -44,7 +44,7 @@ def agent(token=None, *, header=None):
         headers.append((b"authorization", header))
     elif token is not None:
         headers.append((b"authorization", f"Bearer {token}".encode()))
-    return WebsocketCommunicator(application, "/ws/agent/", headers=headers)
+    return WebSocketClient(application, "/ws/agent/", headers=headers)
 
 
 async def connected_agent(token):
@@ -130,7 +130,7 @@ async def test_session_cookie_is_not_enough(host, token, alice, client):
     """A logged-in browser's cookie must never open the agent socket."""
     await database_sync_to_async(client.force_login)(alice)
     cookie = f"sessionid={client.cookies['sessionid'].value}".encode()
-    comm = WebsocketCommunicator(application, "/ws/agent/", headers=[(b"cookie", cookie)])
+    comm = WebSocketClient(application, "/ws/agent/", headers=[(b"cookie", cookie)])
 
     connected, _ = await comm.connect()
 
