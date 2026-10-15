@@ -318,3 +318,68 @@ summary { padding-block: 11px; cursor: pointer; }
   .rack-unit { transition: none; }
   .rack-unit:hover:not(:active), .rack-unit:active { transform: none; }
 }
+
+/* --- 5. Host preview (overview) ---------------------------------------------
+   templates/components/host_preview.html + js/host-preview.js. One native modal <dialog>,
+   styled as a raised .surface panel over a dimmed page. Phone (< 600px): a bottom sheet,
+   full width with rounded top corners. Desktop: a centered panel, at most 560px wide.
+   Its motion is done in host-preview.js with element.animate(), so nothing here moves. */
+.host-preview { box-sizing: border-box; width: min(560px, calc(100% - 2 * var(--space-4)));
+  max-width: none; max-height: calc(100vh - 2 * var(--space-6));
+  max-height: calc(100dvh - 2 * var(--space-6)); margin: auto; padding: 0; border: 0;
+  color: var(--text); overflow: hidden; }
+/* Only while open: a closed <dialog> must keep the browser's display: none. */
+.host-preview[open] { display: flex; flex-direction: column; }
+/* The fallback is for browsers where ::backdrop doesn't inherit custom properties yet. */
+.host-preview::backdrop { background: var(--backdrop, rgba(30,27,46,.42)); }
+
+/* Inner column: a scrolling part (header + body) above the keys, which never scroll away. */
+.host-preview__inner { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.host-preview__scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--pad-card) var(--pad-card) var(--space-2); display: flex; flex-direction: column;
+  gap: var(--space-4); }
+/* While the panel changes height (data arrived), no scrollbar may flash. */
+.host-preview.is-resizing .host-preview__scroll { overflow: hidden; }
+.host-preview__head { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.host-preview__title { flex-wrap: wrap; row-gap: var(--space-2); }
+.host-preview__name { min-width: 0; margin: 0; font-size: 22px; line-height: 1.2; font-weight: 800;
+  overflow-wrap: anywhere; border-radius: 6px; }
+.host-preview__loading { min-height: 72px; display: flex; align-items: center; justify-content: center; }
+.host-preview__error { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.host-preview__error-text { flex: 1 1 auto; margin: 0; font-size: 15px; font-weight: 700;
+  color: var(--red-chip-text); }
+.host-preview__body:empty { display: none; }
+.host-preview__keys { flex: none; padding: var(--space-3) var(--pad-card) var(--pad-card);
+  display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.host-preview__keys > * { flex: 1 1 auto; }
+
+/* Body sections (cloned from <template id="host-preview-template">) */
+.host-preview__sections { display: flex; flex-direction: column; gap: var(--space-4); }
+.hp-offline { display: flex; flex-direction: column; gap: var(--space-3); }
+.hp-offline__row { margin: 0; font-size: 15px; font-weight: 700; }
+.hp-issue { display: flex; align-items: flex-start; gap: var(--gap-icon); font-size: 15px; }
+.hp-issues .hp-issue { padding: 6px 0; }
+.hp-issue .issue-icon { margin-top: 2px; }
+/* Readouts: a row of small recessed wells (Updates / Containers / Disk). */
+.hp-readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: var(--space-3); }
+.hp-readout { min-width: 0; margin: 0; padding: 10px 14px; border-radius: 14px;
+  display: flex; flex-direction: column; gap: 2px; }
+.hp-readout .readout__label { font-size: 13px; }
+.hp-readout__value { font-size: 20px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.hp-readout__note { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.hp-readout__note:empty { display: none; }
+.hp-section { display: flex; flex-direction: column; gap: var(--space-1); }
+.hp-section__title { margin: 0; font-size: 15px; font-weight: 800; }
+.hp-section .plain-list li { padding: 4px 0; font-size: 15px; }
+.hp-last { font-size: 14px; color: var(--text-faint); }
+
+@media (max-width: 599.98px) {
+  .host-preview { width: 100%; max-height: 88vh; max-height: 88dvh; margin: auto 0 0;
+    border-radius: var(--radius-card) var(--radius-card) 0 0; }
+  .host-preview__keys { padding-bottom: calc(var(--pad-card) + env(safe-area-inset-bottom, 0px)); }
+}
+@media (min-width: 900px) {
+  .host-preview__scroll { padding: var(--pad-card-desk) var(--pad-card-desk) var(--space-2); }
+  .host-preview__keys { padding: var(--space-3) var(--pad-card-desk) var(--pad-card-desk); }
+}

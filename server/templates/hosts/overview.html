@@ -5,7 +5,8 @@
 {% block title %}Overview · CronRack{% endblock %}
 {% block nav_overview %}aria-current="page"{% endblock %}
 {% block main_class %}app-main--wide{% endblock %}
-{% block extra_head %}<script src="{% static 'cronrack/js/overview.js' %}" defer></script>{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/overview.js' %}" defer></script>
+<script src="{% static 'cronrack/js/host-preview.js' %}" defer></script>{% endblock %}
 
 {% comment %}
   Phone (<900px) shows: headline, the host rack, "While you were away".
@@ -100,6 +101,8 @@
         <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
       </div>
       <template id="rack-unit-template">{% include "components/rack_unit.html" with blank=True %}</template>
+      {# Clicking a unit opens this preview (host-preview.js); without JS the unit is a plain link. #}
+      {% include "components/host_preview.html" %}
     </section>
 
     {% if activity %}

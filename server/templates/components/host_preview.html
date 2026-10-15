@@ -1,0 +1,96 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  The overview's host preview (host-preview.js, components.css "Host preview").
+  One native modal <dialog>, filled by JavaScript from /api/v1/hosts/<id>/summary.json.
+  Nothing here contains host data when the page is served: the name, chip, sections and the
+  link target are put in by host-preview.js with textContent / setAttribute only.
+  Without JavaScript the dialog is never opened and the rack units are plain links.
+
+  Header: lamp + name (the dialog's label) + chip. Offline: unlit lamp, no chip, and the
+  "Offline · last report …" line. Waiting: unlit lamp + "Waiting" chip.
+  The body is a clone of <template id="host-preview-template">: host-preview.js removes the
+  sections whose data is null and fills the rest.
+{% endcomment %}
+<dialog class="host-preview surface" id="host-preview" aria-labelledby="host-preview-name">
+  <div class="host-preview__inner" id="host-preview-inner">
+    {# Header + body scroll; the keys below stay in view (a long host must never hide them). #}
+    <div class="host-preview__scroll">
+      <header class="host-preview__head">
+        <div class="host-preview__title lamp-label">
+          <span class="lamp" id="host-preview-lamp" aria-hidden="true" hidden></span>
+          {# Focus goes here on open (tabindex="-1": focusable by script, not in the Tab order). #}
+          <h2 class="host-preview__name" id="host-preview-name" tabindex="-1"></h2>
+          <span class="chip" id="host-preview-chip" hidden></span>
+        </div>
+        <p class="offline-note" id="host-preview-offline" hidden></p>
+      </header>
+
+      {# Shown by host-preview.js only if the data takes longer than 300ms. #}
+      <div class="host-preview__loading" id="host-preview-loading">
+        <span class="loader loader--sm surface" role="status" aria-label="Loading host" id="host-preview-loader" hidden><span></span><span></span><span></span></span>
+      </div>
+      <div class="host-preview__error" id="host-preview-error" hidden>
+        <p class="host-preview__error-text" role="alert" id="host-preview-error-text"></p>
+        <button type="button" class="btn" id="host-preview-retry">Retry</button>
+      </div>
+      <div class="host-preview__body" id="host-preview-body"></div>
+    </div>
+
+    <div class="host-preview__keys">
+      {# href is set to the clicked unit's own /hosts/<id>/ link before the dialog opens. #}
+      <a class="btn btn--primary" id="host-preview-open" href="{% url 'overview' %}">Open host page</a>
+      <button type="button" class="btn" id="host-preview-close">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<template id="host-preview-template">
+  <div class="host-preview__sections">
+    {# Offline only. Fixed text; the commands are copy-only, CronRack never runs them. #}
+    <section class="hp-offline" aria-label="Agent check">
+      <p class="issue-row hp-offline__row">
+        <svg class="issue-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>
+        <span class="hp-offline__text">This host stopped reporting.</span>
+      </p>
+      <div class="code-head">
+        <p class="muted">Check the agent on the host</p>
+        <button type="button" class="btn btn--sm js-copy">Copy</button>
+      </div>
+      <pre class="code well">sudo systemctl status cronrack-agent
+sudo journalctl -u cronrack-agent -n 50 --no-pager</pre>
+    </section>
+
+    <p class="muted hp-waiting">Waiting for the first report.</p>
+
+    <ul class="plain-list hp-issues" aria-label="Issues">
+      <li class="hp-issue">
+        <svg class="issue-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>
+        <span class="visually-hidden hp-issue__severity"></span><span class="hp-issue__text"></span>
+      </li>
+    </ul>
+
+    <div class="hp-readouts">
+      <p class="hp-readout well hp-readout--updates"><span class="readout__label">Updates</span> <span class="hp-readout__value"></span> <span class="hp-readout__note"></span></p>
+      <p class="hp-readout well hp-readout--containers"><span class="readout__label">Containers</span> <span class="hp-readout__value"></span> <span class="hp-readout__note"></span></p>
+      <p class="hp-readout well hp-readout--disk"><span class="readout__label">Disk</span> <span class="hp-readout__value"></span> <span class="hp-readout__note"></span></p>
+    </div>
+
+    <section class="hp-section hp-containers">
+      <h3 class="hp-section__title">Container problems</h3>
+      <ul class="plain-list"><li class="hp-container"><strong class="hp-container__name"></strong> · <span class="hp-container__state"></span></li></ul>
+    </section>
+
+    <section class="hp-section hp-units">
+      <h3 class="hp-section__title">Failed units</h3>
+      <ul class="plain-list"><li class="hp-unit"></li></ul>
+      <p class="muted hp-units__none">No failed units.</p>
+    </section>
+
+    <section class="hp-section hp-disks">
+      <h3 class="hp-section__title">Disks</h3>
+      <ul class="plain-list"><li class="disk-row hp-disk"><span class="disk-row__mount"></span> <meter class="meter well" min="0" max="100" value="0"></meter> <span class="disk-row__fixed"></span></li></ul>
+    </section>
+
+    <p class="muted hp-last">Last report <span class="hp-last__ago"></span></p>
+  </div>
+</template>

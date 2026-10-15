@@ -5,8 +5,6 @@ get_owned_host(), which answers 404 for anyone else's host (IDOR protection).
 All views require login; POST views are CSRF-protected by CsrfViewMiddleware.
 """
 
-from datetime import UTC
-
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -23,7 +21,7 @@ from hosts.access import get_owned_host
 from hosts.forms import DeleteHostForm, HostNameForm
 from hosts.humanize import ago
 from hosts.models import AgentToken, Host
-from hosts.presenters import detail_context, overview_context
+from hosts.presenters import detail_context, host_preview, iso_utc, overview_context
 from hosts.samples import EXAMPLE_DETAIL_CONTEXT
 from hosts.services import close_agent, request_collect
 from rules.engine import effective_status
@@ -129,16 +127,24 @@ def host_detail(request: HttpRequest, host_id: int) -> HttpResponse:
 def host_status_json(request: HttpRequest, host_id: int) -> JsonResponse:
     host = get_owned_host(request.user, host_id)
     now = timezone.now()
-    received = host.report_received_at
     return JsonResponse(
         {
             "status": effective_status(host, now),
             "last_seen_human": ago(host.last_seen_at, now),
             # A stable "new report" signal for Check now: it changes only when a report
             # is saved (last_seen_human is relative and changes every second on its own).
-            "report_received_at": received.astimezone(UTC).isoformat() if received else None,
+            "report_received_at": iso_utc(host.report_received_at),
         }
     )
+
+
+@login_required
+@require_GET
+def host_summary_json(request: HttpRequest, host_id: int) -> JsonResponse:
+    """The overview's preview window for one host (handoff 5.3). Same data as the detail
+    page, cut down to summaries. Another user's host is a 404 like any other view."""
+    host = get_owned_host(request.user, host_id)
+    return JsonResponse(host_preview(host, timezone.now()))
 
 
 OFFLINE_ERROR = "Host is offline, so the agent can't be reached."

@@ -12,6 +12,10 @@
 // If a refresh fails, a small "Offline — retrying" chip appears and the page keeps what
 // it shows. The Welcome example (0 hosts) is rendered by the server only: when hosts
 // appear (or all disappear), the page reloads once so the server renders the right one.
+//
+// While the host preview (host-preview.js) is open, refreshes wait: the unit that opened it
+// must stay the same element for the close animation and for focus to return to it. One
+// refresh runs right after the preview closes if any came due meanwhile.
 (function () {
   "use strict";
   const OVERVIEW_URL = "/api/v1/overview.json";
@@ -219,8 +223,28 @@
   }
 
   let inFlight = false;
+  let previewOpen = false;
+  let refreshAfterPreview = false;
+
+  // Re-rendering replaces every unit. If one had keyboard focus, give it to the new unit
+  // with the same link, so focus isn't dropped back to the top of the page.
+  function replaceUnits(units) {
+    const focused = document.activeElement;
+    const href = focused && rack.contains(focused) ? focused.getAttribute("href") : null;
+    rack.replaceChildren(...units);
+    if (href) {
+      const again = units.map((li) => li.querySelector(".rack-unit")).find((a) => a && a.getAttribute("href") === href);
+      if (again) {
+        again.focus({ preventScroll: true });
+      }
+    }
+  }
 
   async function refresh() {
+    if (previewOpen) {
+      refreshAfterPreview = true;
+      return;
+    }
     if (inFlight) {
       return;
     }
@@ -237,6 +261,10 @@
         throw new Error("bad response");
       }
       showFailed(false);
+      if (previewOpen) {
+        refreshAfterPreview = true; // the preview opened while this request was running
+        return;
+      }
 
       const showsExample = rack.querySelector(".rack-unit--example") !== null;
       const hosts = data.hosts.filter((h) => h && typeof h === "object");
@@ -249,7 +277,7 @@
       clearReloadMark();
       renderHead(data, hosts.length);
       if (!showsExample) {
-        rack.replaceChildren(...hosts.map(buildUnit));
+        replaceUnits(hosts.map(buildUnit));
       }
     } catch (e) {
       showFailed(true); // keep the current content, try again on the next tick
@@ -280,6 +308,17 @@
   document.addEventListener("cronrack:refresh", (event) => {
     event.preventDefault();
     refresh();
+  });
+
+  document.addEventListener("cronrack:preview-open", () => {
+    previewOpen = true;
+  });
+  document.addEventListener("cronrack:preview-closed", () => {
+    previewOpen = false;
+    if (refreshAfterPreview) {
+      refreshAfterPreview = false;
+      refresh();
+    }
   });
 
   if (document.visibilityState === "visible") {

@@ -7,7 +7,7 @@ Every value here may contain text from an agent (container names, unit names...)
 It is only ever output with {{ }} (auto-escaped) or as JSON, never marked safe.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from django.urls import reverse
@@ -90,6 +90,15 @@ def _problem_containers(findings: list[Finding]) -> set[str]:
     }
 
 
+def iso_utc(when: datetime | None) -> str | None:
+    """A stable machine-readable time ("2026-10-15T08:00:00+00:00"), or None."""
+    return when.astimezone(UTC).isoformat() if when else None
+
+
+def _running(containers: list[dict]) -> int:
+    return sum(1 for c in containers if c["state"] == "running")
+
+
 def _card_numbers(report: dict | None, findings: list[Finding]) -> dict[str, Any]:
     """The numbers in a host card's detail strip. A check the host didn't report stays None."""
     numbers: dict[str, Any] = {"updates": None, "containers": None, "disk_max_percent": None}
@@ -105,7 +114,7 @@ def _card_numbers(report: dict | None, findings: list[Finding]) -> dict[str, Any
         failing = _problem_containers(findings)
         numbers["containers"] = {
             "total": len(containers),
-            "running": sum(1 for c in containers if c["state"] == "running"),
+            "running": _running(containers),
             "failing": sum(1 for c in containers if c["name"] in failing),
         }
     if report.get("disks"):
@@ -240,3 +249,37 @@ def detail_context(host: Host, now: datetime) -> dict[str, Any]:
         ]
     context["disks"] = _disk_rows(report, findings)
     return context
+
+
+def host_preview(host: Host, now: datetime) -> dict[str, Any]:
+    """The overview's host preview window (/api/v1/hosts/<id>/summary.json).
+
+    A smaller cut of detail_context(), so the preview and the host page can never
+    disagree: same status (offline worked out now), same issue filtering (no offline
+    issue line), same disk levels. Only short summaries: no raw logs, no tokens, no
+    container status strings. A check the host didn't report stays None, and a host
+    that never reported has every section None.
+    """
+    detail = detail_context(host, now)
+    head = detail["host"]
+    report = host.latest_report
+    containers = detail["containers"]
+    return {
+        "id": head["id"],
+        "name": head["name"],
+        "status": head["status"],
+        "status_label": head["status_label"],
+        "last_seen_human": head["last_seen_human"],
+        "report_received_at": iso_utc(host.report_received_at),
+        "url": reverse("host-detail", args=[host.pk]),
+        "issues": [{"text": i["text"], "severity": i["severity"]} for i in detail["issues"]],
+        "updates": detail["updates"],
+        "containers": None
+        if containers is None
+        else {
+            "running": _running(report["containers"]),
+            "problems": [{"name": c["name"], "state": c["state"]} for c in containers["problems"]],
+        },
+        "failed_units": detail["failed_units"],
+        "disks": detail["disks"],
+    }

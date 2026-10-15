@@ -2,6 +2,7 @@
 // Copy keys (handoff 5.5): <button class="js-copy" aria-controls="ID">Copy</button> copies the
 // visible text of the code well with that id. Nothing is stored in the page for later: the text
 // is read from the code well at click time. Loaded with defer. Never logs anything.
+// Works for keys that exist at load time and for ones added later.
 (function () {
   "use strict";
   const FEEDBACK_MS = 2000;
@@ -82,9 +83,12 @@
     }
   }
 
-  document.querySelectorAll(".js-copy").forEach((button) => {
-    button.addEventListener("click", () => {
+  // One listener on the document, so Copy keys added later (the overview's host preview
+  // clones its body from a <template>) work the same as the ones in the page source.
+  document.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest(".js-copy") : null;
+    if (button) {
       copy(button);
-    });
+    }
   });
 })();
