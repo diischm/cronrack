@@ -27,6 +27,7 @@ LOGIN_URLS = [
     ("get", "/api/v1/overview.json"),
     ("get", "/hosts/add/"),
     ("post", "/hosts/collect-all/"),
+    ("get", "/hosts/example/"),
     ("get", "/activity/"),
     ("get", "/api/v1/activity.json"),
     ("get", "/settings/"),

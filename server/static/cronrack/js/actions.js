@@ -144,6 +144,16 @@
     ui.say("No answer from the agent yet.", true);
   }
 
+  // Ask overview.js for one refresh. It calls preventDefault() on the event, so false here
+  // means "handled". Without overview.js on the page nobody does, and the page reloads.
+  function refreshOverview() {
+    const event = new CustomEvent("cronrack:refresh", { cancelable: true });
+    if (document.dispatchEvent(event)) {
+      window.location.reload();
+      return "reloading";
+    }
+  }
+
   // Check all now: show the count, then refresh the overview once the agents had time to report.
   async function checkAll(form, ui) {
     const result = await send(form);
@@ -156,8 +166,7 @@
     ui.say("Asked " + plural(asked, "host") + " · " + offline + " offline", false);
     if (asked > 0) {
       await wait(OVERVIEW_REFRESH_MS);
-      window.location.reload();
-      return "reloading";
+      return refreshOverview();
     }
   }
 

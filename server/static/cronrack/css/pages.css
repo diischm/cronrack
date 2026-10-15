@@ -23,19 +23,6 @@ html, body { overflow-x: hidden; }
 .page-title { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 800; letter-spacing: -0.01em; }
 .page-sub { margin: 0; font-size: 15px; color: var(--text-muted); }
 
-/* Host cards */
-.host-card { padding: var(--pad-card); display: flex; flex-direction: column; gap: var(--space-4); }
-.host-card__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-/* The title is also a .lamp-label: the lamp-to-name gap comes from the component. */
-.host-card__title { display: flex; min-width: 0; }
-.host-card__name { font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
-.host-card__issues { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;
-  gap: 6px; font-size: 15px; color: var(--text-muted); }
-.host-card__issues li { display: flex; gap: var(--gap-icon); align-items: center; overflow-wrap: anywhere; }
-/* Offline: the last known issues stay visible but muted (they may be out of date). */
-.host-card--offline .host-card__issues,
-.host-card--offline .issue-icon { color: var(--text-faint); }
-
 /* Section heading with an optional link on the right */
 .section-head { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .section-title { margin: 0; font-size: 17px; font-weight: 800; }
@@ -58,6 +45,11 @@ html, body { overflow-x: hidden; }
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); }
 .empty__title { margin: 0; font-size: 19px; font-weight: 800; }
 .empty__text { margin: 0; font-size: 15px; color: var(--text-muted); }
+
+/* /hosts/example/: "This is an example. Nothing here is real." + Add your first host. */
+.example-banner { flex-direction: row; flex-wrap: wrap; align-items: center;
+  justify-content: space-between; }
+.example-banner__text { margin: 0; font-size: 17px; font-weight: 800; }
 
 /* Bottom nav: four segments in one recessed track */
 .bottom-nav { margin: 8px 16px 20px; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row; }
@@ -126,7 +118,7 @@ html, body { overflow-x: hidden; }
 }
 
 /* Overview wrappers: on phones they stack exactly like the old flat list did. */
-.overview-head__text, .overview-body, .overview-hosts, .host-grid, .away {
+.overview-head__text, .overview-body, .overview-hosts, .away {
   display: flex; flex-direction: column; gap: var(--space-5); }
 /* Heading + content stacks: 12px under the heading. */
 .overview-hosts, .away { gap: var(--space-3); }
@@ -252,26 +244,6 @@ html, body { overflow-x: hidden; }
      away card above the hosts on desktop only. */
   .overview-body { gap: var(--stack-gap); }
   .away { order: -1; }
-  .host-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: var(--gap-cards-desk); }
-  .host-grid > .empty { grid-column: 1 / -1; }
-
-  /* Host card: roomier, with a recessed detail strip and a "Last report" line. */
-  .host-card { padding: var(--pad-card-desk); }
-  .host-card:hover:not(:active) { box-shadow: inset 1px 1px 2px var(--rim-light), inset -1px -1px 3px var(--rim-dark),
-    9px 11px 18px var(--shadow-dark), -9px -9px 18px var(--shadow-light); }
-  .host-card__head { gap: var(--gap-icon); }
-  .host-card__name { font-size: 19px; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; overflow-wrap: normal; }
-  .host-card__issues { min-height: 52px; gap: 8px; color: var(--text); }
-  .host-card__strip { margin: 0; padding: 12px 14px; border-radius: 16px; display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-  .stat { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .stat--meter { gap: 6px; }
-  .stat__label { font-size: 12px; font-weight: 700; color: var(--text-faint); }
-  .stat dd { margin: 0; }
-  .stat__value { font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
-  .host-card__seen { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-faint); }
 
   /* "While you were away": the whole section becomes one raised panel. */
   .away { min-width: 0; padding: var(--pad-card-desk); border-radius: 26px;
