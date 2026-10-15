@@ -424,7 +424,8 @@ def test_overview_html_and_json_agree_on_offline(alice_client: Client, alice):
 
     statuses = {h["name"]: h["status"] for h in data["hosts"]}
     assert statuses == {"diicpi": "offline", "nas": "green"}
-    assert html.count("lamp--off") == 2  # diicpi's card + the "Hosts online" tile
+    # diicpi's card only: the "Hosts online" tile is a summary and uses an icon, not a lamp.
+    assert html.count("lamp--off") == 1
     assert "<strong>Offline</strong> · last report 28 h ago" in html
     assert "<strong>Offline</strong> · 1 host" in html
     assert html.count('class="chip chip--green">All good</span>') == 1  # nas keeps its chip

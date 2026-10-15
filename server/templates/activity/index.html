@@ -15,7 +15,7 @@
       <ul class="surface activity rows">
         {% for entry in group.list %}
           <li class="activity__row">
-            <span class="activity__text lamp-label">{% include "components/lamp.html" with status=entry.status %}{{ entry.text }}</span>
+            <span class="activity__text lamp-label"><span class="activity__lamp">{% include "components/lamp.html" with status=entry.status %}</span>{{ entry.text }}</span>
             <span class="activity__time">{{ entry.time_human }}</span>
           </li>
         {% endfor %}

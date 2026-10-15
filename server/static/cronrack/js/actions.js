@@ -2,18 +2,18 @@
 // Fetch actions (handoff 5.4, 5.7): "Check now", "Check all now" and "Send test alert".
 //
 // Each is a real <form method="post" class="js-fetch-action"> with {% csrf_token %}, so it
-// works without JavaScript (the server redirects back with a flash message). With JS, this
-// file sends the same POST with fetch (X-CSRFToken header, Accept: application/json) and
-// shows the result inline, so the browser never lands on a raw JSON page.
+// works without JavaScript (the server redirects back with a flash message, shown as a
+// toast). With JS, this file sends the same POST with fetch (X-CSRFToken header, Accept:
+// application/json) and shows the result as the same kind of toast (messages.js, via the
+// "cronrack:toast" event), so the browser never lands on a raw JSON page.
 //
-// Form attributes (fixed values from the template, no host data):
+// Form attributes (fixed values from the template, no host data), read with getAttribute:
 //   data-action      "check-host" | "check-all" | "test-alert"
-//   data-result      id of the aria-live element next to the key
 //   data-loader      id of the small logo-bar loader (optional)
 //   data-status-url  status.json URL to poll (check-host only)
 //
-// Messages go in with textContent only. Error text is shown exactly as the backend sent it.
-// Nothing is logged. Loaded with defer.
+// messages.js puts the text in with textContent only. Error text is shown exactly as the
+// backend sent it. Nothing is logged. Loaded with defer.
 (function () {
   "use strict";
   const LOADER_DELAY_MS = 300; // fast answers never flash the loader
@@ -82,25 +82,17 @@
     return n + " " + word + (n === 1 ? "" : "s");
   }
 
-  // UI helpers for one form: result line, loader (after 300ms), disabled key.
+  // UI helpers for one form: result toast, loader (after 300ms), disabled key.
   function controls(form) {
-    const result = document.getElementById(form.dataset.result || "");
-    const loader = document.getElementById(form.dataset.loader || "");
-    // A form can have more than one key (overview: phone icon key + desktop labelled key).
+    const loader = document.getElementById(form.getAttribute("data-loader") || "");
     const buttons = form.querySelectorAll("button[type=submit], button:not([type])");
     let loaderTimer = null;
 
     return {
       say(message, isError) {
-        if (!result) {
-          return;
-        }
-        result.classList.toggle("action-result--error", Boolean(isError));
-        // Clear first, so the same message twice in a row is announced again.
-        result.textContent = "";
-        window.setTimeout(() => {
-          result.textContent = message;
-        }, 50);
+        document.dispatchEvent(
+          new CustomEvent("cronrack:toast", { detail: { message, error: Boolean(isError) } })
+        );
       },
       busy(on) {
         buttons.forEach((button) => {
@@ -125,7 +117,7 @@
   // report is saved (max 15s). last_seen_human ("40s ago") is never compared: it changes
   // every second on its own.
   async function checkHost(form, ui) {
-    const statusUrl = form.dataset.statusUrl;
+    const statusUrl = form.getAttribute("data-status-url");
     const before = await reportReceivedAt(statusUrl);
 
     const result = await send(form);
@@ -163,7 +155,8 @@
     }
     const asked = Number.isInteger(result.data.asked) ? result.data.asked : 0;
     const offline = Number.isInteger(result.data.offline) ? result.data.offline : 0;
-    ui.say("Asked " + plural(asked, "host") + " · " + offline + " offline", false);
+    // Same wording as the no-JS flash message (hosts.views.host_collect_all).
+    ui.say("Asked " + plural(asked, "host") + " · " + offline + " offline.", false);
     if (asked > 0) {
       await wait(OVERVIEW_REFRESH_MS);
       return refreshOverview();
@@ -173,7 +166,7 @@
   async function testAlert(form, ui) {
     const result = await send(form);
     if (succeeded(result)) {
-      ui.say("Sent", false);
+      ui.say("Test alert sent.", false); // same as the no-JS flash message
     } else {
       ui.say(errorText(result), true);
     }
@@ -183,7 +176,7 @@
   const running = new WeakSet();
 
   document.querySelectorAll("form.js-fetch-action").forEach((form) => {
-    const handler = HANDLERS[form.dataset.action];
+    const handler = HANDLERS[form.getAttribute("data-action")];
     if (!handler) {
       return; // unknown action: leave the plain form POST alone
     }
@@ -194,7 +187,6 @@
       }
       running.add(form);
       const ui = controls(form);
-      ui.say("", false);
       ui.busy(true);
       let outcome;
       try {

@@ -1,6 +1,7 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {# Pilot lamp. Usage: {% include "components/lamp.html" with status=host.status %} #}
 {# Decorative only: the chip or text next to it always says the status in words. #}
-{# status="off" is the unlit lamp for a host that is offline right now (host card, detail header, #}
-{# tiles). An "offline" event in the activity history keeps the red lamp. #}
-{% if status == "off" %}<span class="lamp lamp--off" aria-hidden="true"></span>{% elif status == "red" or status == "offline" %}<span class="lamp lamp--red" aria-hidden="true"></span>{% elif status == "yellow" %}<span class="lamp lamp--amber" aria-hidden="true"></span>{% elif status == "green" %}<span class="lamp lamp--green" aria-hidden="true"></span>{% endif %}
+{# status="off" (or "offline") is the unlit lamp: a host offline right now (rack unit, detail #}
+{# header) and "went offline" rows in Activity / "While you were away". #}
+{# Lamps are for single hosts only; summaries (overview tiles) use icons. #}
+{% if status == "off" or status == "offline" %}<span class="lamp lamp--off" aria-hidden="true"></span>{% elif status == "red" %}<span class="lamp lamp--red" aria-hidden="true"></span>{% elif status == "yellow" %}<span class="lamp lamp--amber" aria-hidden="true"></span>{% elif status == "green" %}<span class="lamp lamp--green" aria-hidden="true"></span>{% endif %}

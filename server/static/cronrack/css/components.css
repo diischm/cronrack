@@ -51,6 +51,9 @@ body { margin: 0; background: var(--ground); color: var(--text); font-family: va
   box-shadow: inset 0 3px 5px -1px var(--lip), inset 3px 0 5px -2px var(--lip-side),
               inset 0 -1px 1px var(--catch-in), 0 1px 1px var(--catch); }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
+/* aria-disabled keys stay focusable (e.g. Check now on an offline host), so they're muted with
+   the faint text color instead of opacity, which would fade the focus ring with them. */
+.btn[aria-disabled="true"] { opacity: 1; color: var(--text-faint); }
 
 /* Primary (orange) key. White on orange is only readable as large text, so the label is
    always 19px / 800 (WCAG "large" = 18.66px bold). Don't shrink it anywhere. */
@@ -203,9 +206,14 @@ a { color: var(--accent-text); }
    touch target and keeps the native disclosure triangle. */
 summary { padding-block: 11px; cursor: pointer; }
 
-/* Flash message toast: small raised panel at the top (handoff 5.0) */
+/* Toast (handoff 5.0): a small raised panel floating at the top, for flash messages and
+   fetch-action results (messages.js). Errors use the red chip text color; the text itself
+   always says what went wrong, so it's never color alone. */
 .toast { display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 8px 8px 8px 16px; font-size: 15px; font-weight: 600; }
+.toast__text { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.toast--error .toast__text { color: var(--red-chip-text); }
+.toast__close { flex: none; }
 
 /* Full-page loader (handoff 4.4b): invisible for the first 300ms so fast pages never flash it,
    then fades in. Pure CSS: the animation waits 300ms (delay), `forwards` keeps the end state.
