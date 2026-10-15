@@ -24,6 +24,7 @@ from hosts.forms import DeleteHostForm, HostNameForm
 from hosts.humanize import ago
 from hosts.models import AgentToken, Host
 from hosts.presenters import detail_context, overview_context
+from hosts.samples import EXAMPLE_DETAIL_CONTEXT
 from hosts.services import close_agent, request_collect
 from rules.engine import effective_status
 
@@ -97,6 +98,20 @@ def overview(request: HttpRequest) -> HttpResponse:
 @require_GET
 def overview_json(request: HttpRequest) -> JsonResponse:
     return JsonResponse(overview_context(request.user, timezone.now()))
+
+
+@login_required
+@require_GET
+def host_example(request: HttpRequest) -> HttpResponse:
+    """The Welcome example's page: the detail template filled with fixed sample data.
+
+    Only for users without hosts (the overview links here only then). Anyone who already
+    has a host is sent to the overview, a fixed URL. Nothing is read from or written to
+    the database apart from that check, so the example never counts anywhere.
+    """
+    if Host.objects.filter(owner=request.user).exists():
+        return redirect("overview")
+    return render(request, "hosts/detail.html", EXAMPLE_DETAIL_CONTEXT)
 
 
 # --- one host ------------------------------------------------------------------

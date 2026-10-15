@@ -465,14 +465,17 @@ def test_overview_has_phone_and_desktop_pieces(alice_client: Client, alice):
     assert "2 things need you" in html
     assert 'class="bottom-nav seg-track well"' in html
     assert "While you were away" in html
-    # Desktop: header actions, tiles, card strip with a meter
+    # The rack: one unit per host, and the <template> overview.js clones
+    assert '<ul class="rack well" id="rack" aria-label="Hosts">' in html
+    assert html.count('<a class="rack-unit card-press') == 3 + 1  # + the blank template copy
+    assert '<template id="rack-unit-template">' in html
+    # Desktop: header actions, tiles, the units' front-panel readouts
     assert "Check all now" in html
     assert 'action="/hosts/collect-all/"' in html
     assert "csrfmiddlewaretoken" in html
     assert 'aria-label="Summary"' in html
     assert "Hosts online" in html
-    assert 'class="host-card__strip well desk-only"' in html
-    assert '<meter class="meter well"' in html
+    assert 'class="rack-unit__panel well desk-only"' in html
     assert "Waiting for the first report" in html
 
 
@@ -515,7 +518,7 @@ def test_layout_breakpoint_is_in_the_css():
     css = (Path(__file__).resolve().parent.parent / "static/cronrack/css/pages.css").read_text()
     assert "@media (min-width: 900px)" in css
     assert "@media (max-width: 899.98px)" in css
-    assert "repeat(auto-fill, minmax(300px, 1fr))" in css
+    assert "auto-fill" not in css  # the host rack is one column at every width
     assert "border:" not in css.replace("border: 0", "")
 
 

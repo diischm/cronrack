@@ -5,17 +5,22 @@
 {% block title %}Overview · CronRack{% endblock %}
 {% block nav_overview %}aria-current="page"{% endblock %}
 {% block main_class %}app-main--wide{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/overview.js' %}" defer></script>{% endblock %}
 
 {% comment %}
-  Phone (<900px) shows: headline, host cards, "While you were away".
-  Everything marked desk-only (actions, tiles, card strips) appears from 900px.
+  Phone (<900px) shows: headline, the host rack, "While you were away".
+  Everything marked desk-only (actions, tiles, the units' front panels) appears from 900px.
+  overview.js refreshes the headline, subline, tiles and rack every 60s (handoff 5.3);
+  the ids below are fixed hooks for it.
 {% endcomment %}
 {% block content %}
   <div class="page-head overview-head">
     <div class="overview-head__text">
-      <h1 class="page-title">{% if attention_count %}{{ attention_count }} thing{{ attention_count|pluralize }} need{{ attention_count|pluralize:"s," }} you{% else %}All good{% endif %}</h1>
+      <h1 class="page-title" id="overview-title">{% if not hosts %}No hosts yet{% elif attention_count %}{{ attention_count }} thing{{ attention_count|pluralize }} need{{ attention_count|pluralize:"s," }} you{% else %}All good{% endif %}</h1>
       <p class="page-sub overview-head__sub">
-        <span>{{ hosts|length }} host{{ hosts|length|pluralize }} · updated {{ updated_human }}</span>
+        <span id="overview-sub">{{ hosts|length }} host{{ hosts|length|pluralize }}{% if hosts %} · updated {{ updated_human }}{% endif %}</span>
+        {# Shown by overview.js while /api/v1/overview.json can't be reached; the page keeps its content. #}
+        <span class="chip chip--amber" id="refresh-failed" role="status" hidden>Offline — retrying</span>
         <span class="loader loader--sm surface" role="status" aria-label="Checking all hosts" id="check-all-loader" hidden><span></span><span></span><span></span></span>
       </p>
     </div>
@@ -48,42 +53,53 @@
   <section class="summary desk-only" aria-label="Summary">
     <div class="surface tile">
       <div class="tile__label lamp-label">{% include "components/lamp.html" with status="red" %}<span>Needs you</span></div>
-      <p class="tile__value">{{ status_counts.red }} <span class="tile__unit">host{{ status_counts.red|pluralize }}</span></p>
+      <p class="tile__value"><span id="tile-red">{{ status_counts.red }}</span> <span class="tile__unit" id="tile-red-unit">host{{ status_counts.red|pluralize }}</span></p>
     </div>
     <div class="surface tile">
       <div class="tile__label lamp-label">{% include "components/lamp.html" with status="yellow" %}<span>Heads up</span></div>
-      <p class="tile__value">{{ status_counts.yellow }} <span class="tile__unit">host{{ status_counts.yellow|pluralize }}</span></p>
+      <p class="tile__value"><span id="tile-yellow">{{ status_counts.yellow }}</span> <span class="tile__unit" id="tile-yellow-unit">host{{ status_counts.yellow|pluralize }}</span></p>
     </div>
     <div class="surface tile">
       <div class="tile__label lamp-label">{% include "components/lamp.html" with status="green" %}<span>All good</span></div>
-      <p class="tile__value">{{ status_counts.green }} <span class="tile__unit">host{{ status_counts.green|pluralize }}</span></p>
+      <p class="tile__value"><span id="tile-green">{{ status_counts.green }}</span> <span class="tile__unit" id="tile-green-unit">host{{ status_counts.green|pluralize }}</span></p>
     </div>
     <div class="surface tile">
       <div class="tile__label tile__label--icon">
         <svg class="tile__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"></rect><rect x="3" y="13" width="18" height="7" rx="2"></rect><path d="M7 7.5h.01M7 16.5h.01"></path></svg>
         <span>Hosts online</span>
       </div>
-      <p class="tile__value">{{ hosts_online }} <span class="tile__unit">of {{ hosts|length }}</span></p>
-      {% if status_counts.offline %}
-        <p class="offline-note lamp-label">{% include "components/lamp.html" with status="off" %}<span><strong>Offline</strong> · {{ status_counts.offline }} host{{ status_counts.offline|pluralize }}</span></p>
-      {% endif %}
+      <p class="tile__value"><span id="tile-online">{{ hosts_online }}</span> <span class="tile__unit" id="tile-online-unit">of {{ hosts|length }}</span></p>
+      {# Always rendered (hidden at 0) so overview.js can show it after a refresh. #}
+      <p class="offline-note lamp-label" id="tile-offline"{% if not status_counts.offline %} hidden{% endif %}>{% include "components/lamp.html" with status="off" %}<span id="tile-offline-text"><strong>Offline</strong> · {{ status_counts.offline }} host{{ status_counts.offline|pluralize }}</span></p>
     </div>
   </section>
 
   <div class="overview-body">
-    <section class="overview-hosts" aria-label="Hosts">
+    {% comment %}
+      The rack (components.css "Rack"): a raised chassis with two decorative ears, and a
+      recessed bay (the <ul>) holding one server unit per host, in backend order
+      (red → yellow → green, then by name). One column at every width.
+      0 hosts: the Welcome example unit (template only, never a database host and never
+      counted) and an empty slot with "Add your first host".
+      overview.js re-renders the units every 60s from <template id="rack-unit-template">.
+    {% endcomment %}
+    <section class="overview-hosts">
       <h2 class="section-title desk-only">Hosts</h2>
-      <div class="host-grid">
-        {% for host in hosts %}
-          {% include "components/host_card.html" with host=host %}
-        {% empty %}
-          <section class="surface empty">
-            <h2 class="empty__title">No hosts yet</h2>
-            <p class="empty__text">Install the agent on a machine and it shows up here.</p>
-            <a class="btn btn--primary" href="/hosts/add/">Add your first host</a>
-          </section>
-        {% endfor %}
+      <div class="rack-chassis surface">
+        <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
+        <ul class="rack well" id="rack" aria-label="Hosts">
+          {% for host in hosts %}
+            {% include "components/rack_unit.html" with host=host %}
+          {% empty %}
+            {% include "components/rack_unit.html" with example=True %}
+            <li class="rack__slot rack__slot--empty well">
+              <a class="btn btn--primary" href="{% url 'host-add' %}">Add your first host</a>
+            </li>
+          {% endfor %}
+        </ul>
+        <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
       </div>
+      <template id="rack-unit-template">{% include "components/rack_unit.html" with blank=True %}</template>
     </section>
 
     {% if activity %}

@@ -5,6 +5,13 @@
 {% block main_class %}app-main--detail{% endblock %}
 
 {% block content %}
+  {% if example %}
+    {# /hosts/example/ (hosts.views.host_example): fixed sample data, not a database host. #}
+    <section class="surface panel example-banner" aria-label="Example">
+      <p class="example-banner__text">This is an example. Nothing here is real.</p>
+      <a class="btn btn--primary" href="{% url 'host-add' %}">Add your first host</a>
+    </section>
+  {% endif %}
   {% comment %}
     Header card: left group = back key, name, lamp + chip, and one meta line under the name;
     right group = Check now + Host settings. Wraps below 600px (pages.css .host-head).
@@ -19,7 +26,8 @@
         {% if host.status == "offline" %}
           {% include "components/lamp.html" with status="off" %}
         {% else %}
-          <span class="lamp-label">{% include "components/lamp.html" with status=host.status %}{% include "components/chip.html" with status=host.status label=host.status_label %}</span>
+          {# Waiting for the first report: unlit lamp, the "Waiting" chip says it in words. #}
+          <span class="lamp-label">{% if host.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=host.status %}{% endif %}{% include "components/chip.html" with status=host.status label=host.status_label %}</span>
         {% endif %}
       </div>
       {# Offline: no chip, so this line carries the status in words (faint, "Offline" in bold). #}
@@ -29,6 +37,8 @@
         <span class="loader loader--sm surface" role="status" aria-label="Waiting for the agent" id="check-loader" hidden><span></span><span></span><span></span></span>
       </div>
     </div>
+    {# The example has no agent and no settings, so neither key is shown there. #}
+    {% if not example %}
     <div class="host-head__actions">
       {% comment %}
         Works without JS (the server redirects back here with a flash message). With JS,
@@ -49,6 +59,7 @@
         Host settings
       </a>
     </div>
+    {% endif %}
   </header>
 
   {% if not host.has_report %}

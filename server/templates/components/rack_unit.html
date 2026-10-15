@@ -1,0 +1,50 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  One server unit in the overview rack (components.css "Rack"). Three ways to include it:
+    {% include "components/rack_unit.html" with host=host %}       a real host
+    {% include "components/rack_unit.html" with example=True %}    the Welcome example (0 hosts)
+    {% include "components/rack_unit.html" with blank=True %}      the empty copy inside
+                                                                   <template id="rack-unit-template">
+  The blank copy has every optional piece (chip AND offline line); overview.js clones it,
+  removes what a host doesn't need and fills the rest with textContent / setAttribute only.
+  Keep the class names in sync with overview.js.
+
+  Everything in `host` comes from agent reports or user input: plain {{ }} output only, so
+  Django escapes it. The visually-hidden ", " pieces make the link's accessible name read
+  "homeserver, Needs you, 3 security updates" (status in words, never colour only).
+  Lamp, vents: decorative, aria-hidden. Front panel: desktop only (>= 900px, .desk-only);
+  its disk meter is aria-hidden too, the percentage next to it says the same in text.
+  Offline: unlit lamp, no chip; the "Offline · last report …" line is the text label.
+  Waiting (no report yet): unlit lamp too, plus the "Waiting" chip.
+{% endcomment %}
+{% if example %}
+<li class="rack__slot">
+  <a class="rack-unit card-press rack-unit--example" href="{% url 'host-example' %}">
+    <span class="rack-unit__lamp" aria-hidden="true">{% include "components/lamp.html" with status="yellow" %}</span>
+    <span class="rack-unit__body">
+      <span class="rack-unit__head"><span class="rack-unit__name">Welcome to CronRack!</span><span class="visually-hidden">, </span>{% include "components/chip.html" with status="example" label="Example" %}</span>
+      <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text">This is an example host. Add your own and it disappears.</span></span>
+    </span>
+    <span class="rack-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+  </a>
+</li>
+{% else %}
+<li class="rack__slot">
+  <a class="rack-unit card-press{% if host.status == 'offline' %} rack-unit--offline{% endif %}"{% if not blank %} href="{{ host.url }}"{% endif %}>
+    <span class="rack-unit__lamp" aria-hidden="true">{% if blank %}{% elif host.status == "offline" or host.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=host.status %}{% endif %}</span>
+    <span class="rack-unit__body">
+      <span class="rack-unit__head"><span class="rack-unit__name">{{ host.name }}</span><span class="visually-hidden">, </span>{% if blank %}<span class="chip"></span>{% elif host.status != "offline" %}{% include "components/chip.html" with status=host.status label=host.status_label %}{% endif %}{% if blank or host.status == "offline" %}<span class="offline-note rack-unit__offline"><strong>Offline</strong> · last report {{ host.last_seen_human }}</span>{% endif %}</span>
+      {# Offline with no issues: no line here, the "Offline · last report …" line says it. #}
+      {% if blank or host.issues or host.status != "offline" %}
+        <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text">{% if host.issues %}{% for issue in host.issues|slice:":3" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif host.status == "waiting" %}Waiting for the first report{% elif not blank %}Nothing needs you{% endif %}</span></span>
+      {% endif %}
+    </span>
+    <span class="rack-unit__panel well desk-only">
+      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Updates</span> <span class="readout__value rack-unit__updates">{% if blank %}{% elif host.updates is None %}n/a{% else %}{{ host.updates.total }}{% if host.updates.security %} ({{ host.updates.security }} security){% endif %}{% endif %}</span></span>
+      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Containers</span> <span class="readout__value rack-unit__containers">{% if blank %}{% elif host.containers is None %}n/a{% elif host.containers.failing %}{{ host.containers.total }} · {{ host.containers.failing }} failing{% else %}{{ host.containers.running }} running{% endif %}</span></span>
+      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Disk</span> <span class="readout__value"><span class="rack-unit__disk">{% if blank %}{% elif host.disk_max_percent is None %}n/a{% else %}{{ host.disk_max_percent }}%{% endif %}</span>{% if blank or host.disk_max_percent is not None %}<span class="readout__meter" aria-hidden="true">{% include "components/meter.html" with percent=host.disk_max_percent|default:0 label="Largest disk" %}</span>{% endif %}</span></span>
+    </span>
+    <span class="rack-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+  </a>
+</li>
+{% endif %}
