@@ -3,6 +3,7 @@
               (tokens.css) so both themes control them; focus rings live in section 0.
    Section 2: the loader, from section 4.4b.
    Section 3: small shell pieces the handoff describes but gives no CSS for.
+   Last block: the host detail page's app panels (components/app_panel.html, handoff 5.4).
    Rule: no borders and no 1px divider lines anywhere. Edges come from light and shadow;
    list rows are separated by spacing. */
 
@@ -390,4 +391,94 @@ summary { padding-block: 11px; cursor: pointer; }
 @media (min-width: 900px) {
   .host-preview__scroll { padding: var(--pad-card-desk) var(--pad-card-desk) var(--space-2); }
   .host-preview__keys { padding: var(--space-3) var(--pad-card-desk) var(--pad-card-desk); }
+}
+
+/* --- Host detail body (detail.html, components/app_panel.html, components/panels/) -------
+   A component, so it lives here, not in pages.css (whose auto-fill guard is for the host
+   rack, which stays one column). No lines anywhere: rows are separated by spacing only. */
+.mono { font-family: var(--font-code); font-size: 14px; }
+
+/* "Needs your attention": one row per issue, icon | text | severity chip. */
+.issue-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.issue-line { display: flex; align-items: center; gap: var(--gap-icon); font-size: 16px; }
+.issue-line__text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.issue-line > .chip, .issue-line__icon { flex: none; }
+.issue-line--yellow .issue-line__icon { color: var(--amber-chip-text); }
+.issue-line--info, .issue-line--info .issue-line__icon { color: var(--text-muted); }
+
+/* App panels: a grid, as many 420px+ columns as fit (2 on desktop), one column on phones.
+   min(420px, 100%) keeps a narrow screen from overflowing. Panels keep their own height. */
+.app-panels { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
+  gap: var(--space-6); align-items: start; }
+.app-panel { min-width: 0; }
+/* Header: icon well | name | chip, then the facts line (and the offline note) under the name. */
+.app-panel__head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "icon title status" ". facts facts" ". stale stale";
+  column-gap: var(--space-3); row-gap: 2px; align-items: center; }
+.app-panel__icon { grid-area: icon; width: 38px; height: 38px; border-radius: 12px; display: flex;
+  align-items: center; justify-content: center; color: var(--accent-text); }
+.app-panel__title { grid-area: title; margin: 0; font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
+.app-panel__status { grid-area: status; }
+.app-panel__facts { grid-area: facts; margin: 0; font-size: 14px; font-weight: 600; color: var(--text-muted); }
+.app-panel__stale-note { grid-area: stale; margin: 0; font-size: 13px; font-weight: 700; color: var(--text-faint); }
+.app-panel__body { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.app-panel__subtitle { margin: var(--space-1) 0 0; font-size: 15px; font-weight: 800; }
+/* Offline host: the body is the last report's data, so it's muted. */
+.app-panel--stale .app-panel__body, .app-panel--stale .item-row__name { color: var(--text-faint); }
+
+/* "First match, else fallback" chips (app_panel.html, container_row.html): only the first shows. */
+.chip-pick { display: inline-flex; flex: none; }
+.chip-pick > .chip ~ .chip { display: none; }
+
+/* System: small recessed readouts. */
+.readouts { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-3); }
+.readout-well { min-width: 0; padding: 12px 14px; border-radius: 16px; display: flex;
+  flex-direction: column; gap: 2px; }
+.readout-well__label { font-size: 13px; font-weight: 700; color: var(--text-faint); }
+.readout-well__value { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+
+/* Docker / Systemd rows: name + chip on one line, status text under them. */
+.item-list { display: flex; flex-direction: column; }
+.item-list > .item-row { padding: 6px 0; }
+.item-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3);
+  row-gap: 2px; align-items: center; }
+.item-row__name { min-width: 0; display: flex; align-items: center; gap: var(--gap-icon);
+  font-weight: 700; overflow-wrap: anywhere; }
+.item-row__name > span { min-width: 0; }
+.item-row__chip { justify-self: end; }
+.item-row__note { grid-column: 1 / -1; font-size: 14px; color: var(--text-muted); overflow-wrap: anywhere; }
+.item-row--red .item-row__name { color: var(--red-chip-text); }
+
+/* "Show 7 healthy" / "Show 4 more" (disclosure.js): the chevron turns when open. */
+.show-more { align-self: flex-start; }
+.show-more__chev { flex: none; transition: transform var(--ease); }
+.show-more[aria-expanded="true"] .show-more__chev { transform: rotate(180deg); }
+
+/* Systemd timers: the table scrolls sideways inside its well, the page never does. */
+.table-scroll { max-width: 100%; }
+.table-scroll table { width: 100%; }
+.table-scroll th { font-size: 12px; font-weight: 800; color: var(--text-faint); }
+.table-scroll td.mono { font-size: 13px; }
+
+/* Disks: mount | meter | percent. The meter is a recessed track (.well) with a raised fill. */
+.disk-list { display: flex; flex-direction: column; }
+.disk-list > .disk-line { padding: 6px 0; }
+.disk-line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(80px, 2fr) 3.5em;
+  align-items: center; gap: var(--space-3); }
+.disk-line__mount { min-width: 0; overflow-wrap: anywhere; }
+.disk-line__percent { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.disk-line .meter { height: 12px; border-radius: 6px; }
+.disk-line .meter::-webkit-meter-bar { height: 12px; border-radius: 6px; }
+.disk-line .meter::-webkit-meter-optimum-value,
+.disk-line .meter::-webkit-meter-suboptimum-value,
+.disk-line .meter::-webkit-meter-even-less-good-value {
+  border-radius: 6px; background: linear-gradient(180deg, var(--fill-hi), transparent 55%, var(--fill-shade)), var(--meter-color);
+  box-shadow: inset 0 1px 0 var(--fill-rim); }
+.disk-line .meter::-moz-meter-bar {
+  border-radius: 6px; background: linear-gradient(180deg, var(--fill-hi), transparent 55%, var(--fill-shade)), var(--meter-color);
+  box-shadow: inset 0 1px 0 var(--fill-rim); }
+
+@media (prefers-reduced-motion: reduce) {
+  .show-more__chev { transition: none; }
 }

@@ -1,0 +1,5 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{# An issue severity in words. Usage: {% include "components/severity_chip.html" with severity=issue.severity %} #}
+{# red -> "Needs you", yellow -> "Heads up", anything else (info) -> neutral "Info". #}
+{# Optional label= replaces the words but keeps the color (e.g. a container's state). #}
+{% if severity == "red" %}{% include "components/chip.html" with status="red" label=label|default:"Needs you" %}{% elif severity == "yellow" %}{% include "components/chip.html" with status="yellow" label=label|default:"Heads up" %}{% else %}{% include "components/chip.html" with status="info" label=label|default:"Info" %}{% endif %}

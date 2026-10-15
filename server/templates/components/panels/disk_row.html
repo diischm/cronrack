@@ -1,0 +1,7 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{# One mount (Disks panel). `d` = {"mount", "percent", "level"}. #}
+<li class="disk-line">
+  <span class="disk-line__mount mono">{{ d.mount }}</span>
+  {% include "components/meter.html" with percent=d.percent level=d.level label=d.mount %}
+  <span class="disk-line__percent">{{ d.percent }}%</span>
+</li>

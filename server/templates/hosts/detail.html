@@ -1,8 +1,10 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ host.name }} · CronRack{% endblock %}
 {% block main_class %}app-main--detail{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/disclosure.js' %}" defer></script>{% endblock %}
 
 {% block content %}
   {% if example %}
@@ -13,66 +15,69 @@
     </section>
   {% endif %}
   {% comment %}
-    Header card: left group = back key, name, lamp + chip, and one meta line under the name;
-    right group = Check now + Host settings. Wraps below 600px (pages.css .host-head).
+    Header card (pages.css .host-head). Desktop: three columns, back key | title group | keys.
+    The title group is lamp + name + chip on one row, the meta line 8px under it, lined up
+    with the name text (not the lamp, not the back key). Card narrower than 600px: back key,
+    title row, meta line and keys each on their own line.
   {% endcomment %}
   <header class="surface host-head">
-    <div class="host-head__main">
-      <div class="host-head__title">
-        <a class="btn btn--icon" href="{% url 'overview' %}" aria-label="Back">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
-        </a>
-        <h1 class="page-title host-head__name">{{ host.name }}</h1>
-        {% if host.status == "offline" %}
-          {% include "components/lamp.html" with status="off" %}
-        {% else %}
-          {# Waiting for the first report: unlit lamp, the "Waiting" chip says it in words. #}
-          <span class="lamp-label">{% if host.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=host.status %}{% endif %}{% include "components/chip.html" with status=host.status label=host.status_label %}</span>
+    <div class="host-head__grid">
+      <a class="btn btn--icon host-head__back" href="{% url 'overview' %}" aria-label="Back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+      </a>
+      <div class="host-head__main">
+        <div class="host-head__title">
+          <div class="host-head__ident">
+            {# Offline and waiting: unlit lamp. Offline has no chip (the meta line says it); waiting says "Waiting". #}
+            {% if host.status == "offline" or host.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=host.status %}{% endif %}
+            <h1 class="page-title host-head__name">{{ host.name }}</h1>
+          </div>
+          {% if host.status != "offline" %}{% include "components/chip.html" with status=host.status label=host.status_label %}{% endif %}
+        </div>
+        {# Offline: no chip, so this line carries the status in words (faint, "Offline" in bold). #}
+        <div class="host-head__report">
+          <p class="host-head__meta{% if host.status == 'offline' %} offline-note{% endif %}">{% if host.status == "offline" %}<strong>Offline</strong> · last report{% else %}Last report{% endif %} {{ host.last_seen_human }} · Agent {% if host.agent_version %}v{{ host.agent_version }}{% else %}version unknown (no report yet){% endif %} · Server v{{ server_version }}</p>
+          {# Shown by actions.js while "Check now" waits for the agent (only after 300ms). #}
+          <span class="loader loader--sm surface" role="status" aria-label="Waiting for the agent" id="check-loader" hidden><span></span><span></span><span></span></span>
+        </div>
+        {% if host.status == "offline" and not example %}
+          <p class="host-head__note" id="check-offline-note">Check now needs the agent online</p>
         {% endif %}
       </div>
-      {# Offline: no chip, so this line carries the status in words (faint, "Offline" in bold). #}
-      <div class="host-head__report">
-        <p class="host-head__meta{% if host.status == 'offline' %} offline-note{% endif %}">{% if host.status == "offline" %}<strong>Offline</strong> · last report{% else %}Last report{% endif %} {{ host.last_seen_human }} · Agent {% if host.agent_version %}v{{ host.agent_version }}{% else %}version unknown (no report yet){% endif %} · Server v{{ server_version }}</p>
-        {# Shown by actions.js while "Check now" waits for the agent (only after 300ms). #}
-        <span class="loader loader--sm surface" role="status" aria-label="Waiting for the agent" id="check-loader" hidden><span></span><span></span><span></span></span>
-      </div>
-      {% if host.status == "offline" and not example %}
-        <p class="host-head__note" id="check-offline-note">Check now needs the agent online</p>
-      {% endif %}
-    </div>
-    {# The example has no agent and no settings, so neither key is shown there. #}
-    {% if not example %}
-    <div class="host-head__actions">
-      {% comment %}
-        Works without JS (the server redirects back here with a flash message, shown as a
-        toast). With JS, actions.js sends it with fetch, shows the loader and polls
-        status.json (handoff 5.4); errors appear as a toast.
-        Offline host: nothing to ask, so the key is rendered disabled. It's type="button"
-        outside any form (it can't submit, with or without JS) and stays focusable
-        (aria-disabled, not disabled), so screen readers find it and its note.
-      {% endcomment %}
-      <div class="action-group">
-        {% if host.status == "offline" %}
-          <button type="button" class="btn" aria-disabled="true" aria-describedby="check-offline-note">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg>
-            Check now
-          </button>
-        {% else %}
-          <form class="js-fetch-action" method="post" action="{% url 'host-collect' host.id %}" data-action="check-host" data-status-url="{% url 'host-status-json' host.id %}" data-loader="check-loader">
-            {% csrf_token %}
-            <button type="submit" class="btn">
+      {# The example has no agent and no settings, so neither key is shown there. #}
+      {% if not example %}
+      <div class="host-head__actions">
+        {% comment %}
+          Works without JS (the server redirects back here with a flash message, shown as a
+          toast). With JS, actions.js sends it with fetch, shows the loader and polls
+          status.json (handoff 5.4); errors appear as a toast.
+          Offline host: nothing to ask, so the key is rendered disabled. It's type="button"
+          outside any form (it can't submit, with or without JS) and stays focusable
+          (aria-disabled, not disabled), so screen readers find it and its note.
+        {% endcomment %}
+        <div class="action-group">
+          {% if host.status == "offline" %}
+            <button type="button" class="btn" aria-disabled="true" aria-describedby="check-offline-note">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg>
               Check now
             </button>
-          </form>
-        {% endif %}
+          {% else %}
+            <form class="js-fetch-action" method="post" action="{% url 'host-collect' host.id %}" data-action="check-host" data-status-url="{% url 'host-status-json' host.id %}" data-loader="check-loader">
+              {% csrf_token %}
+              <button type="submit" class="btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg>
+                Check now
+              </button>
+            </form>
+          {% endif %}
+        </div>
+        <a class="btn" href="{% url 'host-settings' host.id %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"></path></svg>
+          Host settings
+        </a>
       </div>
-      <a class="btn" href="{% url 'host-settings' host.id %}">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"></path></svg>
-        Host settings
-      </a>
+      {% endif %}
     </div>
-    {% endif %}
   </header>
 
   {% if not host.has_report %}
@@ -81,15 +86,19 @@
       <p>Waiting for {{ host.name }} to check in…</p>
     </section>
   {% else %}
-    <section class="surface panel">
-      <h2 class="section-title">Problems</h2>
+    {% comment %}
+      Problems first: every current issue, red (warning icon) then yellow then info (muted).
+      Offline: the fixed "stopped reporting" row and the agent commands come first. Online
+      with no issues: one calm line, but the panel stays, so the page doesn't jump.
+    {% endcomment %}
+    <section class="surface panel attention" aria-labelledby="attention-title">
+      <h2 class="section-title" id="attention-title">Needs your attention</h2>
       {% if host.status == "offline" %}
         {# Fixed text, not host data. The commands are copy-only: CronRack never runs them. #}
-        <ul class="rows plain-list">
-          <li class="issue-row">
-            <svg class="issue-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>
-            {% include "components/chip.html" with status="red" label="red" %}
-            <span>This host stopped reporting. Last report {{ host.last_seen_human }}.</span>
+        <ul class="issue-list plain-list">
+          <li class="issue-line">
+            <svg class="issue-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>
+            <span class="issue-line__text">This host stopped reporting. Last report {{ host.last_seen_human }}.</span>
           </li>
         </ul>
         <div class="code-head">
@@ -100,80 +109,31 @@
 sudo journalctl -u cronrack-agent -n 50 --no-pager</pre>
       {% endif %}
       {% if issues %}
-        <ul class="rows plain-list">
-          {% for issue in issues %}
-            <li>{% include "components/chip.html" with status=issue.severity label=issue.severity %} {{ issue.text }}</li>
-          {% endfor %}
+        <ul class="issue-list plain-list">
+          {% for issue in issues %}{% if issue.severity == "red" %}{% include "components/issue_line.html" %}{% endif %}{% endfor %}
+          {% for issue in issues %}{% if issue.severity == "yellow" %}{% include "components/issue_line.html" %}{% endif %}{% endfor %}
+          {% for issue in issues %}{% if issue.severity != "red" and issue.severity != "yellow" %}{% include "components/issue_line.html" %}{% endif %}{% endfor %}
         </ul>
       {% elif host.status != "offline" %}
-        <p class="muted">Nothing needs you.</p>
+        <p class="muted">Nothing needs you on this host.</p>
       {% endif %}
     </section>
 
-    <section class="surface panel">
-      <h2 class="section-title">Updates</h2>
-      {% if updates is None %}
-        <p class="muted">Not available on this host</p>
-      {% else %}
-        <p>{{ updates.total }} pending, {{ updates.security }} security</p>
-        {% if updates.reboot_required %}{% include "components/chip.html" with status="yellow" label="Reboot needed" %}{% endif %}
-      {% endif %}
-    </section>
-
-    <section class="surface panel">
-      <h2 class="section-title">Containers</h2>
-      {% if containers is None %}
-        <p class="muted">Not available on this host</p>
-      {% else %}
-        <ul class="rows plain-list">
-          {% for c in containers.problems %}<li><strong>{{ c.name }}</strong> · {{ c.state }} · {{ c.status }}</li>{% endfor %}
-        </ul>
-        {% if containers.healthy %}
-          <details>
-            <summary>Show {{ containers.healthy|length }} healthy</summary>
-            <ul class="rows plain-list">
-              {% for c in containers.healthy %}<li>{{ c.name }} · {{ c.status }}</li>{% endfor %}
-            </ul>
-          </details>
-        {% endif %}
-      {% endif %}
-    </section>
-
-    <section class="surface panel">
-      <h2 class="section-title">Systemd</h2>
-      {% if failed_units is None %}
-        <p class="muted">Failed units: not available on this host</p>
-      {% elif failed_units %}
-        <ul class="rows plain-list">{% for unit in failed_units %}<li>{{ unit }} failed</li>{% endfor %}</ul>
-      {% else %}
-        <p class="muted">No failed units.</p>
-      {% endif %}
-      {% if timers is None %}
-        <p class="muted">Timers: not available on this host</p>
-      {% elif timers %}
-        <div class="well table-scroll">
-          <table>
-            <thead><tr><th scope="col">Timer</th><th scope="col">Last run</th><th scope="col">Next run</th></tr></thead>
-            <tbody>
-              {% for t in timers %}<tr><td>{{ t.name }}</td><td>{{ t.last_run }}</td><td>{{ t.next_run }}</td></tr>{% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% endif %}
-    </section>
-
-    <section class="surface panel">
-      <h2 class="section-title">Disk</h2>
-      {% if disks is None %}
-        <p class="muted">Not available on this host</p>
-      {% else %}
-        <ul class="rows plain-list">
-          {% for d in disks %}
-            <li class="disk-row"><span class="disk-row__mount">{{ d.mount }}</span> {% include "components/meter.html" with percent=d.percent label=d.mount %} <span class="disk-row__fixed">{{ d.percent }}%</span>{% if d.level != "green" %} <span class="disk-row__fixed">{% include "components/chip.html" with status=d.level label=d.level %}</span>{% endif %}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    </section>
+    {% comment %}
+      App panels (handoff 5.4), one per detected app. THE PANEL ORDER IS DEFINED HERE, and
+      only here: one include per app, in display order. To make it configurable later, the
+      view passes an ordered list of app ids and this becomes one loop over it.
+      Each include gets app / title / category / data (see components/app_panel.html); a
+      panel whose data is None renders nothing. issue_groups = the issues grouped by rule
+      category, for the panel chips.
+    {% endcomment %}
+    {% regroup issues|dictsort:"category" by category as issue_groups %}
+    <div class="app-panels">
+      {% include "components/panels/system.html" with app="system" title="System" category="updates" data=updates %}
+      {% include "components/panels/docker.html" with app="docker" title="Docker" category="docker" data=containers %}
+      {% include "components/panels/systemd.html" with app="systemd" title="Systemd" category="systemd" data=failed_units|default_if_none:timers %}
+      {% include "components/panels/disks.html" with app="disks" title="Disks" category="disk" data=disks %}
+    </div>
   {% endif %}
 
 {% endblock %}

@@ -1,0 +1,7 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{# One problem container (Docker panel): name, state chip, status text. `c` = {"name", "state", "status"}. #}
+<li class="item-row">
+  <span class="item-row__name mono">{{ c.name }}</span>
+  <span class="item-row__chip chip-pick">{% for issue in issues %}{% if issue.subject == "container:"|add:c.name %}{% include "components/severity_chip.html" with severity=issue.severity label=c.state %}{% endif %}{% endfor %}{% include "components/chip.html" with status="info" label=c.state %}</span>
+  <span class="item-row__note">{{ c.status }}</span>
+</li>

@@ -613,13 +613,43 @@ def test_detail_page_sections(alice_client: Client, alice):
     assert {"text", "severity", "why", "fix", "fingerprint"} <= set(ctx["issues"][0])
 
 
-def test_detail_sections_can_be_unavailable(alice_client: Client, alice):
+def headings(html: str, level: int = 2) -> list[str]:
+    """The visible text of every <hN> on the page, in order."""
+    found = re.findall(rf"<h{level}\b[^>]*>(.*?)</h{level}>", html, flags=re.DOTALL)
+    return [visible_text(h) for h in found]
+
+
+def visible_text(fragment: str) -> str:
+    """Markup removed, entities decoded, whitespace collapsed."""
+    return " ".join(html_lib.unescape(re.sub(r"<[^>]+>", " ", fragment)).split())
+
+
+def item_text(html: str, needle: str) -> str:
+    """The visible text of the list item that contains `needle`."""
+    for item in re.findall(r"<li\b.*?</li>", html, flags=re.DOTALL):
+        text = visible_text(item)
+        if needle in text:
+            return text
+    raise AssertionError(f"no list item contains {needle!r}")
+
+
+APP_PANELS = ("System", "Docker", "Systemd", "Disks")
+
+
+def test_detail_hides_panels_without_data(alice_client: Client, alice):
     report = make_report(updates=None, containers=None, failed_units=None, timers=None, disks=None)
     host = make_host(alice, "tiny", "green", report)
     response = alice_client.get(f"/hosts/{host.pk}/")
     for key in ("updates", "containers", "failed_units", "timers", "disks"):
         assert response.context[key] is None
-    assert "Not available on this host" in response.content.decode()
+    html = response.content.decode()
+    assert not set(APP_PANELS) & set(headings(html))
+    assert "Not available" not in html
+
+    # Panels WITH data are still rendered; only the missing app (Docker) is gone.
+    host = make_host(alice, "no-docker", "green", make_report(containers=None))
+    shown = headings(alice_client.get(f"/hosts/{host.pk}/").content.decode())
+    assert [h for h in shown if h in APP_PANELS] == ["System", "Systemd", "Disks"]
 
 
 def test_detail_waiting_state(alice_client: Client, host):

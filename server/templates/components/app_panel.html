@@ -1,0 +1,39 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  One app panel on the host detail page (handoff 5.4): a raised .surface with a header
+  (icon in a small well, app name, status chip, one facts line) and a body.
+
+  Don't include this file directly. Each app has its own file in components/panels/ that
+  {% extends %} this one and fills three blocks: icon, facts and body. detail.html includes
+  those files, passing:
+    app       short id, used for element ids ("docker" -> id="panel-docker")
+    title     the heading ("Docker")
+    category  the rule category whose issues set the chip ("docker"; see rules/base.py)
+    data      the panel's data from detail_context(); None = app not detected
+  The page context (host, issues, issue_groups, ...) is visible here as usual.
+
+  - data is None: nothing at all is rendered (no empty "Not available" boxes).
+  - Chip: the worst severity among this category's current issues (the backend already
+    applied the user's overrides, exceptions and snoozes), else "All good". Every matching
+    chip is rendered, worst first, then the "All good" fallback; .chip-pick shows only the
+    first one. Templates can't keep a variable across a loop, so that's how "first match,
+    else fallback" is done without computing anything new.
+  - Offline host: the body is the last report's data, so it's muted, the header says how
+    old it is, and there is no status chip (an offline host never shows one: its status
+    could have changed since).
+  Lamps are for the host itself (header), never inside panels.
+{% endcomment %}
+{% if data is not None %}
+<section class="surface panel app-panel{% if host.status == 'offline' %} app-panel--stale{% endif %}" aria-labelledby="panel-{{ app }}">
+  <div class="app-panel__head">
+    <span class="app-panel__icon well" aria-hidden="true">{% block icon %}{% endblock %}</span>
+    <h2 class="app-panel__title" id="panel-{{ app }}">{{ title }}</h2>
+    {% if host.status != "offline" %}<span class="app-panel__status chip-pick">{% for group in issue_groups %}{% if group.grouper == category %}{% include "components/severity_chip.html" with severity=group.list.0.severity label=None %}{% endif %}{% endfor %}{% include "components/chip.html" with status="green" label="All good" %}</span>{% endif %}
+    <p class="app-panel__facts">{% block facts %}{% endblock %}</p>
+    {% if host.status == "offline" %}<p class="app-panel__stale-note">From the last report, {{ host.last_seen_human }}</p>{% endif %}
+  </div>
+  <div class="app-panel__body">
+    {% block body %}{% endblock %}
+  </div>
+</section>
+{% endif %}

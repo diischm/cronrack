@@ -1,0 +1,25 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "components/app_panel.html" %}
+{% comment %}
+  Disks panel. data = detail_context()["disks"]: [{"mount", "percent", "level"}, ...].
+  One row per mount: mount point (mono), a recessed meter with a raised fill colored by the
+  backend's level (neutral / amber / red), and the percent as text. More than 8 mounts:
+  the rest behind "Show N more".
+{% endcomment %}
+{% block icon %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12H2"></path><path d="M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6l3.5-7z"></path><path d="M6 16h.01M10 16h.01"></path></svg>{% endblock %}
+{% block facts %}{{ data|length }} mount{{ data|length|pluralize }}{% if data %}{% with fullest=data|dictsortreversed:"percent"|first %} · fullest {{ fullest.percent }}%{% endwith %}{% endif %}{% endblock %}
+{% block body %}
+  {% if data %}
+    <ul class="disk-list plain-list">
+      {% for d in data|slice:":8" %}{% include "components/panels/disk_row.html" %}{% endfor %}
+    </ul>
+    {% if data|length > 8 %}
+      {% include "components/show_more.html" with target="disks-more" count=data|length|add:"-8" noun="more" %}
+      <ul class="disk-list plain-list" id="disks-more">
+        {% for d in data|slice:"8:" %}{% include "components/panels/disk_row.html" %}{% endfor %}
+      </ul>
+    {% endif %}
+  {% else %}
+    <p class="muted">No disks reported.</p>
+  {% endif %}
+{% endblock %}
