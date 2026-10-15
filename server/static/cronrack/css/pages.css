@@ -12,6 +12,9 @@ html, body { overflow-x: hidden; }
 /* Top bar */
 .topbar { padding: var(--space-5) var(--space-5) var(--space-2); display: flex; align-items: center; justify-content: space-between; }
 .topbar__actions { display: flex; gap: var(--space-3); }
+/* Phone: a page's own icon keys in the top bar (overview: "Check all now"), 12px apart like
+   the theme and Add host keys. Hidden from 900px (desktop has labelled keys in the page head). */
+.topbar__form { display: flex; }
 
 /* Main content. --stack-gap is the space between stacked blocks (cards, sections); a heading
    directly inside the stack pulls the next block up to --space-3 (see .section-title below). */
@@ -38,6 +41,8 @@ html, body { overflow-x: hidden; }
 .activity__row { padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
 .activity__text { overflow-wrap: anywhere; }
 .activity__time { color: var(--text-muted); white-space: nowrap; }
+/* The lamp of the state the host went to, at every width (unlit for "went offline"). */
+.activity__lamp { display: flex; }
 
 /* Empty state */
 /* Empty states and error pages: one card, never wider than 440px, centered. */
@@ -153,20 +158,12 @@ html, body { overflow-x: hidden; }
 /* Heading + content stacks: 12px under the heading. */
 .overview-hosts, .away { gap: var(--space-3); }
 .overview-head__text { gap: 4px; }
-/* Phone: the "Check all now" icon key sits under the subline (the headline row has no room
-   for a 44px key at 360px without squeezing "N things need you"). */
-.overview-head__actions { margin-top: var(--space-2); }
-
-/* Fetch actions (actions.js): a key with its inline result line under it. The result is an
-   aria-live region, so it stays rendered (no display:none) and takes no space while empty.
-   width:0 + min-width:100% lets the text wrap at the key's width instead of widening the key. */
+/* Fetch actions (actions.js): a key in its own group. Results appear as toasts. */
 .action-group { display: flex; flex-direction: column; }
-.action-result { width: 0; min-width: 100%; margin: 0; font-size: 14px; font-weight: 700;
-  color: var(--text-muted); overflow-wrap: anywhere; }
-.action-result:not(:empty) { margin-top: 6px; }
-.action-result--error { color: var(--red-chip-text); }
 /* Host detail: the small loader sits right of "Last report". */
 .host-head__report { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+/* Host detail, offline host: why "Check now" is disabled (small, under the meta line). */
+.host-head__note { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-muted); }
 
 /* Small loader (handoff 4.4b): a 36px tile next to "updated X ago". */
 .loader.loader--sm { width: 36px; height: 36px; flex: none; border-radius: 12px; gap: 3px; }
@@ -215,7 +212,7 @@ html, body { overflow-x: hidden; }
   .app:not(.app--bare) .topbar__actions { grid-area: actions; justify-self: end; align-items: center;
     gap: var(--space-4); }
   .side-version { margin: 0; font-size: 13px; color: var(--text-muted); white-space: nowrap; }
-  .add-key { display: none; }
+  .add-key, .topbar__form { display: none; }
 
   /* Nav: the same recessed track and raised active segment, now horizontal, icon left of label.
      The phone's floating dock has no box here: its <nav> is a grid item of the top bar. */
@@ -250,9 +247,6 @@ html, body { overflow-x: hidden; }
   .overview-head__sub { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   .overview-head__actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 0; }
   .overview-head__actions form { display: flex; }
-  .overview-check--phone { display: none; }
-  /* The result line wraps onto its own full-width row under headline + keys. */
-  .overview-head__result { flex: 1 1 100%; }
   /* Header keys: 15px label, except the primary key, which keeps 19px / 800 from
      components.css (white on orange must stay large text). */
   .btn--head { min-height: 48px; padding: 0 20px; }
@@ -262,11 +256,12 @@ html, body { overflow-x: hidden; }
   /* Summary tiles: 2 per row on narrow desktops, 4 from 1200px. */
   .summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
   .tile { padding: 20px 22px; display: flex; flex-direction: column; gap: 10px; }
-  /* Lamp tiles are .lamp-label (gap from the component); the icon tile uses --gap-icon. */
-  .tile__label { display: flex; align-items: center; font-size: 14px;
+  /* Tiles are summaries, so no lamps (those are for single hosts): an orange line icon
+     (20px, decorative) with the label next to it, 10px apart. */
+  .tile__label { display: flex; align-items: center; gap: var(--gap-icon); font-size: 14px;
     font-weight: 700; color: var(--text-muted); }
-  .tile__label--icon { gap: var(--gap-icon); }
   .tile__icon { flex: none; color: var(--accent-text); }
+  .tile__offline { display: flex; align-items: center; gap: var(--gap-icon); }
   .tile__value { margin: 0; font-size: 34px; font-weight: 800; line-height: 1; }
   .tile__unit { font-size: 15px; font-weight: 700; color: var(--text-faint); }
   .tile .offline-note { font-size: 14px; }
@@ -286,7 +281,6 @@ html, body { overflow-x: hidden; }
   .away .section-link { font-size: 14px; }
   .away .activity { padding: 0; gap: 12px; border-radius: 0; background: none; box-shadow: none; }
   .away .activity__row { padding: 8px 0; align-items: center; gap: 12px; }
-  .activity__lamp { display: flex; }
   .away .activity__text { flex: 1 1 auto; }
   .away .activity__time { font-size: 14px; color: var(--text-faint); }
 }

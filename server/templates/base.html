@@ -23,18 +23,18 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body>
-  {% if messages %}
-    <div class="toasts" role="status" aria-live="polite">
-      {% for message in messages %}
-        <div class="toast surface" data-toast>
-          <span>{{ message }}</span>
-          <button type="button" class="btn btn--icon" aria-label="Dismiss" data-toast-dismiss>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
-          </button>
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
+  {% comment %}
+    Toast area (handoff 5.0): flash messages from the server, and the results of the fetch
+    actions (actions.js), which messages.js clones from #toast-template. Always rendered, so
+    the aria-live region exists before anything is added to it. messages.js: auto-dismiss
+    (4s, errors 8s), paused while hovered or focused, at most 3 at a time.
+  {% endcomment %}
+  <div class="toasts" id="toasts" role="status" aria-live="polite">
+    {% for message in messages %}
+      {% if message.level_tag == "error" %}{% include "components/toast.html" with text=message error=True %}{% else %}{% include "components/toast.html" with text=message %}{% endif %}
+    {% endfor %}
+  </div>
+  <template id="toast-template">{% include "components/toast.html" with text="" error=False %}</template>
 
   {% comment %}
     One set of markup for both layouts. Below 900px: top bar, content, bottom nav.
@@ -58,6 +58,8 @@
           <svg class="ico-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
         </button>
         {% if user.is_authenticated %}
+        {# Page-specific phone keys between the theme key and Add host (overview: Check all now). #}
+        {% block topbar_keys %}{% endblock %}
         <a class="btn btn--icon add-key" href="/hosts/add/" aria-label="Add host">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
         </a>

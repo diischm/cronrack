@@ -19,12 +19,11 @@
     <button type="submit" class="btn btn--primary">Save</button>
   </form>
 
-  {# Works without JS (redirects back here with a flash message); actions.js shows the result inline. #}
-  <form class="surface panel form js-fetch-action" method="post" action="{% url 'test-alert' %}" data-action="test-alert" data-result="test-alert-result">
+  {# Works without JS (redirects back here with a flash message); with JS, actions.js sends it with fetch. Either way the result is a toast. #}
+  <form class="surface panel form js-fetch-action" method="post" action="{% url 'test-alert' %}" data-action="test-alert">
     {% csrf_token %}
     <div class="action-group">
       <button type="submit" class="btn">Send test alert</button>
-      <p class="action-result" id="test-alert-result" aria-live="polite"></p>
     </div>
   </form>
 

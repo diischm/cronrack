@@ -1,0 +1,13 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  One toast (handoff 5.0). Used for Django flash messages (base.html) and, inside
+  <template id="toast-template">, cloned by messages.js for fetch-action results, so
+  JS and no-JS toasts are the same markup. error=True: red text, stays 8s instead of 4s.
+  The text is autoescaped; JS fills it with textContent only.
+{% endcomment %}
+<div class="toast surface{% if error %} toast--error{% endif %}">
+  <p class="toast__text">{{ text }}</p>
+  <button type="button" class="btn btn--icon toast__close" aria-label="Dismiss">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+  </button>
+</div>
