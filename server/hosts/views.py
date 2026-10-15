@@ -5,16 +5,20 @@ get_owned_host(), which answers 404 for anyone else's host (IDOR protection).
 All views require login; POST views are CSRF-protected by CsrfViewMiddleware.
 """
 
+from datetime import UTC
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.template.defaultfilters import pluralize
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from cronrack.http import wants_json
 from hosts.access import get_owned_host
 from hosts.forms import DeleteHostForm, HostNameForm
 from hosts.humanize import ago
@@ -110,25 +114,58 @@ def host_detail(request: HttpRequest, host_id: int) -> HttpResponse:
 def host_status_json(request: HttpRequest, host_id: int) -> JsonResponse:
     host = get_owned_host(request.user, host_id)
     now = timezone.now()
+    received = host.report_received_at
     return JsonResponse(
-        {"status": effective_status(host, now), "last_seen_human": ago(host.last_seen_at, now)}
+        {
+            "status": effective_status(host, now),
+            "last_seen_human": ago(host.last_seen_at, now),
+            # A stable "new report" signal for Check now: it changes only when a report
+            # is saved (last_seen_human is relative and changes every second on its own).
+            "report_received_at": received.astimezone(UTC).isoformat() if received else None,
+        }
     )
 
 
+OFFLINE_ERROR = "Host is offline, so the agent can't be reached."
+
+
 @login_required
 @require_POST
-def host_collect(request: HttpRequest, host_id: int) -> JsonResponse:
+def host_collect(request: HttpRequest, host_id: int) -> HttpResponse:
+    """Check now: ask one host's agent to report.
+
+    fetch (Accept: application/json) gets JSON; a plain form POST is redirected back
+    to the host page (a fixed URL, never the Referer) with a flash message.
+    """
     host = get_owned_host(request.user, host_id)
+    if not host.connected:
+        # Nothing to send to: no agent socket is open for this host.
+        if wants_json(request):
+            return JsonResponse({"ok": False, "error": OFFLINE_ERROR}, status=409)
+        messages.error(request, OFFLINE_ERROR)
+        return redirect("host-detail", host_id=host.pk)
     request_collect(host)
-    return JsonResponse({"ok": True}, status=202)
+    if wants_json(request):
+        return JsonResponse({"ok": True}, status=202)
+    messages.success(request, f"Asked {host.name} to report now.")
+    return redirect("host-detail", host_id=host.pk)
 
 
 @login_required
 @require_POST
-def host_collect_all(request: HttpRequest) -> JsonResponse:
-    for host in Host.objects.filter(owner=request.user, connected=True):
-        request_collect(host)
-    return JsonResponse({"ok": True}, status=202)
+def host_collect_all(request: HttpRequest) -> HttpResponse:
+    """Check all now: ask every connected host the user owns; never anyone else's."""
+    asked = offline = 0
+    for host in Host.objects.filter(owner=request.user):
+        if host.connected:
+            request_collect(host)
+            asked += 1
+        else:
+            offline += 1
+    if wants_json(request):
+        return JsonResponse({"ok": True, "asked": asked, "offline": offline}, status=202)
+    messages.success(request, f"Asked {asked} host{pluralize(asked)} · {offline} offline.")
+    return redirect("overview")
 
 
 @never_cache

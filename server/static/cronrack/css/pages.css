@@ -131,7 +131,20 @@ html, body { overflow-x: hidden; }
 /* Heading + content stacks: 12px under the heading. */
 .overview-hosts, .away { gap: var(--space-3); }
 .overview-head__text { gap: 4px; }
-.overview-head__error { font-size: 14px; font-weight: 700; color: var(--red-chip-text); }
+/* Phone: the "Check all now" icon key sits under the subline (the headline row has no room
+   for a 44px key at 360px without squeezing "N things need you"). */
+.overview-head__actions { margin-top: var(--space-2); }
+
+/* Fetch actions (actions.js): a key with its inline result line under it. The result is an
+   aria-live region, so it stays rendered (no display:none) and takes no space while empty.
+   width:0 + min-width:100% lets the text wrap at the key's width instead of widening the key. */
+.action-group { display: flex; flex-direction: column; }
+.action-result { width: 0; min-width: 100%; margin: 0; font-size: 14px; font-weight: 700;
+  color: var(--text-muted); overflow-wrap: anywhere; }
+.action-result:not(:empty) { margin-top: 6px; }
+.action-result--error { color: var(--red-chip-text); }
+/* Host detail: the small loader sits right of "Last report". */
+.host-head__report { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 
 /* Small loader (handoff 4.4b): a 36px tile next to "updated X ago". */
 .loader.loader--sm { width: 36px; height: 36px; flex: none; border-radius: 12px; gap: 3px; }
@@ -208,10 +221,14 @@ html, body { overflow-x: hidden; }
 
   /* Overview header: headline on the left, "Check all now" + "Add host" on the right. */
   .overview-head { margin: 0; flex-direction: row; flex-wrap: wrap; align-items: flex-end;
-    justify-content: space-between; gap: 20px; }
+    justify-content: space-between; gap: 0 20px; }
   .overview-head__text { gap: 6px; }
   .overview-head__sub { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-  .overview-head__actions { display: flex; flex-wrap: wrap; gap: 14px; }
+  .overview-head__actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 0; }
+  .overview-head__actions form { display: flex; }
+  .overview-check--phone { display: none; }
+  /* The result line wraps onto its own full-width row under headline + keys. */
+  .overview-head__result { flex: 1 1 100%; }
   /* Header keys: 15px label, except the primary key, which keeps 19px / 800 from
      components.css (white on orange must stay large text). */
   .btn--head { min-height: 48px; padding: 0 20px; }
