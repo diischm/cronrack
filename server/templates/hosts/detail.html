@@ -15,69 +15,76 @@
     </section>
   {% endif %}
   {% comment %}
-    Header card (pages.css .host-head). Desktop: three columns, back key | title group | keys.
-    The title group is lamp + name + chip on one row, the meta line 8px under it, lined up
-    with the name text (not the lamp, not the back key). Card narrower than 600px: back key,
-    title row, meta line and keys each on their own line.
+    Header = a mini rack (components.css "Rack" + pages.css .host-rack): the overview's
+    chassis with its two ears and screws, a recessed bay, and inside it ONE large raised
+    server unit for this host. The unit is not a link (nothing to press as a whole), so it
+    doesn't lift on hover. Front panel, left to right:
+      back key | lamp | name + status icon, meta line under it | Check now, Host settings | vents
+    The back key is the unit's first control (a front-panel button like the other two), so
+    the whole header is one piece of hardware and Tab goes back -> Check now -> Settings.
+    Unit narrower than 600px (container query): back key + lamp + name + icon on the first
+    row, then the meta line, then the keys side by side; no vents.
+    Offline: unlit lamp, no status icon (the meta line says "Offline · last report …").
+    Waiting: unlit lamp + the hourglass icon. Lamps are for the host itself, never elsewhere.
   {% endcomment %}
-  <header class="surface host-head">
-    <div class="host-head__grid">
-      <a class="btn btn--icon host-head__back" href="{% url 'overview' %}" aria-label="Back">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
-      </a>
-      <div class="host-head__main">
-        <div class="host-head__title">
-          <div class="host-head__ident">
-            {# Offline and waiting: unlit lamp. Offline has no chip (the meta line says it); waiting says "Waiting". #}
-            {% if host.status == "offline" or host.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=host.status %}{% endif %}
-            <h1 class="page-title host-head__name">{{ host.name }}</h1>
-          </div>
-          {% if host.status != "offline" %}{% include "components/chip.html" with status=host.status label=host.status_label %}{% endif %}
+  <header class="host-rack rack-chassis surface">
+    <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
+    <div class="host-rack__bay rack well">
+      <div class="host-unit">
+        <a class="btn btn--icon host-unit__back" href="{% url 'overview' %}" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+        </a>
+        <span class="host-unit__lamp" aria-hidden="true">{% if host.status == "offline" or host.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=host.status %}{% endif %}</span>
+        <div class="host-unit__title">
+          <h1 class="page-title host-unit__name">{{ host.name }}</h1>
+          {% if host.status != "offline" %}{% include "components/status_icon.html" with status=host.status label=host.status_label %}{% endif %}
         </div>
-        {# Offline: no chip, so this line carries the status in words (faint, "Offline" in bold). #}
-        <div class="host-head__report">
-          <p class="host-head__meta{% if host.status == 'offline' %} offline-note{% endif %}">{% if host.status == "offline" %}<strong>Offline</strong> · last report{% else %}Last report{% endif %} {{ host.last_seen_human }} · Agent {% if host.agent_version %}v{{ host.agent_version }}{% else %}version unknown (no report yet){% endif %} · Server v{{ server_version }}</p>
+        {# Offline: no icon, so this line carries the status in words (faint, "Offline" in bold). #}
+        <div class="host-unit__report">
+          <p class="host-unit__meta{% if host.status == 'offline' %} offline-note{% endif %}">{% if host.status == "offline" %}<strong>Offline</strong> · last report{% else %}Last report{% endif %} {{ host.last_seen_human }} · Agent {% if host.agent_version %}v{{ host.agent_version }}{% else %}version unknown (no report yet){% endif %} · Server v{{ server_version }}</p>
           {# Shown by actions.js while "Check now" waits for the agent (only after 300ms). #}
           <span class="loader loader--sm surface" role="status" aria-label="Waiting for the agent" id="check-loader" hidden><span></span><span></span><span></span></span>
+          {% if host.status == "offline" and not example %}
+            <p class="host-unit__note" id="check-offline-note">Check now needs the agent online</p>
+          {% endif %}
         </div>
-        {% if host.status == "offline" and not example %}
-          <p class="host-head__note" id="check-offline-note">Check now needs the agent online</p>
-        {% endif %}
-      </div>
-      {# The example has no agent and no settings, so neither key is shown there. #}
-      {% if not example %}
-      <div class="host-head__actions">
-        {% comment %}
-          Works without JS (the server redirects back here with a flash message, shown as a
-          toast). With JS, actions.js sends it with fetch, shows the loader and polls
-          status.json (handoff 5.4); errors appear as a toast.
-          Offline host: nothing to ask, so the key is rendered disabled. It's type="button"
-          outside any form (it can't submit, with or without JS) and stays focusable
-          (aria-disabled, not disabled), so screen readers find it and its note.
-        {% endcomment %}
-        <div class="action-group">
-          {% if host.status == "offline" %}
-            <button type="button" class="btn" aria-disabled="true" aria-describedby="check-offline-note">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg>
-              Check now
-            </button>
-          {% else %}
-            <form class="js-fetch-action" method="post" action="{% url 'host-collect' host.id %}" data-action="check-host" data-status-url="{% url 'host-status-json' host.id %}" data-loader="check-loader">
-              {% csrf_token %}
-              <button type="submit" class="btn">
+        {# The example has no agent and no settings, so neither key is shown there. #}
+        {% if not example %}
+        <div class="host-unit__keys">
+          {% comment %}
+            Works without JS (the server redirects back here with a flash message, shown as a
+            toast). With JS, actions.js sends it with fetch, shows the loader and polls
+            status.json (handoff 5.4); errors appear as a toast.
+            Offline host: nothing to ask, so the key is rendered disabled. It's type="button"
+            outside any form (it can't submit, with or without JS) and stays focusable
+            (aria-disabled, not disabled), so screen readers find it and its note.
+          {% endcomment %}
+          <div class="action-group">
+            {% if host.status == "offline" %}
+              <button type="button" class="btn" aria-disabled="true" aria-describedby="check-offline-note">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg>
                 Check now
               </button>
-            </form>
-          {% endif %}
+            {% else %}
+              <form class="js-fetch-action" method="post" action="{% url 'host-collect' host.id %}" data-action="check-host" data-status-url="{% url 'host-status-json' host.id %}" data-loader="check-loader">
+                {% csrf_token %}
+                <button type="submit" class="btn">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg>
+                  Check now
+                </button>
+              </form>
+            {% endif %}
+          </div>
+          <a class="btn" href="{% url 'host-settings' host.id %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"></path></svg>
+            Host settings
+          </a>
         </div>
-        <a class="btn" href="{% url 'host-settings' host.id %}">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"></path></svg>
-          Host settings
-        </a>
+        {% endif %}
+        <span class="rack-unit__vents host-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
       </div>
-      {% endif %}
     </div>
+    <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
   </header>
 
   {% if not host.has_report %}
@@ -87,7 +94,8 @@
     </section>
   {% else %}
     {% comment %}
-      Problems first: every current issue, red (warning icon) then yellow then info (muted).
+      Problems first: every current issue, red (triangle) then yellow (exclamation) then
+      info ("i", muted text).
       Offline: the fixed "stopped reporting" row and the agent commands come first. Online
       with no issues: one calm line, but the panel stays, so the page doesn't jump.
     {% endcomment %}
@@ -97,6 +105,7 @@
         {# Fixed text, not host data. The commands are copy-only: CronRack never runs them. #}
         <ul class="issue-list plain-list">
           <li class="issue-line">
+            {# Offline gets no status icon (handoff: unlit lamp + text); this triangle is decorative. #}
             <svg class="issue-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>
             <span class="issue-line__text">This host stopped reporting. Last report {{ host.last_seen_human }}.</span>
           </li>
@@ -125,7 +134,7 @@ sudo journalctl -u cronrack-agent -n 50 --no-pager</pre>
       view passes an ordered list of app ids and this becomes one loop over it.
       Each include gets app / title / category / data (see components/app_panel.html); a
       panel whose data is None renders nothing. issue_groups = the issues grouped by rule
-      category, for the panel chips.
+      category, for the panels' status icons.
     {% endcomment %}
     {% regroup issues|dictsort:"category" by category as issue_groups %}
     <div class="app-panels">

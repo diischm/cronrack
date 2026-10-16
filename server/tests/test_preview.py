@@ -154,7 +154,7 @@ def test_templates_follow_the_placeholder_and_csp_rules() -> None:
 
 
 @pytest.mark.parametrize(
-    "template", ["components/loader.html", "components/lamp.html", "components/chip.html"]
+    "template", ["components/loader.html", "components/lamp.html", "components/status_icon.html"]
 )
 def test_components_render(template: str) -> None:
     html = render_to_string(template, {"status": "offline", "label": "Offline"})

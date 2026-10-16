@@ -1,6 +1,6 @@
 from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
-from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
 
 from cronrack import dev_views
@@ -21,6 +21,7 @@ urlpatterns = [
 # uvicorn does not serve static files (CSS/JS, the admin's styles) by itself.
 # In development (DEBUG=1) Django serves them from /static/. In production this
 # route doesn't exist: Caddy serves the collected files (see caddy/Caddyfile).
-# (staticfiles_urlpatterns() also checks DEBUG; the explicit `if` makes it obvious.)
+# dev_views.static is Django's static view plus "Cache-Control: no-cache" (and it checks
+# DEBUG again itself).
 if settings.DEBUG:
-    urlpatterns += staticfiles_urlpatterns()
+    urlpatterns += static(settings.STATIC_URL, view=dev_views.static)

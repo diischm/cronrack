@@ -41,7 +41,7 @@
   const inner = byId("host-preview-inner");
   const nameEl = byId("host-preview-name");
   const lamp = byId("host-preview-lamp");
-  const chip = byId("host-preview-chip");
+  const statusSlot = byId("host-preview-status");
   const offlineLine = byId("host-preview-offline");
   const loading = byId("host-preview-loading");
   const loader = byId("host-preview-loader");
@@ -52,7 +52,7 @@
   const openLink = byId("host-preview-open");
   const closeKey = byId("host-preview-close");
 
-  // Same lamps and chips as the rack (overview.js / rack_unit.html).
+  // Same lamps and status icons as the rack (overview.js / rack_unit.html).
   const LAMPS = {
     red: "lamp--red",
     yellow: "lamp--amber",
@@ -60,9 +60,11 @@
     offline: "lamp--off",
     waiting: "lamp--off",
   };
-  const CHIPS = { red: "chip--red", yellow: "chip--amber", green: "chip--green" };
-  // Issues are never colour-only: screen readers hear the severity in words first.
-  const SEVERITY_WORDS = { red: "Needs you: ", yellow: "Heads up: ", info: "Info: " };
+  // Status icons: clones from <template id="status-icons"> (base.html), shape per status.
+  const ICON_KINDS = { red: "bad", yellow: "warn", green: "good", waiting: "waiting" };
+  // Issues are never colour-only: each gets its severity's icon, with the words visually
+  // hidden in front of the text (screen readers hear "Needs you" first).
+  const SEVERITY_WORDS = { red: "Needs you", yellow: "Heads up", info: "Info" };
 
   const canAnimate = typeof Element.prototype.animate === "function";
 
@@ -100,6 +102,19 @@
 
   function percent(value) {
     return Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : null;
+  }
+
+  // A status icon with its words (visually hidden + title), or null if there are no words.
+  function statusIcon(status, words) {
+    const icons = byId("status-icons");
+    const proto = icons && icons.content.querySelector(".status-icon--" + (ICON_KINDS[status] || "info"));
+    if (!proto || !words) {
+      return null;
+    }
+    const icon = proto.cloneNode(true);
+    icon.setAttribute("title", words);
+    icon.querySelector(".visually-hidden").textContent = words;
+    return icon;
   }
 
   function plainClick(event) {
@@ -149,9 +164,8 @@
     lamp.hidden = !LAMPS[status];
     lamp.className = "lamp " + (LAMPS[status] || "lamp--off");
     const offline = status === "offline";
-    chip.hidden = offline || !label;
-    chip.className = "chip " + (CHIPS[status] || "chip--neutral");
-    chip.textContent = label;
+    const icon = offline ? null : statusIcon(status, label);
+    statusSlot.replaceChildren(...(icon ? [icon] : []));
     offlineLine.hidden = !offline;
     if (offline) {
       const strong = document.createElement("strong");
@@ -161,19 +175,19 @@
   }
 
   // Until the data arrives, the header shows what the unit already shows: its name, and its
-  // lamp and chip if it has them (matched by known class names, never by copying markup).
-  // Offline and waiting units have the unlit lamp; offline ones have no chip, so none shows.
+  // lamp and status icon if it has them (matched by known class names, never by copying
+  // markup). Offline and waiting units have the unlit lamp; offline ones have no icon.
   function headerFromUnit(link) {
     const name = link.querySelector(".rack-unit__name");
     const unitLamp = link.querySelector(".rack-unit__lamp .lamp");
-    const unitChip = link.querySelector(".rack-unit__head .chip");
+    const unitWords = link.querySelector(".rack-unit__head .status-icon .visually-hidden");
     let status = "waiting";
     ["red", "yellow", "green"].forEach((key) => {
       if (unitLamp && unitLamp.classList.contains(LAMPS[key])) {
         status = key;
       }
     });
-    setHeader(status, unitChip ? unitChip.textContent : "", name ? name.textContent : "", "");
+    setHeader(status, unitWords ? unitWords.textContent : "", name ? name.textContent : "", "");
   }
 
   // --- states ----------------------------------------------------------------------
@@ -207,10 +221,11 @@
     issues.forEach((issue) => {
       const li = proto.cloneNode(true);
       const severity = text(issue && issue.severity);
-      if (severity !== "red") {
-        li.querySelector(".issue-icon").remove();
+      const known = severity === "red" || severity === "yellow";
+      const icon = statusIcon(known ? severity : "info", SEVERITY_WORDS[known ? severity : "info"]);
+      if (icon) {
+        li.prepend(icon);
       }
-      li.querySelector(".hp-issue__severity").textContent = SEVERITY_WORDS[severity] || "";
       li.querySelector(".hp-issue__text").textContent = text(issue && issue.text);
       list.appendChild(li);
     });

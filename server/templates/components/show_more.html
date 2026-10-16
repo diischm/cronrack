@@ -1,13 +1,14 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% comment %}
   Show/hide key for a collapsed part of a panel (disclosure.js).
-  Usage: {% include "components/show_more.html" with target="docker-healthy" count=7 noun="healthy" %}
-  `target` is the id of the element it opens and closes.
+  Usage: {% include "components/show_more.html" with target="docker-more" count=7 noun="more" %}
+  `target` is the id of the element it opens and closes. `count` is optional ("Show last
+  run"); `extra_class` adds classes to the key.
   Without JS the key stays hidden and the list stays open, so nothing is ever unreachable.
   disclosure.js closes the list, shows the key and keeps aria-expanded and the
   "Show"/"Hide" word in step.
 {% endcomment %}
-<button type="button" class="btn btn--sm show-more js-disclosure" aria-controls="{{ target }}" aria-expanded="true" hidden>
+<button type="button" class="btn btn--sm show-more js-disclosure{% if extra_class %} {{ extra_class }}{% endif %}" aria-controls="{{ target }}" aria-expanded="true" hidden>
   <svg class="show-more__chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
-  <span><span class="js-disclosure-verb">Hide</span> {{ count }} {{ noun }}</span>
+  <span><span class="js-disclosure-verb">Hide</span> {% if count %}{{ count }} {% endif %}{{ noun }}</span>
 </button>

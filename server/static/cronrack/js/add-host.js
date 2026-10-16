@@ -30,13 +30,15 @@
   const WAIT_MS = 10 * 60 * 1000;
   const HOST_PATH = /^\/hosts\/\d+\/$/;
 
-  // Lamp class, chip class and chip text per status (chip text = presenters.STATUS_LABELS).
+  // Lamp class, status icon kind and its words per status (words = presenters.STATUS_LABELS).
+  // The icon is a clone from <template id="status-icons"> (base.html). Offline: no icon,
+  // the word is shown as text instead (an unlit lamp never gets an icon).
   const LOOKS = {
-    red: ["lamp--red", "chip--red", "Needs you"],
-    yellow: ["lamp--amber", "chip--amber", "Heads up"],
-    green: ["lamp--green", "chip--green", "All good"],
-    offline: ["lamp--off", "chip--red", "Offline"],
-    maintenance: ["lamp--off", "chip--neutral", "Maintenance"],
+    red: ["lamp--red", "bad", "Needs you"],
+    yellow: ["lamp--amber", "warn", "Heads up"],
+    green: ["lamp--green", "good", "All good"],
+    offline: ["lamp--off", null, "Offline"],
+    maintenance: ["lamp--off", "info", "Maintenance"],
   };
 
   const TOKEN_HIDDEN = "Token hidden. If you still need it, rotate the token in Host settings.";
@@ -201,11 +203,15 @@
     showLamp(look ? look[0] : "lamp--off");
     if (line) {
       line.textContent = "Connected";
-      if (look) {
-        const chip = document.createElement("span");
-        chip.className = "chip " + look[1];
-        chip.textContent = look[2];
-        line.append(" ", chip);
+      const icons = document.getElementById("status-icons");
+      const proto = look && look[1] && icons ? icons.content.querySelector(".status-icon--" + look[1]) : null;
+      if (proto) {
+        const icon = proto.cloneNode(true);
+        icon.setAttribute("title", look[2]);
+        icon.querySelector(".visually-hidden").textContent = look[2];
+        line.append(" ", icon);
+      } else if (look) {
+        line.append(" · " + look[2]);
       }
     }
     if (sub) {

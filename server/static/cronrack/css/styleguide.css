@@ -33,3 +33,6 @@
 .sg-w600 { font-weight: 600; }
 .sg-w700 { font-weight: 700; }
 .sg-w800 { font-weight: 800; }
+/* Status icons with a visible caption each (styleguide only). */
+.sg-icons { margin: 0; padding: 0; list-style: none; }
+.sg-icons li { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 14px; font-weight: 700; }

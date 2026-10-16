@@ -104,13 +104,16 @@ input.well:disabled, select.well:disabled, textarea.well:disabled { opacity: .55
   background: linear-gradient(145deg, var(--surface-hi), var(--ground));
   box-shadow: inset 1px 1px 2px var(--rim-light), 3px 4px 8px var(--shadow-dark), -3px -3px 7px var(--shadow-light); }
 
-/* Status chip (label next to every lamp) */
-/* nowrap: a status label like "Needs you" must never break over two lines. */
-.chip { padding: 4px 10px; border-radius: var(--radius-chip); font: 800 13px var(--font-ui);
-  white-space: nowrap; }
-.chip--red   { background: var(--red-chip-bg);   color: var(--red-chip-text); }
-.chip--amber { background: var(--amber-chip-bg); color: var(--amber-chip-text); }
-.chip--green { background: var(--green-chip-bg); color: var(--green-chip-text); }
+/* Status icon (components/status_icon.html), replaces the old text chips. The SHAPE says the
+   status (check / exclamation / triangle / "i" / hourglass), the colour backs it up, and the
+   words sit next to it visually hidden (+ title for mouse hover). Never squeezed by flex rows.
+   position: relative keeps the visually-hidden words inside the icon's own box. */
+.status-icon { position: relative; flex: none; display: inline-flex; align-items: center;
+  justify-content: center; width: 20px; height: 20px; color: var(--status-muted); vertical-align: middle; }
+.status-icon svg { display: block; }
+.status-icon--good { color: var(--status-good); }
+.status-icon--warn { color: var(--status-warn); }
+.status-icon--bad  { color: var(--status-bad); }
 
 /* Old-radio pilot lamp: domed glass jewel, metal bezel, set in a recess, warm glow.
    It's a <span>: without inline-block, width/height are ignored inside running text and the
@@ -182,9 +185,6 @@ a { color: var(--accent-text); }
 [data-theme="dark"] .theme-toggle .ico-sun { display: block; }
 [data-theme="dark"] .theme-toggle .ico-moon { display: none; }
 
-/* Status chip for states without a color (e.g. waiting for the first report) */
-.chip--neutral { background: var(--well); color: var(--text-muted); }
-
 /* "Offline · last report 28 h ago": the text label an unlit lamp needs (no chip). */
 .offline-note { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-faint); }
 .offline-note strong { font-weight: 800; }
@@ -197,7 +197,8 @@ a { color: var(--accent-text); }
 /* "Press Ctrl+C to copy": shown next to a Copy key when the clipboard API isn't allowed. */
 .copy-hint { font-size: 14px; font-weight: 700; color: var(--text-muted); }
 
-/* Warning icon in front of red issues */
+/* Decorative warning triangle on the fixed "This host stopped reporting" rows (offline gets
+   no status icon: the unlit lamp and the text say it). */
 .issue-icon { flex: none; color: var(--red-chip-text); }
 
 /* Rows inside a raised panel: separated by spacing only (no-lines rule). */
@@ -260,20 +261,22 @@ summary { padding-block: 11px; cursor: pointer; }
 .rack__slot--empty { min-height: 64px; padding: var(--space-3); border-radius: 14px;
   display: flex; align-items: center; justify-content: center; }
 
-/* Server unit: one link. Raised like a key (.btn recipe, shorter shadows to fit the 8px gaps). */
-.rack-unit { display: flex; align-items: center; gap: var(--gap-lamp); min-height: 64px;
-  padding: 10px 14px 10px 16px; border-radius: 14px;
+/* Server unit: one link. Raised like a key (.btn recipe, shorter shadows to fit the 8px gaps).
+   .host-unit (the host detail header, pages.css) shares the raised look but is not a link. */
+.rack-unit, .host-unit {
   background: linear-gradient(145deg, var(--surface-hi) 0%, var(--ground) 50%, var(--surface-lo) 100%);
   box-shadow: inset 1px 1px 2px var(--rim-light), inset -2px -2px 4px var(--rim-dark),
               3px 4px 8px var(--shadow-dark), -3px -3px 7px var(--shadow-light); }
+.rack-unit { display: flex; align-items: center; gap: var(--gap-lamp); min-height: 64px;
+  padding: 10px 14px 10px 16px; border-radius: 14px; }
 /* Hover: pulled out of the rack a little. Press: the .card-press recessed recipe. */
-.rack-unit:hover:not(:active) { transform: translateX(2px);
+a.rack-unit:hover:not(:active) { transform: translateX(2px);
   box-shadow: inset 1px 1px 2px var(--rim-light), inset -2px -2px 4px var(--rim-dark),
               5px 6px 10px var(--shadow-dark), -3px -3px 7px var(--shadow-light); }
 /* Lamp column: always 14px wide, so names line up even when there's no lamp (waiting). */
 .rack-unit__lamp { flex: none; width: 14px; display: flex; align-items: center; justify-content: center; }
 .rack-unit__body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-/* Phone: name + chip wrap if the name is long; the issues are a second line. */
+/* Phone: name + status icon wrap if the name is long; the issues are a second line. */
 .rack-unit__head { min-width: 0; display: flex; flex-wrap: wrap; align-items: center;
   gap: 4px var(--space-3); }
 .rack-unit__name { min-width: 0; font-size: 17px; font-weight: 800; overflow-wrap: anywhere; }
@@ -308,13 +311,26 @@ summary { padding-block: 11px; cursor: pointer; }
   .rack-unit__panel { display: none; }
 }
 
-/* Desktop: name, chip and issues on one row; long text ends in an ellipsis. */
+/* Desktop: name, status icon and issues on one row; long text ends in an ellipsis. */
 @media (min-width: 900px) {
   .rack-chassis { gap: var(--space-3); padding: var(--space-3); }
   .rack-unit { padding: 10px 18px 10px 20px; }
   .rack-unit__body { flex-direction: row; align-items: center; gap: var(--space-4); }
   /* A very long name may take at most 60% of the row, so the issues always get some room. */
   .rack-unit__head { flex: 0 1 auto; flex-wrap: nowrap; max-width: 60%; }
+  /* Offline: the head carries "Offline · last report …" too, and the (stale) issues may
+     shrink away first, so the name isn't cut short in the narrower 2-column overview. */
+  .rack-unit--offline .rack-unit__head { max-width: none; }
+  /* A narrow rack column (the 2-column overview from 1200px, below ~1500px): name + icon on
+     one line, the issues on a second line under them, no vents, so neither is cut short. */
+  .overview-hosts { container: hosts / inline-size; }
+  /* .rack-unit prefix: must out-rank the desktop row rules that follow in this block. */
+  @container hosts (max-width: 879.98px) {
+    .rack-unit .rack-unit__body { flex-direction: column; align-items: stretch; gap: 2px; }
+    .rack-unit .rack-unit__head { max-width: none; }
+    .rack-unit .rack-unit__issues { flex: none; }
+    .rack-unit .rack-unit__vents { display: none; }  /* decorative: the name gets the room */
+  }
   .rack-unit__head > :not(.rack-unit__name) { flex: none; }
   .rack-unit__name { font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     overflow-wrap: normal; }
@@ -368,7 +384,8 @@ summary { padding-block: 11px; cursor: pointer; }
 .hp-offline__row { margin: 0; font-size: 15px; font-weight: 700; }
 .hp-issue { display: flex; align-items: flex-start; gap: var(--gap-icon); font-size: 15px; }
 .hp-issues .hp-issue { padding: 6px 0; }
-.hp-issue .issue-icon { margin-top: 2px; }
+.hp-issue .status-icon { margin-top: 1px; }
+.hp-offline__row .issue-icon { margin-top: 2px; }
 /* Readouts: a row of small recessed wells (Updates / Containers / Disk). */
 .hp-readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: var(--space-3); }
@@ -398,20 +415,22 @@ summary { padding-block: 11px; cursor: pointer; }
    rack, which stays one column). No lines anywhere: rows are separated by spacing only. */
 .mono { font-family: var(--font-code); font-size: 14px; }
 
-/* "Needs your attention": one row per issue, icon | text | severity chip. */
+/* "Needs your attention": one row per issue, status icon (severity by shape + hidden words) | text. */
 .issue-list { display: flex; flex-direction: column; gap: var(--space-1); }
 .issue-line { display: flex; align-items: center; gap: var(--gap-icon); font-size: 16px; }
 .issue-line__text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.issue-line > .chip, .issue-line__icon { flex: none; }
-.issue-line--yellow .issue-line__icon { color: var(--amber-chip-text); }
-.issue-line--info, .issue-line--info .issue-line__icon { color: var(--text-muted); }
+.issue-line--info { color: var(--text-muted); }
 
-/* App panels: a grid, as many 420px+ columns as fit (2 on desktop), one column on phones.
-   min(420px, 100%) keeps a narrow screen from overflowing. Panels keep their own height. */
-.app-panels { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
-  gap: var(--space-6); align-items: start; }
-.app-panel { min-width: 0; }
-/* Header: icon well | name | chip, then the facts line (and the offline note) under the name. */
+/* App panels: equal columns, and every panel in a row as tall as the tallest (stretch).
+   1 column on phones, 2 from 900px, 4 from 1400px (handoff 5.4, wide layout). Long lists
+   inside collapse after 6 rows, so one long panel doesn't make the whole row tall.
+   Each panel is a size container, so its inside can adapt to the column width. */
+.app-panels { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6);
+  align-items: stretch; }
+@media (min-width: 900px) { .app-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1400px) { .app-panels { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.app-panel { min-width: 0; container: app-panel / inline-size; }
+/* Header: icon well | name | status icon, then the facts line (and the offline note) under the name. */
 .app-panel__head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas: "icon title status" ". facts facts" ". stale stale";
   column-gap: var(--space-3); row-gap: 2px; align-items: center; }
@@ -426,9 +445,10 @@ summary { padding-block: 11px; cursor: pointer; }
 /* Offline host: the body is the last report's data, so it's muted. */
 .app-panel--stale .app-panel__body, .app-panel--stale .item-row__name { color: var(--text-faint); }
 
-/* "First match, else fallback" chips (app_panel.html, container_row.html): only the first shows. */
-.chip-pick { display: inline-flex; flex: none; }
-.chip-pick > .chip ~ .chip { display: none; }
+/* "First match, else fallback" icons (app_panel.html, container_row.html): only the first
+   shows; display: none also hides the others from screen readers. */
+.icon-pick { display: inline-flex; flex: none; }
+.icon-pick > .status-icon ~ .status-icon { display: none; }
 
 /* System: small recessed readouts. */
 .readouts { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -438,7 +458,7 @@ summary { padding-block: 11px; cursor: pointer; }
 .readout-well__label { font-size: 13px; font-weight: 700; color: var(--text-faint); }
 .readout-well__value { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
 
-/* Docker / Systemd rows: name + chip on one line, status text under them. */
+/* Docker / Systemd rows: name + (status icon + state) on one line, status text under them. */
 .item-list { display: flex; flex-direction: column; }
 .item-list > .item-row { padding: 6px 0; }
 .item-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3);
@@ -446,20 +466,33 @@ summary { padding-block: 11px; cursor: pointer; }
 .item-row__name { min-width: 0; display: flex; align-items: center; gap: var(--gap-icon);
   font-weight: 700; overflow-wrap: anywhere; }
 .item-row__name > span { min-width: 0; }
-.item-row__chip { justify-self: end; }
+.item-row__state { justify-self: end; display: inline-flex; align-items: center; gap: var(--space-2);
+  font-size: 14px; font-weight: 700; color: var(--text-muted); }
 .item-row__note { grid-column: 1 / -1; font-size: 14px; color: var(--text-muted); overflow-wrap: anywhere; }
 .item-row--red .item-row__name { color: var(--red-chip-text); }
 
-/* "Show 7 healthy" / "Show 4 more" (disclosure.js): the chevron turns when open. */
+/* "Show 4 more" / "Show last run" (disclosure.js): the chevron turns when open. */
 .show-more { align-self: flex-start; }
 .show-more__chev { flex: none; transition: transform var(--ease); }
 .show-more[aria-expanded="true"] .show-more__chev { transform: rotate(180deg); }
 
-/* Systemd timers: the table scrolls sideways inside its well, the page never does. */
+/* Systemd timers: the table scrolls sideways inside its well only if it must, the page never does. */
+.timers-box { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .table-scroll { max-width: 100%; }
 .table-scroll table { width: 100%; }
 .table-scroll th { font-size: 12px; font-weight: 800; color: var(--text-faint); }
 .table-scroll td.mono { font-size: 13px; }
+/* Wide panel: every column, so "Show last run" has nothing to do. */
+.timers__last-key { display: none; }
+/* Narrow panel (4 columns at 1400px+, 2 columns, phones): Timer + Next run only; Last run
+   comes back when the timers are expanded ("Show N more" / "Show last run", aria-expanded).
+   Names and dates may wrap, so the two columns fit without scrolling the well. */
+@container app-panel (max-width: 559.98px) {
+  .timers__last-key { display: inline-flex; }
+  .timers-box:not(:has(.show-more[aria-expanded="true"])) .timers__last { display: none; }
+  .timers-box:not(:has(.show-more[aria-expanded="true"])) .table-scroll table { white-space: normal; }
+  .timers .timers__name { overflow-wrap: anywhere; }
+}
 
 /* Disks: mount | meter | percent. The meter is a recessed track (.well) with a raised fill. */
 .disk-list { display: flex; flex-direction: column; }

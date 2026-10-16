@@ -32,10 +32,6 @@
     </div>
     <p class="sg-faint sg-text">Tile sizes (34px numbers) apply from 900px wide, like on the overview.</p>
     <div class="sg-row">
-      {% include "components/chip.html" with status="red" label="Needs you" %}
-      {% include "components/chip.html" with status="yellow" label="Heads up" %}
-      {% include "components/chip.html" with status="green" label="All good" %}
-      {% include "components/chip.html" with status="waiting" label="Waiting" %}
       <button type="button" class="btn">Check now</button>
       <button type="button" class="btn btn--sm">Copy</button>
       <button type="button" class="btn btn--primary">Add host</button>
@@ -134,14 +130,23 @@
   </div>
 
   <div class="sg-block">
-    <h3 class="sg-label">Lamps and chips (a lamp always has a label)</h3>
+    <h3 class="sg-label">Lamps and status icons (components/status_icon.html: the shape says the status, the words are visually hidden next to it)</h3>
     <div class="sg-row">
-      <span class="lamp-label">{% include "components/lamp.html" with status="red" %}{% include "components/chip.html" with status="red" label="Needs you" %}</span>
-      <span class="lamp-label">{% include "components/lamp.html" with status="yellow" %}{% include "components/chip.html" with status="yellow" label="Heads up" %}</span>
-      <span class="lamp-label">{% include "components/lamp.html" with status="green" %}{% include "components/chip.html" with status="green" label="All good" %}</span>
-      {% include "components/chip.html" with status="waiting" label="Waiting" %}
+      <span class="lamp-label">{% include "components/lamp.html" with status="red" %}{% include "components/status_icon.html" with status="red" %}</span>
+      <span class="lamp-label">{% include "components/lamp.html" with status="yellow" %}{% include "components/status_icon.html" with status="yellow" %}</span>
+      <span class="lamp-label">{% include "components/lamp.html" with status="green" %}{% include "components/status_icon.html" with status="green" %}</span>
+      <span class="lamp-label">{% include "components/lamp.html" with status="off" %}{% include "components/status_icon.html" with status="waiting" %}</span>
     </div>
-    <p class="sg-row">Host offline right now: unlit lamp, no chip, the text says it.
+    {# The captions repeat the hidden words for sighted readers of this page only. #}
+    <ul class="sg-row sg-icons">
+      <li>{% include "components/status_icon.html" with status="green" %}<span aria-hidden="true">All good</span></li>
+      <li>{% include "components/status_icon.html" with status="yellow" %}<span aria-hidden="true">Heads up</span></li>
+      <li>{% include "components/status_icon.html" with status="red" %}<span aria-hidden="true">Needs you</span></li>
+      <li>{% include "components/status_icon.html" with status="info" %}<span aria-hidden="true">Info</span></li>
+      <li>{% include "components/status_icon.html" with status="waiting" %}<span aria-hidden="true">Waiting</span></li>
+      <li>{% include "components/status_icon.html" with status="example" %}<span aria-hidden="true">Example</span></li>
+    </ul>
+    <p class="sg-row">Host offline right now: unlit lamp, no icon, the text says it.
       <span class="lamp-label">{% include "components/lamp.html" with status="off" %}<span class="offline-note"><strong>Offline</strong> · last report 28 h ago</span></span></p>
     <p class="sg-row">Lit next to unlit:
       {% include "components/lamp.html" with status="red" %}{% include "components/lamp.html" with status="yellow" %}{% include "components/lamp.html" with status="green" %}{% include "components/lamp.html" with status="off" %}</p>

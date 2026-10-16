@@ -5,6 +5,8 @@ get_owned_host(), which answers 404 for anyone else's host (IDOR protection).
 All views require login; POST views are CSRF-protected by CsrfViewMiddleware.
 """
 
+import secrets
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -27,6 +29,12 @@ from hosts.services import close_agent, request_collect
 from rules.engine import effective_status
 
 AGENT_CONFIG_PATH = "/etc/cronrack/agent.toml"
+# Session entry holding the unused one-time keys of the Rotate token form: {key: host id}.
+ROTATE_KEYS_SESSION = "rotate_keys"
+# Each settings page view adds a key; keep only the newest few so the session stays small.
+MAX_ROTATE_KEYS = 20
+ROTATE_AGAIN = "This token was already rotated. Rotate again?"
+
 # Where Caddy keeps its own CA's root certificate (`tls internal`), inside the caddy container.
 CADDY_ROOT_CA = "/data/caddy/pki/authorities/local/root.crt"
 # The file name the instructions use for that certificate on the host.
@@ -203,7 +211,44 @@ def host_add(request: HttpRequest) -> HttpResponse:
     return render(request, "hosts/add.html", {"form": form})
 
 
-def _settings_page(request, host, name_form=None, delete_form=None, status=200):
+def new_rotate_key(request: HttpRequest, host: Host) -> str:
+    """A one-time key for the Rotate token form, stored in the session as unused.
+
+    It is a nonce, not a secret: it only proves "this POST comes from a form this
+    session was shown and hasn't used yet", so a re-sent POST (Back, reload) can't
+    rotate the token a second time.
+    """
+    key = secrets.token_urlsafe(16)
+    keys = dict(request.session.get(ROTATE_KEYS_SESSION, {}))
+    keys[key] = host.pk
+    request.session[ROTATE_KEYS_SESSION] = dict(list(keys.items())[-MAX_ROTATE_KEYS:])
+    return key
+
+
+def use_rotate_key(request: HttpRequest, host: Host, key) -> bool:
+    """Mark the form's one-time key as used. False if it is missing, used, or for another host.
+
+    Call inside the transaction that rotates. The keys are re-read from the session
+    store (not the copy loaded at the start of the request), so two simultaneous POSTs
+    with the same key can't both see it as unused. The used key is dropped from the
+    session and saved before the rotation happens.
+    """
+    session = request.session
+    if not isinstance(key, str) or not key or session.session_key is None:
+        return False
+    stored = session.__class__(session.session_key)
+    keys = dict(stored.get(ROTATE_KEYS_SESSION, {}))
+    if keys.get(key) != host.pk:
+        return False
+    del keys[key]
+    stored[ROTATE_KEYS_SESSION] = keys
+    stored.save()
+    # The end-of-request save writes request.session: keep the key gone there too.
+    session[ROTATE_KEYS_SESSION] = keys
+    return True
+
+
+def _settings_page(request, host, name_form=None, delete_form=None, status=200, rotate_notice=""):
     return render(
         request,
         "hosts/settings.html",
@@ -211,6 +256,8 @@ def _settings_page(request, host, name_form=None, delete_form=None, status=200):
             "host": host,
             "name_form": name_form or HostNameForm(owner=request.user, instance=host),
             "delete_form": delete_form or DeleteHostForm(host=host),
+            "rotate_key": new_rotate_key(request, host),
+            "rotate_notice": rotate_notice,
         },
         status=status,
     )
@@ -236,8 +283,13 @@ def host_settings(request: HttpRequest, host_id: int) -> HttpResponse:
 @require_POST
 def host_rotate(request: HttpRequest, host_id: int) -> HttpResponse:
     host = get_owned_host(request.user, host_id)
-    # rotate() also closes the agent's open socket once the change is saved.
-    token = AgentToken.rotate(host)
+    with transaction.atomic():
+        # A re-sent POST (Back or reload on the "New token" page) carries a key that is
+        # already used: don't rotate again, or the token just installed would stop working.
+        if not use_rotate_key(request, host, request.POST.get("rotate_key")):
+            return _settings_page(request, host, status=409, rotate_notice=ROTATE_AGAIN)
+        # rotate() also closes the agent's open socket once the change is committed.
+        token = AgentToken.rotate(host)
     return render(
         request, "hosts/token_rotated.html", {"host": host, **agent_setup(request, host, token)}
     )

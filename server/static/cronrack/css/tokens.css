@@ -55,9 +55,12 @@
   --code-bg: #1E1B2E;     --code-text: #FCE3D4;
 
   /* status (always paired with a label) */
-  --red: #B3261E;    --red-chip-bg: #FBE4E2;    --red-chip-text: #8C1D18;
+  --red: #B3261E;    --red-chip-text: #8C1D18;
   --amber: #E0A100;  --amber-chip-bg: #FFF1CC;  --amber-chip-text: #6B4A00;
-  --green: #2E7D4F;  --green-chip-bg: #E2F2E8;  --green-chip-text: #1F5A38;
+  --green: #2E7D4F;  --green-chip-text: #1F5A38;
+  /* Status icons (components/status_icon.html): the shape says the status, the colour
+     backs it up. Each is >= 3:1 on ground, both surface ends and wells (contrast.py). */
+  --status-good: #2E7D4F;  --status-warn: #946200;  --status-bad: #B3261E;  --status-muted: #4B4662;
 
   /* depth */
   --shadow-dark: rgba(150,150,166,.42);
@@ -109,7 +112,7 @@
   /* Dimmed page behind a modal dialog (the overview's host preview). */
   --backdrop: rgba(30,27,46,.42);
 
-  --radius-card: 22px; --radius-key: 16px; --radius-chip: 999px;
+  --radius-card: 22px; --radius-key: 16px;
 
   /* Spacing scale on a 4px grid. Use these for gaps and padding instead of raw px. */
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
@@ -119,6 +122,10 @@
   --gap-lamp: 14px;        /* lamp box to its label: the bezel draws 5.5px outside the 14px box */
   --pad-card: var(--space-5);  /* card inner padding, phone (desktop: --pad-card-desk) */
   --pad-card-desk: 22px;       /* desktop mockup card padding */
+  /* Desktop page width (>= 900px, pages.css): the top bar and the content share ONE container,
+     at most --page-max wide plus --page-pad on each side (48px from 1400px, pages.css). */
+  --page-max: 1600px;
+  --page-pad: var(--space-8);
   --ease: 160ms ease;
   --font-ui: "Manrope", system-ui, sans-serif;
   --font-code: "JetBrains Mono", ui-monospace, monospace;
@@ -134,9 +141,10 @@
   --focus: #D9541E;
   --accent-text: #FF8C55;
   --code-bg: #17171B;
-  --red-chip-bg: #4B2522;   --red-chip-text: #FFB3A6;
+  --red-chip-text: #FFB3A6;
   --amber-chip-bg: #47380F; --amber-chip-text: #FFD97A;
-  --green-chip-bg: #1E3A29; --green-chip-text: #9BE3B4;
+  --green-chip-text: #9BE3B4;
+  --status-good: #4CBF7A;  --status-warn: #E0A100;  --status-bad: #FF7A66;  --status-muted: #A9A7B6;
   --shadow-dark: rgba(0,0,0,.55);
   --shadow-light: rgba(255,255,255,.045);
   --rim-light: rgba(255,255,255,.07);

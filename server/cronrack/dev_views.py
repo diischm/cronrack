@@ -3,6 +3,7 @@
 import copy
 
 from django.conf import settings
+from django.contrib.staticfiles.views import serve
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import render
 
@@ -50,3 +51,18 @@ def styleguide(request: HttpRequest) -> HttpResponse:
     if not settings.DEBUG:
         raise Http404
     return render(request, "dev/styleguide.html")
+
+
+def static(request: HttpRequest, path: str) -> HttpResponse:
+    """Serve a static file in development, and make the browser re-check it on every load.
+
+    With DEBUG=1 the files keep their plain names (overview.js), so a browser that cached an
+    old copy would run old JavaScript against new HTML. "no-cache" doesn't mean "don't
+    store": the browser keeps the file but asks first, and gets a quick 304 if it's unchanged.
+    Production never reaches this view: Caddy serves the hashed files with its own headers.
+    """
+    if not settings.DEBUG:
+        raise Http404
+    response = serve(request, path)
+    response["Cache-Control"] = "no-cache"
+    return response
