@@ -53,8 +53,8 @@ def test_font_urls_in_css_point_at_hashed_fonts(collected):
     root, paths = collected
     css = (root / paths["cronrack/css/tokens.css"]).read_text()
     for font in (
-        "nunito-latin-wght.woff2",
-        "nunito-latin-ext-wght.woff2",
+        "manrope-latin-wght.woff2",
+        "manrope-latin-ext-wght.woff2",
         "jetbrains-mono-latin-wght.woff2",
     ):
         hashed_font = paths[f"cronrack/fonts/{font}"]

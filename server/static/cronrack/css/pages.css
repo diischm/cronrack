@@ -250,6 +250,10 @@ html, body { overflow-x: hidden; }
   .panel, .empty, .host-head { padding: var(--pad-card-desk); }
 
   .page-title { font-size: 40px; line-height: 1.1; }
+  /* Host name: 36px, because Manrope runs wider than Nunito and a 25-character name no longer
+     fit the title column next to both keys at 40px. The 44px line keeps the name row in line
+     with the 44px back key. */
+  .host-head__name { font-size: 36px; line-height: 44px; }
   .page-sub { font-size: 16px; }
 
   /* Overview header: headline on the left, "Check all now" + "Add host" on the right. */

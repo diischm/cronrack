@@ -23,3 +23,13 @@
 .sg-swatch { display: inline-block; width: 32px; height: 20px; border-radius: 6px; flex: none; }
 .sg-swatch--accent { background: var(--accent); }
 .sg-swatch--focus { background: var(--focus); }
+
+/* Type specimen: the UI font at every weight the CSS uses (Manrope stops at 800). */
+.sg-type > p { margin: 0; }
+.sg-weights { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;
+  gap: 6px; font-size: 16px; }
+.sg-w400 { font-weight: 400; }
+.sg-w500 { font-weight: 500; }
+.sg-w600 { font-weight: 600; }
+.sg-w700 { font-weight: 700; }
+.sg-w800 { font-weight: 800; }

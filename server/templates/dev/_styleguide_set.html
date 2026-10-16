@@ -4,6 +4,52 @@
 <section class="sg-theme" data-theme="{{ theme }}" aria-label="{{ theme|capfirst }} theme">
   <h2 class="section-title">{{ theme|capfirst }}</h2>
 
+  <div class="sg-block sg-type">
+    <h3 class="sg-label">Type specimen: Manrope (UI), JetBrains Mono (code)</h3>
+    <p class="page-title">2 things need you</p>
+    <p class="page-sub">6 hosts · updated 2 min ago</p>
+    <p class="section-title">While you were away</p>
+    <p class="sg-text">Body 15px / 400: 12 updates available, 3 of them security. Reboot required since 14:32.</p>
+    <p class="muted">Muted 15px: Disk / at 87% · last report 28 h ago</p>
+    <div class="sg-row">
+      <span class="field__label">Field label 15 / 700</span>
+      <span class="tile__label">Tile label 14 / 700</span>
+      <span class="sg-label">Small label 13 / 800</span>
+    </div>
+    <div class="sg-row">
+      <div class="surface tile">
+        <div class="tile__label"><span>Needs you</span></div>
+        <p class="tile__value">12 <span class="tile__unit">hosts</span></p>
+      </div>
+      <div class="surface tile">
+        <div class="tile__label"><span>Hosts online</span></div>
+        <p class="tile__value">5 <span class="tile__unit">of 6</span></p>
+      </div>
+      <div class="surface tile">
+        <div class="tile__label"><span>Digits</span></div>
+        <p class="tile__value">0123456789</p>
+      </div>
+    </div>
+    <p class="sg-faint sg-text">Tile sizes (34px numbers) apply from 900px wide, like on the overview.</p>
+    <div class="sg-row">
+      {% include "components/chip.html" with status="red" label="Needs you" %}
+      {% include "components/chip.html" with status="yellow" label="Heads up" %}
+      {% include "components/chip.html" with status="green" label="All good" %}
+      {% include "components/chip.html" with status="waiting" label="Waiting" %}
+      <button type="button" class="btn">Check now</button>
+      <button type="button" class="btn btn--sm">Copy</button>
+      <button type="button" class="btn btn--primary">Add host</button>
+    </div>
+    <ul class="sg-weights">
+      <li class="sg-w400">400 · Regular · The quick brown fox · 0123456789</li>
+      <li class="sg-w500">500 · Medium · The quick brown fox · 0123456789</li>
+      <li class="sg-w600">600 · SemiBold · The quick brown fox · 0123456789</li>
+      <li class="sg-w700">700 · Bold · The quick brown fox · 0123456789</li>
+      <li class="sg-w800">800 · ExtraBold · The quick brown fox · 0123456789</li>
+    </ul>
+    <pre class="code">systemctl status nightly-backup.timer  # 0O 1lI</pre>
+  </div>
+
   <div class="sg-block">
     <h3 class="sg-label">Surface (raised) and tappable card</h3>
     <div class="sg-row">
