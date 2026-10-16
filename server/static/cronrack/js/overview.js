@@ -9,7 +9,7 @@
 // filled with textContent / setAttribute / className only. No HTML string is ever parsed,
 // so text like <script> is shown as text and can't become markup. Nothing is logged.
 //
-// If a refresh fails, a small "Offline — retrying" chip appears and the page keeps what
+// If a refresh fails, a small "Offline — retrying" line appears and the page keeps what
 // it shows. The Welcome example (0 hosts) is rendered by the server only: when hosts
 // appear (or all disappear), the page reloads once so the server renders the right one.
 //
@@ -36,7 +36,9 @@
     offline: "lamp--off",
     waiting: "lamp--off",
   };
-  const CHIPS = { red: "chip--red", offline: "chip--red", yellow: "chip--amber", green: "chip--green" };
+  // Status icon per status: clones from <template id="status-icons"> (base.html), whose
+  // shape differs per status (triangle, exclamation, check, hourglass, "i").
+  const ICON_KINDS = { red: "bad", yellow: "warn", green: "good", waiting: "waiting" };
 
   function byId(id) {
     return document.getElementById(id);
@@ -47,6 +49,19 @@
     if (el) {
       el.textContent = text;
     }
+  }
+
+  // A status icon with its words (visually hidden + title), or null if there are no words.
+  function statusIcon(status, words) {
+    const icons = byId("status-icons");
+    const proto = icons && icons.content.querySelector(".status-icon--" + (ICON_KINDS[status] || "info"));
+    if (!proto || !words) {
+      return null;
+    }
+    const icon = proto.cloneNode(true);
+    icon.setAttribute("title", words);
+    icon.querySelector(".visually-hidden").textContent = words;
+    return icon;
   }
 
   function plural(n, word) {
@@ -127,18 +142,20 @@
 
     li.querySelector(".rack-unit__name").textContent = text(host.name);
 
-    const chip = li.querySelector(".chip");
+    const placeholder = li.querySelector(".rack-unit__head .status-icon");
     const note = li.querySelector(".rack-unit__offline");
+    const icon = offline ? null : statusIcon(status, text(host.status_label));
+    if (icon) {
+      placeholder.replaceWith(icon);
+    } else {
+      placeholder.remove(); // offline: "Offline · last report …" is the text label
+    }
     if (offline) {
-      // No chip: "Offline · last report …" is the text label.
-      chip.remove();
       const strong = document.createElement("strong");
       strong.textContent = "Offline";
       note.replaceChildren(strong, " · last report " + text(host.last_seen_human));
     } else {
       note.remove();
-      chip.className = "chip " + (CHIPS[status] || "chip--neutral");
-      chip.textContent = text(host.status_label);
     }
 
     const issueLine = li.querySelector(".rack-unit__issues");
@@ -216,9 +233,9 @@
   }
 
   function showFailed(on) {
-    const chip = byId("refresh-failed");
-    if (chip) {
-      chip.hidden = !on;
+    const line = byId("refresh-failed");
+    if (line) {
+      line.hidden = !on;
     }
   }
 

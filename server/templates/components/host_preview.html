@@ -2,12 +2,13 @@
 {% comment %}
   The overview's host preview (host-preview.js, components.css "Host preview").
   One native modal <dialog>, filled by JavaScript from /api/v1/hosts/<id>/summary.json.
-  Nothing here contains host data when the page is served: the name, chip, sections and the
+  Nothing here contains host data when the page is served: the name, status icon, sections and the
   link target are put in by host-preview.js with textContent / setAttribute only.
   Without JavaScript the dialog is never opened and the rack units are plain links.
 
-  Header: lamp + name (the dialog's label) + chip. Offline: unlit lamp, no chip, and the
-  "Offline · last report …" line. Waiting: unlit lamp + "Waiting" chip.
+  Header: lamp + name (the dialog's label) + status icon (a clone from <template
+  id="status-icons">, base.html). Offline: unlit lamp, no icon, and the "Offline · last
+  report …" line. Waiting: unlit lamp + the hourglass icon.
   The body is a clone of <template id="host-preview-template">: host-preview.js removes the
   sections whose data is null and fills the rest.
 {% endcomment %}
@@ -20,7 +21,7 @@
           <span class="lamp" id="host-preview-lamp" aria-hidden="true" hidden></span>
           {# Focus goes here on open (tabindex="-1": focusable by script, not in the Tab order). #}
           <h2 class="host-preview__name" id="host-preview-name" tabindex="-1"></h2>
-          <span class="chip" id="host-preview-chip" hidden></span>
+          <span class="host-preview__status" id="host-preview-status"></span>
         </div>
         <p class="offline-note" id="host-preview-offline" hidden></p>
       </header>
@@ -63,10 +64,8 @@ sudo journalctl -u cronrack-agent -n 50 --no-pager</pre>
     <p class="muted hp-waiting">Waiting for the first report.</p>
 
     <ul class="plain-list hp-issues" aria-label="Issues">
-      <li class="hp-issue">
-        <svg class="issue-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>
-        <span class="visually-hidden hp-issue__severity"></span><span class="hp-issue__text"></span>
-      </li>
+      {# The severity icon (with its words, visually hidden) is put in front of the text by host-preview.js. #}
+      <li class="hp-issue"><span class="hp-issue__text"></span></li>
     </ul>
 
     <div class="hp-readouts">

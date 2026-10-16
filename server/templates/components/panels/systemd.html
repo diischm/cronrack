@@ -6,8 +6,15 @@
     timers        [{"name", "last_run", "next_run"}, ...]
   detail.html passes data=failed_units|default_if_none:timers, so the panel exists when at
   least one of them is known; each part below only appears when its own key is not None.
-  The timers table sits in a recessed well that scrolls sideways on its own on a phone,
-  so the page never does.
+  Long lists show 6 rows, the rest behind "Show N more" (disclosure.js), so one long panel
+  doesn't make its whole grid row tall.
+  Timers: a table in a recessed well. In a narrow panel (components.css, container query)
+  only Timer + Next run show; Last run appears when the timers are expanded: the key is
+  "Show N more" with more than 6 timers, else "Show last run" (its target, an empty
+  tbody, is only there so disclosure.js has something to open). In a wide panel every
+  column shows and the "Show last run" key is hidden. Without JS the key stays hidden and
+  aria-expanded="true" keeps every row and column visible. The well scrolls sideways on
+  its own only if the table still doesn't fit; the page never does.
 {% endcomment %}
 {% block icon %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 2.5M9 2h6"></path></svg>{% endblock %}
 {% block facts %}{% if failed_units is not None %}{{ failed_units|length }} failed unit{{ failed_units|length|pluralize }}{% endif %}{% if failed_units is not None and timers is not None %} · {% endif %}{% if timers is not None %}{{ timers|length }} timer{{ timers|length|pluralize }}{% endif %}{% endblock %}
@@ -15,12 +22,12 @@
   {% if failed_units is not None %}
     {% if failed_units %}
       <ul class="item-list plain-list">
-        {% for unit in failed_units|slice:":8" %}{% include "components/panels/unit_row.html" %}{% endfor %}
+        {% for unit in failed_units|slice:":6" %}{% include "components/panels/unit_row.html" %}{% endfor %}
       </ul>
-      {% if failed_units|length > 8 %}
-        {% include "components/show_more.html" with target="units-more" count=failed_units|length|add:"-8" noun="more" %}
+      {% if failed_units|length > 6 %}
+        {% include "components/show_more.html" with target="units-more" count=failed_units|length|add:"-6" noun="more" %}
         <ul class="item-list plain-list" id="units-more">
-          {% for unit in failed_units|slice:"8:" %}{% include "components/panels/unit_row.html" %}{% endfor %}
+          {% for unit in failed_units|slice:"6:" %}{% include "components/panels/unit_row.html" %}{% endfor %}
         </ul>
       {% endif %}
     {% else %}
@@ -30,23 +37,25 @@
   {% if timers is not None %}
     <h3 class="app-panel__subtitle" id="timers-title">Timers</h3>
     {% if timers %}
-      {# tabindex: a scrolling region must be reachable by keyboard to scroll it. #}
-      <div class="well table-scroll" role="region" aria-labelledby="timers-title" tabindex="0">
-        <table class="timers">
-          <thead><tr><th scope="col">Timer</th><th scope="col">Last run</th><th scope="col">Next run</th></tr></thead>
-          <tbody>
-            {% for t in timers|slice:":8" %}<tr><td class="mono">{{ t.name }}</td><td>{{ t.last_run }}</td><td>{{ t.next_run }}</td></tr>{% endfor %}
-          </tbody>
-          {% if timers|length > 8 %}
-          <tbody id="timers-more">
-            {% for t in timers|slice:"8:" %}<tr><td class="mono">{{ t.name }}</td><td>{{ t.last_run }}</td><td>{{ t.next_run }}</td></tr>{% endfor %}
-          </tbody>
-          {% endif %}
-        </table>
+      <div class="timers-box">
+        {# tabindex: a scrolling region must be reachable by keyboard to scroll it. #}
+        <div class="well table-scroll" role="region" aria-labelledby="timers-title" tabindex="0">
+          <table class="timers">
+            <thead><tr><th scope="col">Timer</th><th scope="col" class="timers__last">Last run</th><th scope="col">Next run</th></tr></thead>
+            <tbody>
+              {% for t in timers|slice:":6" %}<tr><td class="mono timers__name">{{ t.name }}</td><td class="timers__last">{{ t.last_run }}</td><td class="timers__next">{{ t.next_run }}</td></tr>{% endfor %}
+            </tbody>
+            <tbody id="timers-more">
+              {% for t in timers|slice:"6:" %}<tr><td class="mono timers__name">{{ t.name }}</td><td class="timers__last">{{ t.last_run }}</td><td class="timers__next">{{ t.next_run }}</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if timers|length > 6 %}
+          {% include "components/show_more.html" with target="timers-more" count=timers|length|add:"-6" noun="more" %}
+        {% else %}
+          {% include "components/show_more.html" with target="timers-more" noun="last run" extra_class="timers__last-key" %}
+        {% endif %}
       </div>
-      {% if timers|length > 8 %}
-        {% include "components/show_more.html" with target="timers-more" count=timers|length|add:"-8" noun="more" %}
-      {% endif %}
     {% else %}
       <p class="muted">No timers.</p>
     {% endif %}

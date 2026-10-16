@@ -13,6 +13,7 @@ from django.test import Client
 from hosts.models import Host
 from hosts.views import agent_setup
 
+from .rotate import post_rotate
 from .test_host_views import token_from
 from .test_preview import EVENT_HANDLER_ATTR, scan
 
@@ -155,7 +156,7 @@ def test_token_pages_load_the_back_forward_guard(alice_client: Client, host, pag
     if page == "add":
         response, _token = create(alice_client)
     else:
-        response = alice_client.post(f"/hosts/{host.pk}/rotate/")
+        response = post_rotate(alice_client, host.pk)
     html = response.content.decode()
     assert re.search(r'<script src="[^"]*/js/add-host(\.[0-9a-f]{12})?\.js" defer></script>', html)
     assert "no-store" in response["Cache-Control"]

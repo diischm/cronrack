@@ -97,6 +97,11 @@
     </div>
     {% endif %}
   </div>
+  {% if user.is_authenticated %}
+  {# Status icons for JS-built markup (overview.js, host-preview.js, add-host.js): they clone #}
+  {# one by its class and set its words with textContent. Inert until cloned. #}
+  <template id="status-icons">{% include "components/status_icon.html" with status="red" %}{% include "components/status_icon.html" with status="yellow" %}{% include "components/status_icon.html" with status="green" %}{% include "components/status_icon.html" with status="info" %}{% include "components/status_icon.html" with status="waiting" %}</template>
+  {% endif %}
   {# Shared screen-reader announcer for Copy keys (copy.js). Visually hidden, not display:none. #}
   <p class="visually-hidden" id="copy-status" aria-live="polite"></p>
 </body>

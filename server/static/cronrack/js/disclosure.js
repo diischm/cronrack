@@ -1,8 +1,8 @@
 // PLACEHOLDER — Apo owns the final version.
-// Show/hide keys on the host detail page ("Show 7 healthy", "Show 4 more").
+// Show/hide keys on the host detail page ("Show 4 more", "Show last run").
 // Markup (components/show_more.html):
 //   <button class="js-disclosure" aria-controls="ID" aria-expanded="true" hidden>
-//     <span class="js-disclosure-verb">Hide</span> 7 healthy</button>
+//     <span class="js-disclosure-verb">Hide</span> 4 more</button>
 // The server sends the list open and the key hidden, so without JS everything is visible.
 // Here each list is closed, its key shown, and every click flips the list's `hidden`,
 // aria-expanded and the "Show"/"Hide" word together. Loaded with defer. Never logs anything.

@@ -14,6 +14,8 @@ from django.test import Client
 
 from agents import package
 
+from .rotate import post_rotate
+
 pytestmark = pytest.mark.django_db
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
@@ -127,7 +129,7 @@ def test_rotated_token_page_shows_command_and_token(alice_client, host):
     from hosts.models import AgentToken
 
     AgentToken.issue(host)
-    response = alice_client.post(f"/hosts/{host.pk}/rotate/")
+    response = post_rotate(alice_client, host.pk)
     html = response.content.decode()
 
     assert "curl -fsSL http://testserver/agent/install.sh | sudo bash -s --" in html

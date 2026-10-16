@@ -5,24 +5,26 @@
     {% include "components/rack_unit.html" with example=True %}    the Welcome example (0 hosts)
     {% include "components/rack_unit.html" with blank=True %}      the empty copy inside
                                                                    <template id="rack-unit-template">
-  The blank copy has every optional piece (chip AND offline line); overview.js clones it,
-  removes what a host doesn't need and fills the rest with textContent / setAttribute only.
+  The blank copy has every optional piece (status icon AND offline line); overview.js clones
+  it, removes what a host doesn't need and fills the rest with textContent / setAttribute
+  only (its status icon is swapped for a clone from <template id="status-icons">).
   Keep the class names in sync with overview.js.
 
   Everything in `host` comes from agent reports or user input: plain {{ }} output only, so
-  Django escapes it. The visually-hidden ", " pieces make the link's accessible name read
-  "homeserver, Needs you, 3 security updates" (status in words, never colour only).
+  Django escapes it. The visually-hidden ", " pieces and the status icon's visually-hidden
+  words make the link's accessible name read "homeserver, Needs you, 3 security updates"
+  (status by icon shape + words, never colour only).
   Lamp, vents: decorative, aria-hidden. Front panel: desktop only (>= 900px, .desk-only);
   its disk meter is aria-hidden too, the percentage next to it says the same in text.
-  Offline: unlit lamp, no chip; the "Offline · last report …" line is the text label.
-  Waiting (no report yet): unlit lamp too, plus the "Waiting" chip.
+  Offline: unlit lamp, no status icon; the "Offline · last report …" line is the text label.
+  Waiting (no report yet): unlit lamp too, plus the hourglass icon ("Waiting").
 {% endcomment %}
 {% if example %}
 <li class="rack__slot">
   <a class="rack-unit card-press rack-unit--example" href="{% url 'host-example' %}">
     <span class="rack-unit__lamp" aria-hidden="true">{% include "components/lamp.html" with status="yellow" %}</span>
     <span class="rack-unit__body">
-      <span class="rack-unit__head"><span class="rack-unit__name">Welcome to CronRack!</span><span class="visually-hidden">, </span>{% include "components/chip.html" with status="example" label="Example" %}</span>
+      <span class="rack-unit__head"><span class="rack-unit__name">Welcome to CronRack!</span><span class="visually-hidden">, </span>{% include "components/status_icon.html" with status="example" label="Example" %}</span>
       <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text">This is an example host. Add your own and it disappears.</span></span>
     </span>
     <span class="rack-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
@@ -33,7 +35,7 @@
   <a class="rack-unit card-press{% if host.status == 'offline' %} rack-unit--offline{% endif %}"{% if not blank %} href="{{ host.url }}"{% endif %}>
     <span class="rack-unit__lamp" aria-hidden="true">{% if blank %}{% elif host.status == "offline" or host.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=host.status %}{% endif %}</span>
     <span class="rack-unit__body">
-      <span class="rack-unit__head"><span class="rack-unit__name">{{ host.name }}</span><span class="visually-hidden">, </span>{% if blank %}<span class="chip"></span>{% elif host.status != "offline" %}{% include "components/chip.html" with status=host.status label=host.status_label %}{% endif %}{% if blank or host.status == "offline" %}<span class="offline-note rack-unit__offline"><strong>Offline</strong> · last report {{ host.last_seen_human }}</span>{% endif %}</span>
+      <span class="rack-unit__head"><span class="rack-unit__name">{{ host.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif host.status != "offline" %}{% include "components/status_icon.html" with status=host.status label=host.status_label %}{% endif %}{% if blank or host.status == "offline" %}<span class="offline-note rack-unit__offline"><strong>Offline</strong> · last report {{ host.last_seen_human }}</span>{% endif %}</span>
       {# Offline with no issues: no line here, the "Offline · last report …" line says it. #}
       {% if blank or host.issues or host.status != "offline" %}
         <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text">{% if host.issues %}{% for issue in host.issues|slice:":3" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif host.status == "waiting" %}Waiting for the first report{% elif not blank %}Nothing needs you{% endif %}</span></span>

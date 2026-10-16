@@ -10,6 +10,7 @@ from django.test import Client, override_settings
 from hosts.models import Host
 from hosts.samples import EXAMPLE_DETAIL_CONTEXT, PREVIEW_CONTEXT
 
+from .icons import shown, status_icon
 from .test_host_views import headings, item_text
 from .test_preview import scan
 
@@ -25,17 +26,19 @@ def test_example_page_renders_for_a_user_without_hosts(alice_client: Client):
     response = alice_client.get("/hosts/example/")
 
     assert response.status_code == 200
-    html = response.content.decode()
+    html = shown(response.content.decode())
     assert "This is an example. Nothing here is real." in html
     assert '<a class="btn btn--primary" href="/hosts/add/">Add your first host</a>' in html
     assert EXAMPLE_NAME in html
     # Two yellow issues (no red), so the header says "Heads up" like the amber Welcome lamp.
-    # Each issue row says its severity in words, next to the issue text.
+    # Each issue row says its severity by icon shape and in (visually hidden) words.
     for issue in EXAMPLE_DETAIL_CONTEXT["issues"]:
         assert "Heads up" in item_text(html, issue["text"])
-    assert "chip--red" not in html
+    assert "status-icon--bad" not in html
     assert '<span class="lamp lamp--amber" aria-hidden="true"></span>' in html
-    assert '<span class="chip chip--amber">Heads up</span>' in html
+    header = html[html.index('<header class="host-rack') :]
+    header = header[: header.index("</header>")]
+    assert re.search(status_icon("warn", "Heads up"), header)
     for section in ("Docker", "Systemd", "Disks"):
         assert section in headings(html)
     # No agent and no settings behind it: both keys are hidden.
@@ -94,7 +97,7 @@ def test_overview_without_hosts_shows_the_example_and_an_empty_slot(alice_client
     example = html[html.index("rack-unit--example") :]
     example = example[: example.index("</a>")]
     assert "lamp--amber" in example
-    assert '<span class="chip chip--neutral">Example</span>' in html
+    assert re.search(status_icon("info", "Example"), example)
     assert "This is an example host. Add your own and it disappears." in html
     assert 'class="rack__slot rack__slot--empty well"' in html
     assert "Add your first host" in html
@@ -132,7 +135,7 @@ def test_example_disappears_once_a_host_exists(alice_client: Client, alice):
 # --- rack units ----------------------------------------------------------------------
 
 
-def test_offline_unit_has_an_unlit_lamp_and_no_chip(alice_client: Client, alice):
+def test_offline_unit_has_an_unlit_lamp_and_no_status_icon(alice_client: Client, alice):
     from .test_host_views import make_silent_host
 
     make_silent_host(alice, "diicpi")
@@ -142,28 +145,28 @@ def test_offline_unit_has_an_unlit_lamp_and_no_chip(alice_client: Client, alice)
     unit = unit[: unit.index("</a>")]
 
     assert "lamp--off" in unit
-    assert 'class="chip' not in unit
+    assert 'class="status-icon' not in unit
     assert "<strong>Offline</strong> · last report 28 h ago" in unit
     assert "Nothing needs you" not in unit
 
 
-def test_waiting_unit_has_an_unlit_lamp_and_the_waiting_chip(alice_client: Client, alice):
+def test_waiting_unit_has_an_unlit_lamp_and_the_waiting_icon(alice_client: Client, alice):
     host = Host.objects.create(owner=alice, name="new-box")  # no report yet
 
     html = alice_client.get("/").content.decode()
     unit = html[html.index('<a class="rack-unit card-press" href="/hosts/') :]
     unit = unit[: unit.index("</a>")]
     detail = alice_client.get(f"/hosts/{host.pk}/").content.decode()
-    header = detail[detail.index('<header class="surface host-head">') :]
+    header = detail[detail.index('<header class="host-rack rack-chassis surface">') :]
     header = header[: header.index("</header>")]
 
     for part in (unit, header):
         assert '<span class="lamp lamp--off" aria-hidden="true"></span>' in part
-        assert '<span class="chip chip--neutral">Waiting</span>' in part
+        assert re.search(status_icon("waiting", "Waiting"), part)
     # Link text: "new-box, Waiting, Waiting for the first report"
     assert re.search(
         r'<span class="rack-unit__name">new-box</span><span class="visually-hidden">, </span>'
-        r'\s*<span class="chip chip--neutral">Waiting</span>',
+        + status_icon("waiting", "Waiting"),
         unit,
     )
     assert "Waiting for the first report" in unit
@@ -189,7 +192,7 @@ def test_unit_link_text_says_name_and_status_in_words(alice_client: Client, alic
 
     assert re.search(
         r'<span class="rack-unit__name">homeserver</span><span class="visually-hidden">, </span>'
-        r'\s*<span class="chip chip--red">Needs you</span>',
+        + status_icon("bad", "Needs you"),
         html,
     )
     assert (

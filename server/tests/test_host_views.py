@@ -14,6 +14,8 @@ from django.utils import timezone
 from activity.models import StatusEvent
 from hosts.models import AgentToken, Host, hash_token
 
+from .icons import shown, status_icon
+from .rotate import post_rotate
 from .sample import make_report
 
 pytestmark = pytest.mark.django_db
@@ -109,7 +111,7 @@ def test_rotate_shows_a_new_token_and_kills_the_old_one(
         mock.patch("hosts.services.close_agent") as close,
         django_capture_on_commit_callbacks(execute=True),
     ):
-        response = alice_client.post(f"/hosts/{host.pk}/rotate/")
+        response = post_rotate(alice_client, host.pk)
     new = token_from(response)
 
     assert new != old
@@ -329,8 +331,11 @@ def test_silent_host_is_offline_everywhere(alice_client: Client, alice):
     for html in (overview, detail):
         assert "lamp--off" in html
         assert "<strong>Offline</strong> · last report 28 h ago" in html
-        # No status chip (issue rows on the detail page keep their severity chips).
-        assert not re.search(r'class="chip[^"]*">(All good|Needs you|Heads up|Offline)<', html)
+        # No status icon (issue rows on the detail page keep their severity icons).
+        assert not re.search(
+            r'<span class="visually-hidden">(All good|Needs you|Heads up|Offline)</span>',
+            shown(html),
+        )
     assert Host.objects.get(pk=host.pk).status == "green"  # reading never writes
 
 
@@ -430,7 +435,7 @@ def test_overview_html_and_json_agree_on_offline(alice_client: Client, alice):
     assert html.count("lamp--off") == 1
     assert "<strong>Offline</strong> · last report 28 h ago" in html
     assert "<strong>Offline</strong> · 1 host" in html
-    assert html.count('class="chip chip--green">All good</span>') == 1  # nas keeps its chip
+    assert len(re.findall(status_icon("good", "All good"), shown(html))) == 1  # nas keeps its icon
 
 
 def test_waiting_and_maintenance_win_over_offline(alice_client: Client, alice):
@@ -500,7 +505,8 @@ def test_detail_page_renders_in_the_shell(alice_client: Client, alice):
     html = alice_client.get(f"/hosts/{host.pk}/").content.decode()
 
     assert 'class="bottom-nav seg-track well"' in html
-    assert 'class="surface host-head"' in html
+    assert 'class="host-rack rack-chassis surface"' in html
+    assert '<div class="host-unit">' in html
     assert 'class="meter well meter--red"' in html
 
 

@@ -36,7 +36,7 @@
       <p class="page-sub overview-head__sub">
         <span id="overview-sub">{{ hosts|length }} host{{ hosts|length|pluralize }}{% if hosts %} · updated {{ updated_human }}{% endif %}</span>
         {# Shown by overview.js while /api/v1/overview.json can't be reached; the page keeps its content. #}
-        <span class="chip chip--amber" id="refresh-failed" role="status" hidden>Offline — retrying</span>
+        <span class="refresh-failed" id="refresh-failed" role="status" hidden>{% include "components/status_icon.html" with status="yellow" label="Warning" %}<span>Offline — retrying</span></span>
         <span class="loader loader--sm surface" role="status" aria-label="Checking all hosts" id="check-all-loader" hidden><span></span><span></span><span></span></span>
       </p>
     </div>
@@ -84,17 +84,23 @@
     </div>
   </section>
 
-  <div class="overview-body">
+  {# From 1200px (pages.css): rack left, "While you were away" right; DOM order = visual order. #}
+  <div class="overview-body{% if activity %} overview-body--split{% endif %}">
     {% comment %}
       The rack (components.css "Rack"): a raised chassis with two decorative ears, and a
       recessed bay (the <ul>) holding one server unit per host, in backend order
-      (red → yellow → green, then by name). One column at every width.
+      (red → yellow → green, then by name). One column of units at every width.
       0 hosts: the Welcome example unit (template only, never a database host and never
       counted) and an empty slot with "Add your first host".
       overview.js re-renders the units every 60s from <template id="rack-unit-template">.
     {% endcomment %}
     <section class="overview-hosts">
-      <h2 class="section-title desk-only">Hosts</h2>
+      {% comment %}
+        Screen readers only: the rack is the page's main content and needs no visible title.
+        Out of the layout (position: absolute), so the chassis is the column's first box and
+        starts at the same top as the "While you were away" card.
+      {% endcomment %}
+      <h2 class="visually-hidden">Hosts</h2>
       <div class="rack-chassis surface">
         <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
         <ul class="rack well" id="rack" aria-label="Hosts">
