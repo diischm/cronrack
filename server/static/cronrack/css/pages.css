@@ -311,3 +311,67 @@ html, body { overflow-x: hidden; }
 /* .app prefix: must out-rank the desktop `.app:not(.app--bare) .app-main` padding. */
 .app .app-main.app-main--single { padding-top: clamp(var(--space-6), 10vh, 96px); }
 .app-main.app-main--single > * { width: 100%; max-width: 440px; margin-inline: auto; }
+
+/* --- Add host (handoff 5.5): step header, install block, connect step ------------------
+   hosts/add.html, hosts/add_done.html, components/add_steps.html, components/agent_setup.html.
+   No borders: the step numbers and the token tray are recessed wells, the rest is spacing. */
+
+/* Step header: three columns, each a recessed number well, its name and its state word. */
+.steps { margin: 0; padding: 0; list-style: none; display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.step { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
+  text-align: center; color: var(--text-muted); }
+.step__well { width: 44px; height: 44px; margin-bottom: var(--space-1); border-radius: 14px;
+  display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 800; }
+.step__label { font-size: 15px; font-weight: 700; }
+.step__state { font-size: 13px; font-weight: 700; color: var(--text-faint); }
+/* Current: orange number (19px bold = large text, 3:1 is enough on the well), bold name. */
+.step--current { color: var(--text); }
+.step--current .step__well { color: var(--accent-text); }
+.step--current .step__label { font-weight: 800; }
+.step--current .step__state { color: var(--accent-text); }
+/* Done: a check mark instead of the number. */
+.step--done .step__well { color: var(--green-chip-text); }
+.step__check { display: block; }
+
+/* Step 1: the server's errors under the field; the help line turns red-ish while the
+   browser thinks the value can't be valid (a hint only, the server decides). */
+.field__errors { display: flex; flex-direction: column; gap: var(--space-1); }
+.field:has(input:user-invalid) .field__help { color: var(--red-chip-text); }
+
+/* Step 2: install block. */
+.install__name { overflow-wrap: anywhere; }
+.install { gap: var(--space-5); }
+.once-warning { margin: 0; padding: var(--space-3) var(--space-4); border-radius: 14px;
+  display: flex; align-items: flex-start; gap: var(--gap-icon);
+  background: var(--amber-chip-bg); color: var(--amber-chip-text); font-size: 15px; font-weight: 800; }
+.once-warning__icon { flex: none; margin-top: 1px; }
+.install-step, .install-variant { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.install-step__title { margin: 0; flex: 1 1 auto; min-width: 0; font-size: 16px; font-weight: 800;
+  overflow-wrap: anywhere; }
+.install-step__title--sub { font-size: 15px; font-weight: 700; color: var(--text-muted); }
+/* The token sits in its own recessed tray, apart from the command. */
+.install-step--token { padding: var(--space-4); border-radius: 18px; }
+.install-variant { padding-top: var(--space-1); }
+.install .show-more { align-self: flex-start; text-align: left; }
+/* Long commands and the token wrap inside their well instead of scrolling it.
+   copy.js copies the text itself, so wrapping never adds line breaks to what is copied. */
+.code--wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.code--token { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+
+/* Step 3: loader (later: the lamp) next to the waiting / connected line. */
+.connect { gap: var(--space-4); }
+.connect__state { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
+/* The lamp takes the loader's place, so the text doesn't jump when it appears. */
+.connect__signal { flex: none; width: 72px; min-height: 72px; display: flex; align-items: center;
+  justify-content: center; }
+.connect__lamp { display: flex; }
+.connect__text { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.connect__line { margin: 0; font-size: 17px; font-weight: 800; overflow-wrap: anywhere; }
+.connect__line .chip { display: inline-block; margin-left: var(--space-1); vertical-align: 1px; }
+.connect__stuck { display: flex; flex-direction: column; gap: var(--space-3); }
+.connect__stuck-text { margin: 0; font-size: 16px; font-weight: 800; }
+.connect__keep, .connect__go { align-self: flex-start; }
+@media (max-width: 599.98px) {
+  .connect__keep, .connect__go { align-self: stretch; }
+}

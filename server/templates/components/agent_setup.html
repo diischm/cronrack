@@ -1,29 +1,91 @@
 {# PLACEHOLDER — Apo owns the final version #}
-{# The agent token, shown ONCE (handoff 5.5 step 2). Never store it client-side or put it in a URL. #}
-<section class="surface panel">
-  <h2 class="section-title">Install the agent on {{ host.name }}</h2>
-  <p class="warning">The token below is shown once. Copy it now.</p>
-  <p class="muted">1. On the host, run:</p>
-  <pre class="code well">{{ install_command }}</pre>
-  <p class="muted">2. When it asks for the token, paste this (the input is hidden):</p>
-  <pre class="code well">{{ token }}</pre>
-  <p class="muted">The installer checks the download's SHA-256, creates the <code>cronrack</code> user,
-    writes <code>{{ config_path }}</code> (root:cronrack, mode 640) and starts the service.</p>
-  <details>
-    <summary>Server uses Caddy's own certificate (<code>tls internal</code>, the default)</summary>
-    <p class="muted">The host must trust Caddy's root certificate first. On the CronRack server,
-      in the folder with <code>docker-compose.yml</code>, run:</p>
-    <pre class="code well">{{ ca_command }}</pre>
-    <p class="muted">Copy <code>{{ ca_file_name }}</code> to the host (for example with
-      <code>scp</code>), then run this there instead of step 1:</p>
-    <pre class="code well">{{ install_command_ca }}</pre>
-    <p class="muted">The installer copies it to <code>/etc/cronrack/ca.crt</code> and the agent
-      trusts exactly that certificate.</p>
-  </details>
-  <details>
-    <summary>Manual setup (agent already installed)</summary>
-    <p class="muted">Create the config file with the right owner and mode, then paste this into the editor:</p>
-    <pre class="code well">{{ agent_commands }}</pre>
-    <pre class="code well">{{ agent_config }}</pre>
-  </details>
+{% comment %}
+  Install the agent (handoff 5.5 step 2): used by Add host and by the "new token" page.
+
+  THE TOKEN IS SHOWN ONCE. It appears exactly once in the HTML, as the visible text of
+  #agent-token, and nowhere else: not in a data- attribute, a hidden input, a URL, a title,
+  a JS variable or browser storage. copy.js reads it from that code well at click time.
+  The view sends Cache-Control: no-store (@never_cache), so the browser keeps no copy of
+  this page on disk or in its back/forward cache. The manual fallback below therefore says
+  "paste the token" instead of repeating it.
+  spellcheck="false" + translate="no": the browser's spell checker and page translation
+  never get the token. autocomplete="off" is only meaningful on form fields; it is set here
+  too so every element holding the token says the same thing.
+
+  Copy keys (copy.js): aria-controls = the id of the visible code well they copy.
+  Disclosure keys (disclosure.js): the server sends the part open and the key hidden, so
+  without JS everything is visible; with JS the part starts closed behind its key.
+{% endcomment %}
+<section class="surface panel install" aria-labelledby="install-title">
+  <h2 class="section-title" id="install-title">Install the agent on <span class="install__name">{{ host.name }}</span></h2>
+  <p class="once-warning">
+    <svg class="once-warning__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"></circle><path d="M10.8 12.2L20 3M16 7l3 3M18 5l2 2"></path></svg>
+    <span>This token is shown only once. Keep this page open until the installer asks for it.</span>
+  </p>
+
+  <div class="install-step">
+    <div class="code-head">
+      <h3 class="install-step__title">1. On the host, run</h3>
+      <button type="button" class="btn btn--sm js-copy" aria-controls="install-command">Copy command</button>
+    </div>
+    <pre class="code code--wrap" id="install-command">{{ install_command }}</pre>
+
+    <button type="button" class="btn btn--sm show-more js-disclosure" aria-controls="install-caddy" aria-expanded="true" hidden>
+      <svg class="show-more__chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+      <span>Server uses Caddy's own certificate</span>
+    </button>
+    <div class="install-variant" id="install-caddy">
+      <p class="muted">Only if the server uses <span class="mono">tls internal</span> (the default without
+        Tailscale). The host must trust Caddy's root certificate first. On the CronRack server, in the
+        folder with <span class="mono">docker-compose.yml</span>, run:</p>
+      <div class="code-head">
+        <h4 class="install-step__title install-step__title--sub">Save the certificate as {{ ca_file_name }}</h4>
+        <button type="button" class="btn btn--sm js-copy" aria-controls="ca-command">Copy</button>
+      </div>
+      <pre class="code code--wrap" id="ca-command">{{ ca_command }}</pre>
+      <p class="muted">Copy <span class="mono">{{ ca_file_name }}</span> to the host (for example with
+        <span class="mono">scp</span>), go to its folder, and run this there instead of the command above:</p>
+      <div class="code-head">
+        <h4 class="install-step__title install-step__title--sub">Install with {{ ca_file_name }}</h4>
+        <button type="button" class="btn btn--sm js-copy" aria-controls="install-command-ca">Copy</button>
+      </div>
+      <pre class="code code--wrap" id="install-command-ca">{{ install_command_ca }}</pre>
+      <p class="muted">The installer copies it to <span class="mono">/etc/cronrack/ca.crt</span> and the agent
+        trusts exactly that certificate.</p>
+    </div>
+  </div>
+
+  <div class="install-step install-step--token well">
+    <div class="code-head">
+      <h3 class="install-step__title">2. When it asks for the token, paste this</h3>
+      <button type="button" class="btn btn--sm js-copy" aria-controls="agent-token">Copy token</button>
+    </div>
+    <pre class="code code--wrap code--token" id="agent-token" autocomplete="off" spellcheck="false" translate="no">{{ token }}</pre>
+    <p class="muted">Typing is hidden on purpose: you won't see the token appear. Press Enter after pasting.</p>
+  </div>
+
+  <p class="muted">The installer checks the download's SHA-256, creates the <span class="mono">cronrack</span>
+    user (no login, no sudo), writes <span class="mono">{{ config_path }}</span> (root:cronrack, mode 640)
+    and starts the service.</p>
+
+  <button type="button" class="btn btn--sm show-more js-disclosure" aria-controls="install-manual" aria-expanded="true" hidden>
+    <svg class="show-more__chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+    <span>Manual setup (agent already installed)</span>
+  </button>
+  <div class="install-variant" id="install-manual">
+    <p class="muted">Create the config file with the right owner and mode. The last-but-one command opens it
+      in an editor:</p>
+    <div class="code-head">
+      <h4 class="install-step__title install-step__title--sub">Commands</h4>
+      <button type="button" class="btn btn--sm js-copy" aria-controls="manual-commands">Copy</button>
+    </div>
+    <pre class="code code--wrap" id="manual-commands">{{ agent_commands }}</pre>
+    <p class="muted">Put these two lines into the editor, with the token from step 2 between the quotes:</p>
+    <div class="code-head">
+      <h4 class="install-step__title install-step__title--sub">{{ config_path }}</h4>
+      <button type="button" class="btn btn--sm js-copy" aria-controls="manual-config">Copy</button>
+    </div>
+    <pre class="code code--wrap" id="manual-config">server_url = "{{ server_url }}"
+token = ""</pre>
+  </div>
 </section>
