@@ -90,7 +90,7 @@ def test_missing_or_unknown_key_is_refused(alice_client: Client, host, close, da
     rotate_key(alice_client, host.pk)  # the session has a real key, but the POST doesn't send it
     before = token_hash(host)
 
-    response = alice_client.post(f"/hosts/{host.pk}/rotate/", data)
+    response = alice_client.post(f"/hosts/{host.pk}/rotate/", {**data, "confirm": "yes"})
 
     assert_refused(response, host, before, close)
 
@@ -146,7 +146,7 @@ def test_csrf_is_still_required(alice, host, close):
     key = rotate_key(client, host.pk)
     before = token_hash(host)
 
-    response = client.post(f"/hosts/{host.pk}/rotate/", {"rotate_key": key})
+    response = client.post(f"/hosts/{host.pk}/rotate/", {"rotate_key": key, "confirm": "yes"})
 
     assert response.status_code == 403
     assert token_hash(host) == before

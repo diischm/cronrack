@@ -515,3 +515,89 @@ a.rack-unit:hover:not(:active) { transform: translateX(2px);
 @media (prefers-reduced-motion: reduce) {
   .show-more__chev { transition: none; }
 }
+
+/* --- 6. Confirm dialog, checkbox, toggle switch, password row (handoff 5.6, 5.7) -------
+   templates/components/confirm_dialog.html + js/dialog.js: one native modal <dialog>, a
+   raised .surface panel over the dimmed page, centered, at most 480px wide. Its motion is
+   element.animate() in dialog.js (nothing moves with reduced motion), so nothing here moves. */
+.confirm-dialog { box-sizing: border-box; width: min(480px, calc(100% - 2 * var(--space-4)));
+  max-width: none; max-height: calc(100dvh - 2 * var(--space-6)); margin: auto; padding: 0;
+  border: 0; color: var(--text); overflow: auto; overscroll-behavior: contain; }
+.confirm-dialog::backdrop { background: var(--backdrop, rgba(30,27,46,.42)); }
+.confirm-dialog__inner { padding: var(--pad-card); display: flex; flex-direction: column;
+  gap: var(--space-4); }
+.confirm-dialog__title { margin: 0; font-size: 19px; font-weight: 800; }
+.confirm-dialog__text { margin: 0; font-size: 16px; color: var(--text-muted); overflow-wrap: anywhere; }
+.confirm-dialog__match { font-family: var(--font-code); font-size: 15px; font-weight: 700;
+  color: var(--text); overflow-wrap: anywhere; }
+/* Cancel | action, equal columns; stacked when a long label doesn't fit. */
+.confirm-dialog__keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: var(--space-3); padding-top: var(--space-1); }
+@media (min-width: 900px) {
+  .confirm-dialog__inner { padding: var(--pad-card-desk); }
+}
+
+/* Checkbox ("Yes, rotate the token"): a recessed square well; ticked = an orange check mark.
+   The native input is .visually-hidden but stays the real, focusable control; the whole
+   label is the 44px touch target, and the focus ring goes on the well. */
+.check { position: relative; display: inline-flex; align-items: center; gap: var(--space-3);
+  min-height: 44px; cursor: pointer; font-size: 16px; font-weight: 700; }
+.check__box { flex: none; width: 26px; height: 26px; border-radius: 8px; display: flex;
+  align-items: center; justify-content: center; color: transparent; }
+.check__box svg { display: block; }
+.check__input:checked + .check__box { color: var(--accent-text); }
+.check__input:focus-visible + .check__box { outline: 3px solid var(--focus); outline-offset: 3px; }
+.check__input[aria-invalid="true"] + .check__box { color: transparent; }
+.check__input[aria-invalid="true"]:checked + .check__box { color: var(--accent-text); }
+
+/* Physical toggle switch (handoff 5.7): a recessed track, a raised thumb, orange fill when on,
+   the label always visible. A native checkbox with role="switch" (screen readers say
+   "switch, on/off"), visually hidden; the label is the 44px touch target.
+   <label class="switch"><input class="switch__input visually-hidden" type="checkbox" role="switch">
+     <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+     <span class="switch__label">Daily digest</span></label> */
+.switch { position: relative; display: inline-flex; align-items: center; gap: var(--space-3);
+  min-height: 44px; cursor: pointer; font-size: 16px; font-weight: 700; }
+.switch__track { position: relative; flex: none; width: 52px; height: 30px; border-radius: 999px;
+  background: var(--well);
+  box-shadow: inset 0 3px 4px -1px var(--lip), inset 3px 0 4px -2px var(--lip-side),
+              inset 0 -1px 1px var(--catch-in), 0 1px 1px var(--catch);
+  transition: background var(--ease); }
+.switch__thumb { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
+  background: linear-gradient(145deg, var(--surface-hi) 0%, var(--ground) 50%, var(--surface-lo) 100%);
+  box-shadow: inset 1px 1px 1px var(--rim-light), inset -1px -1px 2px var(--rim-dark),
+              2px 3px 5px var(--shadow-dark), -1px -1px 3px var(--shadow-light);
+  transition: transform var(--ease); }
+/* On: the track fills with the orange (inner shade kept, so it still reads as recessed). */
+.switch__input:checked + .switch__track {
+  background: linear-gradient(145deg, var(--accent-hi) 0%, var(--accent-mid) 50%, var(--accent-lo) 100%);
+  box-shadow: inset 0 3px 4px -1px var(--primary-lip), inset 3px 0 4px -2px var(--primary-lip-side),
+              inset 0 -1px 1px var(--primary-catch-in), 0 1px 1px var(--catch); }
+.switch__input:checked + .switch__track .switch__thumb { transform: translateX(22px); }
+.switch__input:focus-visible + .switch__track, .switch__track.is-focus { outline: 3px solid var(--focus); outline-offset: 3px; }
+.switch__input:disabled + .switch__track { opacity: .55; }
+.switch:has(.switch__input:disabled) { cursor: not-allowed; color: var(--text-faint); }
+
+/* Password field + its show/hide key (js/password.js), side by side. */
+.pw-row { display: flex; align-items: center; gap: var(--space-3); }
+.pw-row > input { flex: 1 1 auto; min-width: 0; }
+.pw-toggle { flex: none; }
+/* .pw-toggle prefix: must out-rank `.btn--icon svg { display: block }`. */
+.pw-toggle .pw-toggle__hide { display: none; }
+.pw-toggle[aria-pressed="true"] .pw-toggle__show { display: none; }
+.pw-toggle[aria-pressed="true"] .pw-toggle__hide { display: block; }
+.pw-toggle[aria-pressed="true"] { color: var(--accent-text); }
+
+/* Segmented control made of radio buttons (Settings > Appearance): each label is a segment,
+   the checked one is raised like the active nav tab. The native radios are visually hidden
+   but stay the real controls (arrow keys move between them); the ring goes on the segment. */
+.seg--radio { position: relative; cursor: pointer; flex-direction: row; gap: var(--space-2);
+  font-size: 15px; }
+.seg--radio:has(input:checked) { color: var(--accent-text);
+  background: linear-gradient(145deg, var(--surface-hi), var(--ground));
+  box-shadow: inset 1px 1px 2px var(--rim-light), 3px 4px 8px var(--shadow-dark), -3px -3px 7px var(--shadow-light); }
+.seg--radio:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .switch__track, .switch__thumb { transition: none; }
+}

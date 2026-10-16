@@ -398,3 +398,59 @@ html, body { overflow-x: hidden; }
 @media (max-width: 599.98px) {
   .connect__keep, .connect__go { align-self: stretch; }
 }
+
+/* --- Host settings and Settings (handoff 5.6, 5.7) --------------------------------------
+   hosts/settings.html, prefs/index.html. The wide layout (up to --page-max): the panels sit in
+   a grid, 2 columns from 900px, stacked on phones. Inputs keep a readable width. */
+/* Panels in one row are equally tall; their keys sit at the bottom, so they line up. */
+.settings-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--stack-gap);
+  align-items: stretch; }
+.settings-grid .panel > .form-keys:last-child { margin-top: auto; }
+/* Panels of very different length (Appearance next to Account) keep their own height. */
+.settings-grid > .panel--fit { align-self: start; }
+/* A form inside a panel (Account: Change password) stacks like the panel itself. */
+.panel > form.form { display: flex; flex-direction: column; gap: var(--space-4); }
+/* Alerts + Offline detection are one <form> around two panels: the panels are the grid items. */
+.settings-prefs { display: contents; }
+.settings-grid .panel { min-width: 0; }
+.settings-grid .field { max-width: 560px; }
+.form-keys { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.subsection-title { margin: 0; font-size: 16px; font-weight: 800; }
+.settings-name { overflow-wrap: anywhere; color: var(--text); }
+/* The checkbox row and its error, 8px apart. */
+.confirm-check { display: flex; flex-direction: column; gap: var(--space-2); }
+/* Number + its unit ("seconds") on one line. */
+.unit-row { display: flex; align-items: center; gap: var(--space-3); }
+.unit-row__input { width: 10em; min-width: 0; }
+.unit-row__unit { font-size: 15px; font-weight: 700; color: var(--text-muted); }
+.theme-picker { margin: 0; padding: 0; border: 0; min-width: 0; display: flex; flex-direction: column;
+  gap: 6px; }
+.theme-picker legend { padding: 0; margin-bottom: 6px; }
+.theme-seg { max-width: 420px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* Danger zone: last, full width; its key has the red text (.btn--danger). */
+.danger-zone__title { margin: 0; font-size: 16px; font-weight: 800; color: var(--red-chip-text); }
+/* Head: back key, then the host name with its status icon (or unlit lamp + "Offline"). */
+.settings-head { flex-direction: row; align-items: flex-start; gap: var(--space-4); }
+/* A long host name must never squeeze the 44px back key. */
+.settings-head > .btn { flex: none; }
+.settings-head__text { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.settings-head__title { min-width: 0; display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--space-2) var(--space-3); }
+.settings-head__title .lamp { margin-right: var(--space-1); }
+.settings-head__name { min-width: 0; overflow-wrap: anywhere; }
+.settings-head__offline { font-size: 15px; }
+@media (max-width: 599.98px) {
+  /* Phone: keys fill the panel width, so they're easy to hit with a thumb. */
+  .form-keys > .btn, .form-keys > form, .form-keys > form > .btn { flex: 1 1 auto; }
+}
+@media (min-width: 900px) {
+  /* The full page width (--page-max), like the overview; same specificity as the 720px rule. */
+  .app-main.app-main--settings > * { max-width: none; }
+  .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-grid > .danger-zone { grid-column: 1 / -1; }
+}
+@media (min-width: 1200px) {
+  /* Host settings: Rename | Rotate | Revoke in one row, the Danger zone under them. */
+  .settings-grid--host { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .settings-head { align-items: center; }
+}

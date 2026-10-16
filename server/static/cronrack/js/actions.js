@@ -85,7 +85,9 @@
   // UI helpers for one form: result toast, loader (after 300ms), disabled key.
   function controls(form) {
     const loader = document.getElementById(form.getAttribute("data-loader") || "");
-    const buttons = form.querySelectorAll("button[type=submit], button:not([type])");
+    // form.elements also has keys outside the form that point to it with form="..." (the
+    // Settings page's "Send test alert" sits in the Alerts panel, outside its own form).
+    const buttons = Array.from(form.elements).filter((el) => el.type === "submit");
     let loaderTimer = null;
 
     return {

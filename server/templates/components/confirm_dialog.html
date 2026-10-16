@@ -1,0 +1,36 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  Confirm dialog (handoff 5.6), used by js/dialog.js. Include it ONCE on a page that has
+  forms marked class="js-confirm", and load dialog.js.
+
+  The forms work without JavaScript: each one has its own visible confirmation (a "Yes, ..."
+  checkbox or a typed-name field, inside an element with class="js-confirm-nojs") that the
+  server checks. With JavaScript, dialog.js hides those, catches the submit, opens this
+  dialog and fills it from VISIBLE text in the form (textContent only, never data- attributes):
+    title     the form's .js-confirm-title
+    sentence  the form's .js-confirm-text
+    action    the form's submit key label (red text: every use is destructive)
+    name      the form's .js-confirm-name, if the form has a typed-name field: the dialog
+              then asks for it, and the action key stays aria-disabled until it matches
+  Confirm ticks the checkbox / copies the typed name into the form, then submits it.
+  The server decides either way; the check here is only so the user can't miss it.
+
+  Focus goes to Cancel (never the destructive key), Tab stays inside, Esc / Cancel / a click
+  on the backdrop close it, and focus returns to the key that opened it.
+  Without JS this markup is never opened, so it stays empty and hidden.
+{% endcomment %}
+<dialog class="confirm-dialog surface" id="confirm-dialog" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-text">
+  <div class="confirm-dialog__inner">
+    <h2 class="confirm-dialog__title" id="confirm-dialog-title"></h2>
+    <p class="confirm-dialog__text" id="confirm-dialog-text"></p>
+    <div class="field confirm-dialog__field" hidden>
+      <label class="field__label" for="confirm-dialog-input">Type <span class="confirm-dialog__match"></span> to confirm</label>
+      <input class="well" id="confirm-dialog-input" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="confirm-dialog-hint">
+      <p class="field__help" id="confirm-dialog-hint">It must match exactly, capital letters too.</p>
+    </div>
+    <div class="confirm-dialog__keys">
+      <button type="button" class="btn confirm-dialog__cancel">Cancel</button>
+      <button type="button" class="btn btn--danger confirm-dialog__action"></button>
+    </div>
+  </div>
+</dialog>

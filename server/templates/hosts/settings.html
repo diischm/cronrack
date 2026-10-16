@@ -1,47 +1,103 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ host.name }} settings · CronRack{% endblock %}
+{% block main_class %}app-main--settings{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/dialog.js' %}" defer></script>{% endblock %}
 
+{% comment %}
+  Host settings (handoff 5.6). Each section is a raised panel: 2 columns from 900px, 3 from
+  1200px, stacked on phones; the Danger zone (Delete host) is last and full width.
+  Rotate, revoke and delete are real POST forms that work without JavaScript: rotate and
+  revoke need the "Yes, ..." box ticked (the server checks confirm=yes), delete needs the
+  typed host name (the server checks it). With JavaScript, dialog.js asks in the confirm
+  dialog instead (components/confirm_dialog.html), using the visible text of each form.
+  The Rotate form's one-time key (rotate_key) stops a re-sent POST from rotating twice.
+{% endcomment %}
 {% block content %}
-  <div class="page-head">
+  <div class="page-head settings-head">
     <a class="btn btn--icon" href="{% url 'host-detail' host.pk %}" aria-label="Back">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
     </a>
-    <h1 class="page-title">{{ host.name }}</h1>
-    <p class="page-sub">Host settings</p>
+    <div class="settings-head__text">
+      {# Offline: the unlit lamp + "Offline" in words, no status icon (like the rack and the host page). #}
+      <div class="settings-head__title">
+        {% if title_status.status == "offline" %}{% include "components/lamp.html" with status="off" %}{% endif %}
+        <h1 class="page-title settings-head__name">{{ host.name }}</h1>
+        {% if title_status.status == "offline" %}<p class="offline-note settings-head__offline"><strong>Offline</strong></p>{% else %}{% include "components/status_icon.html" with status=title_status.status label=title_status.status_label %}{% endif %}
+      </div>
+      <p class="page-sub">Host settings</p>
+    </div>
   </div>
 
-  <form class="surface panel form" method="post" action="{% url 'host-settings' host.pk %}" novalidate>
-    {% csrf_token %}
-    <h2 class="section-title">Rename</h2>
-    {% include "components/field.html" with field=name_form.name %}
-    <button type="submit" class="btn">Save</button>
-  </form>
+  <div class="settings-grid settings-grid--host">
+    <form class="surface panel form" method="post" action="{% url 'host-settings' host.pk %}" novalidate>
+      {% csrf_token %}
+      <h2 class="section-title">Rename</h2>
+      {% comment %}
+        Written out (not {{ field }}): the unbound form has no value, so the current name is
+        filled in here; after a failed POST the field shows what was sent, with its error.
+        Ids follow Django's (id_name, _helptext, _error), like the add host form.
+      {% endcomment %}
+      {% with field=name_form.name %}
+        <div class="field">
+          <label class="field__label" for="{{ field.auto_id }}">New name</label>
+          <input type="text" class="well" name="{{ field.html_name }}" id="{{ field.auto_id }}"
+            value="{% if name_form.is_bound %}{{ field.value|default_if_none:'' }}{% else %}{{ host.name }}{% endif %}"
+            required maxlength="{{ field.field.max_length }}" autocomplete="off" autocapitalize="none" spellcheck="false"
+            aria-describedby="{{ field.auto_id }}_helptext{% if field.errors %} {{ field.auto_id }}_error{% endif %}"{% if field.errors %} aria-invalid="true" autofocus{% endif %}>
+          <p class="field__help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>
+          {% if field.errors %}<div class="field__errors" id="{{ field.auto_id }}_error">{% for error in field.errors %}<p class="field__error">{{ error }}</p>{% endfor %}</div>{% endif %}
+        </div>
+      {% endwith %}
+      <div class="form-keys"><button type="submit" class="btn">Save</button></div>
+    </form>
 
-  {# Apo: wrap rotate / revoke / delete in native <dialog> confirmations (handoff 5.6). #}
-  <form class="surface panel form" method="post" action="{% url 'host-rotate' host.pk %}">
-    {% csrf_token %}
-    {# One-time key (a nonce, not a secret): a re-sent POST can't rotate the token twice. #}
-    <input type="hidden" name="rotate_key" value="{{ rotate_key }}">
-    <h2 class="section-title">Rotate token</h2>
-    {% if rotate_notice %}<p class="form-error" role="alert">{{ rotate_notice }}</p>{% endif %}
-    <p class="muted">Makes a new token and disconnects the agent until it uses the new one.</p>
-    <button type="submit" class="btn">Rotate token</button>
-  </form>
+    <form class="surface panel form js-confirm" method="post" action="{% url 'host-rotate' host.pk %}">
+      {% csrf_token %}
+      {# One-time key (a nonce, not a secret): a re-sent POST can't rotate the token twice. #}
+      <input type="hidden" name="rotate_key" value="{{ rotate_key }}">
+      <h2 class="section-title js-confirm-title">Rotate token</h2>
+      {% if rotate_notice %}<p class="form-error" role="alert">{{ rotate_notice }}</p>{% endif %}
+      <p class="muted js-confirm-text">Rotate the token for <strong class="settings-name">{{ host.name }}</strong>? The agent stops reporting until you run the new install command.</p>
+      <div class="confirm-check js-confirm-nojs">
+        <label class="check" for="rotate-confirm">
+          <input class="check__input visually-hidden" type="checkbox" name="confirm" value="yes" id="rotate-confirm"{% if rotate_error %} aria-invalid="true" aria-describedby="rotate-confirm-error" autofocus{% endif %}>
+          <span class="check__box well" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg></span>
+          <span class="check__label">Yes, rotate the token</span>
+        </label>
+        {% if rotate_error %}<p class="field__error" id="rotate-confirm-error">{{ rotate_error }}</p>{% endif %}
+      </div>
+      <div class="form-keys"><button type="submit" class="btn">Rotate token</button></div>
+    </form>
 
-  <form class="surface panel form" method="post" action="{% url 'host-revoke' host.pk %}">
-    {% csrf_token %}
-    <h2 class="section-title">Revoke token</h2>
-    <p class="muted">The agent on this host will stop reporting.</p>
-    <button type="submit" class="btn">Revoke token</button>
-  </form>
+    <form class="surface panel form js-confirm" method="post" action="{% url 'host-revoke' host.pk %}">
+      {% csrf_token %}
+      <h2 class="section-title js-confirm-title">Revoke token</h2>
+      <p class="muted js-confirm-text">Revoke the token for <strong class="settings-name">{{ host.name }}</strong>? The agent on this host stops reporting.</p>
+      <div class="confirm-check js-confirm-nojs">
+        <label class="check" for="revoke-confirm">
+          <input class="check__input visually-hidden" type="checkbox" name="confirm" value="yes" id="revoke-confirm"{% if revoke_error %} aria-invalid="true" aria-describedby="revoke-confirm-error" autofocus{% endif %}>
+          <span class="check__box well" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg></span>
+          <span class="check__label">Yes, revoke the token</span>
+        </label>
+        {% if revoke_error %}<p class="field__error" id="revoke-confirm-error">{{ revoke_error }}</p>{% endif %}
+      </div>
+      <div class="form-keys"><button type="submit" class="btn btn--danger">Revoke token</button></div>
+    </form>
 
-  <form class="surface panel form" method="post" action="{% url 'host-delete' host.pk %}" novalidate>
-    {% csrf_token %}
-    <h2 class="section-title">Delete host</h2>
-    <p class="muted">Deletes the host, its token and its activity. This can't be undone.</p>
-    {% include "components/field.html" with field=delete_form.confirm_name %}
-    <button type="submit" class="btn btn--danger">Delete host</button>
-  </form>
+    <form class="surface panel form danger-zone js-confirm" method="post" action="{% url 'host-delete' host.pk %}" novalidate>
+      {% csrf_token %}
+      <h2 class="section-title">Danger zone</h2>
+      <h3 class="danger-zone__title js-confirm-title">Delete host</h3>
+      <p class="muted js-confirm-text">Delete <strong class="js-confirm-name">{{ host.name }}</strong>? This deletes the host, its token and its activity. It can't be undone.</p>
+      <div class="js-confirm-nojs">{% include "components/field.html" with field=delete_form.confirm_name %}</div>
+      <div class="form-keys"><button type="submit" class="btn btn--danger">Delete host</button></div>
+    </form>
+
+    {# Inside the grid, not a direct child of <main>: the page column rules (width, max-width) #}
+    {# must not reach it. Closed it takes no space; open it lives in the top layer. #}
+    {% include "components/confirm_dialog.html" %}
+  </div>
 {% endblock %}

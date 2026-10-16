@@ -23,7 +23,13 @@ from hosts.access import get_owned_host
 from hosts.forms import DeleteHostForm, HostNameForm
 from hosts.humanize import ago
 from hosts.models import AgentToken, Host
-from hosts.presenters import detail_context, host_preview, iso_utc, overview_context
+from hosts.presenters import (
+    detail_context,
+    host_preview,
+    host_status,
+    iso_utc,
+    overview_context,
+)
 from hosts.samples import EXAMPLE_DETAIL_CONTEXT
 from hosts.services import close_agent, request_collect
 from rules.engine import effective_status
@@ -34,6 +40,10 @@ ROTATE_KEYS_SESSION = "rotate_keys"
 # Each settings page view adds a key; keep only the newest few so the session stays small.
 MAX_ROTATE_KEYS = 20
 ROTATE_AGAIN = "This token was already rotated. Rotate again?"
+# Rotate and revoke cut the agent off, so their POST must say so: a ticked checkbox
+# (no JS) or the confirm dialog (JS) sends confirm=yes. Anything else changes nothing.
+CONFIRM_VALUE = "yes"
+CONFIRM_ERROR = "Tick the box to confirm."
 
 # Where Caddy keeps its own CA's root certificate (`tls internal`), inside the caddy container.
 CADDY_ROOT_CA = "/data/caddy/pki/authorities/local/root.crt"
@@ -248,16 +258,33 @@ def use_rotate_key(request: HttpRequest, host: Host, key) -> bool:
     return True
 
 
-def _settings_page(request, host, name_form=None, delete_form=None, status=200, rotate_notice=""):
+def confirmed(request: HttpRequest) -> bool:
+    return request.POST.get("confirm") == CONFIRM_VALUE
+
+
+def _settings_page(
+    request,
+    host,
+    name_form=None,
+    delete_form=None,
+    status=200,
+    rotate_notice="",
+    rotate_error="",
+    revoke_error="",
+):
     return render(
         request,
         "hosts/settings.html",
         {
             "host": host,
+            # Only what the title needs: the status and its words (not the report).
+            "title_status": host_status(host, timezone.now()),
             "name_form": name_form or HostNameForm(owner=request.user, instance=host),
             "delete_form": delete_form or DeleteHostForm(host=host),
             "rotate_key": new_rotate_key(request, host),
             "rotate_notice": rotate_notice,
+            "rotate_error": rotate_error,
+            "revoke_error": revoke_error,
         },
         status=status,
     )
@@ -283,6 +310,9 @@ def host_settings(request: HttpRequest, host_id: int) -> HttpResponse:
 @require_POST
 def host_rotate(request: HttpRequest, host_id: int) -> HttpResponse:
     host = get_owned_host(request.user, host_id)
+    if not confirmed(request):
+        # Checked before the one-time key, so the key isn't used up by an unconfirmed POST.
+        return _settings_page(request, host, status=400, rotate_error=CONFIRM_ERROR)
     with transaction.atomic():
         # A re-sent POST (Back or reload on the "New token" page) carries a key that is
         # already used: don't rotate again, or the token just installed would stop working.
@@ -299,6 +329,8 @@ def host_rotate(request: HttpRequest, host_id: int) -> HttpResponse:
 @require_POST
 def host_revoke(request: HttpRequest, host_id: int) -> HttpResponse:
     host = get_owned_host(request.user, host_id)
+    if not confirmed(request):
+        return _settings_page(request, host, status=400, revoke_error=CONFIRM_ERROR)
     AgentToken.objects.filter(host=host).update(revoked=True)
     close_agent(host)
     messages.success(request, "Token revoked. The agent on this host can no longer connect.")

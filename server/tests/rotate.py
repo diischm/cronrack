@@ -17,7 +17,7 @@ def rotate_key(client: Client, host_id: int) -> str:
 
 
 def post_rotate(client: Client, host_id: int, key: str | None = None):
-    """Press Rotate token: a fresh key from the settings page unless one is given."""
+    """Press Rotate token and confirm it: a fresh key from the settings page unless one is given."""
     if key is None:
         key = rotate_key(client, host_id)
-    return client.post(f"/hosts/{host_id}/rotate/", {"rotate_key": key})
+    return client.post(f"/hosts/{host_id}/rotate/", {"rotate_key": key, "confirm": "yes"})
