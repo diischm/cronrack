@@ -1,45 +1,118 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Settings · CronRack{% endblock %}
 {% block nav_settings %}aria-current="page"{% endblock %}
+{% block main_class %}app-main--settings{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/password.js' %}" defer></script>{% endblock %}
 
+{% comment %}
+  Settings (handoff 5.7). Each section is a raised panel: 2 columns from 900px, stacked on
+  phones.
+  Alerts + Offline detection are ONE form (the view saves both fields together), shown as two
+  panels: the <form> has display: contents, so its panels are grid items like the others.
+  Either Save key saves both. "Send test alert" belongs to its own form (#test-alert-form,
+  outside the grid) through the button's form= attribute, so it isn't nested in the prefs
+  form; actions.js sends it with fetch and shows the result as a toast.
+  The webhook URL is only ever in its own input: no toast or message repeats it.
+  Appearance is browser-only (theme.js, localStorage), so it's hidden until JS shows it.
+{% endcomment %}
 {% block content %}
   <div class="page-head">
     <h1 class="page-title">Settings</h1>
   </div>
 
-  <form class="surface panel form" method="post" action="{% url 'prefs' %}" novalidate>
-    {% csrf_token %}
-    <input type="hidden" name="form" value="prefs">
-    <h2 class="section-title">Alerts</h2>
-    {% include "components/form_errors.html" with form=prefs_form %}
-    {% include "components/field.html" with field=prefs_form.discord_webhook_url %}
-    {% include "components/field.html" with field=prefs_form.silent_after_seconds %}
-    <button type="submit" class="btn btn--primary">Save</button>
-  </form>
+  <div class="settings-grid">
+    <form class="settings-prefs" method="post" action="{% url 'prefs' %}" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="form" value="prefs">
 
-  {# Works without JS (redirects back here with a flash message); with JS, actions.js sends it with fetch. Either way the result is a toast. #}
-  <form class="surface panel form js-fetch-action" method="post" action="{% url 'test-alert' %}" data-action="test-alert">
-    {% csrf_token %}
-    <div class="action-group">
-      <button type="submit" class="btn">Send test alert</button>
-    </div>
-  </form>
+      <section class="surface panel form" aria-labelledby="alerts-title">
+        <h2 class="section-title" id="alerts-title">Alerts</h2>
+        {% include "components/form_errors.html" with form=prefs_form %}
+        <p class="muted">CronRack posts to Discord when a host's status changes.</p>
+        {% with field=prefs_form.discord_webhook_url %}
+          <div class="field">
+            <label class="field__label" for="{{ field.auto_id }}">{{ field.label }}</label>
+            <input type="url" class="well" name="{{ field.html_name }}" id="{{ field.auto_id }}"
+              value="{{ field.value|default_if_none:'' }}" maxlength="{{ field.field.max_length }}"
+              autocomplete="off" spellcheck="false" placeholder="https://discord.com/api/webhooks/…"
+              aria-describedby="{{ field.auto_id }}_helptext{% if field.errors %} {{ field.auto_id }}_error{% endif %}"{% if field.errors %} aria-invalid="true" autofocus{% endif %}>
+            <p class="field__help" id="{{ field.auto_id }}_helptext">Only Discord webhook URLs: https://discord.com/api/webhooks/…</p>
+            {% if field.errors %}<div class="field__errors" id="{{ field.auto_id }}_error">{% for error in field.errors %}<p class="field__error">{{ error }}</p>{% endfor %}</div>{% endif %}
+          </div>
+        {% endwith %}
+        <div class="form-keys">
+          <button type="submit" class="btn">Save</button>
+          <button type="submit" class="btn" form="test-alert-form">Send test alert</button>
+        </div>
+      </section>
 
-  <form class="surface panel form" method="post" action="{% url 'prefs' %}" novalidate>
-    {% csrf_token %}
-    <input type="hidden" name="form" value="password">
-    <h2 class="section-title">Change password</h2>
-    {% include "components/form_errors.html" with form=password_form %}
-    {% include "components/field.html" with field=password_form.old_password %}
-    {% include "components/field.html" with field=password_form.new_password1 %}
-    {% include "components/field.html" with field=password_form.new_password2 %}
-    <button type="submit" class="btn">Update password</button>
-  </form>
+      <section class="surface panel form" aria-labelledby="offline-title">
+        <h2 class="section-title" id="offline-title">Offline detection</h2>
+        {% with field=prefs_form.silent_after_seconds %}
+          <div class="field">
+            <label class="field__label" for="{{ field.auto_id }}">Mark a host offline after</label>
+            <div class="unit-row">
+              <input type="number" class="well unit-row__input" name="{{ field.html_name }}" id="{{ field.auto_id }}"
+                value="{{ field.value|default_if_none:'' }}" min="{{ field.field.min_value }}" max="{{ field.field.max_value }}"
+                step="1" inputmode="numeric" required
+                aria-describedby="{{ field.auto_id }}_unit {{ field.auto_id }}_helptext{% if field.errors %} {{ field.auto_id }}_error{% endif %}"{% if field.errors %} aria-invalid="true" autofocus{% endif %}>
+              <span class="unit-row__unit" id="{{ field.auto_id }}_unit">seconds</span>
+            </div>
+            <p class="field__help" id="{{ field.auto_id }}_helptext">A host that sends nothing for this long counts as offline. {{ field.field.min_value }} to {{ field.field.max_value }} seconds (1 minute to 24 hours).</p>
+            {% if field.errors %}<div class="field__errors" id="{{ field.auto_id }}_error">{% for error in field.errors %}<p class="field__error">{{ error }}</p>{% endfor %}</div>{% endif %}
+          </div>
+        {% endwith %}
+        <div class="form-keys"><button type="submit" class="btn">Save</button></div>
+      </section>
+    </form>
 
-  <form class="surface panel form" method="post" action="{% url 'logout' %}">
+    <section class="surface panel form panel--fit" aria-labelledby="appearance-title">
+      <h2 class="section-title" id="appearance-title">Appearance</h2>
+      {# theme.js shows the picker and hides the note; both stay in sync with the top-bar key. #}
+      <fieldset class="theme-picker" id="theme-picker" hidden>
+        <legend class="field__label">Theme</legend>
+        <div class="seg-track well theme-seg">
+          <label class="seg seg--radio"><input class="visually-hidden" type="radio" name="theme" value="light" aria-describedby="theme-help">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+            Light</label>
+          <label class="seg seg--radio"><input class="visually-hidden" type="radio" name="theme" value="dark" aria-describedby="theme-help">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+            Dark</label>
+          <label class="seg seg--radio"><input class="visually-hidden" type="radio" name="theme" value="system" aria-describedby="theme-help">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg>
+            System</label>
+        </div>
+        <p class="field__help" id="theme-help">System follows your device's light or dark setting. Saved in this browser only.</p>
+      </fieldset>
+      <p class="muted" id="theme-nojs">Switching the theme needs JavaScript.</p>
+    </section>
+
+    <section class="surface panel panel--fit" aria-labelledby="account-title">
+      <h2 class="section-title" id="account-title">Account</h2>
+      <form class="form" method="post" action="{% url 'prefs' %}" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="form" value="password">
+        <h3 class="subsection-title">Change password</h3>
+        {% include "components/form_errors.html" with form=password_form %}
+        {% include "components/password_field.html" with field=password_form.old_password autocomplete="current-password" label="Current password" %}
+        {% include "components/password_field.html" with field=password_form.new_password1 autocomplete="new-password" label="New password" %}
+        {% include "components/password_field.html" with field=password_form.new_password2 autocomplete="new-password" label="Confirm new password" %}
+        <div class="form-keys"><button type="submit" class="btn">Update password</button></div>
+      </form>
+      <form class="form-keys" method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn">Sign out</button>
+      </form>
+    </section>
+  </div>
+
+  {# The "Send test alert" key's form: the key sits in the Alerts panel, linked with form=. #}
+  {# hidden only takes it out of the layout; a hidden form still submits. Works without JS: #}
+  {# the server redirects back here with a flash message. #}
+  <form id="test-alert-form" class="js-fetch-action" method="post" action="{% url 'test-alert' %}" data-action="test-alert" hidden>
     {% csrf_token %}
-    <button type="submit" class="btn">Sign out</button>
   </form>
 {% endblock %}
