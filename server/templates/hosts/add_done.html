@@ -1,17 +1,54 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Add host · CronRack{% endblock %}
+{% block extra_head %}
+  <script src="{% static 'cronrack/js/disclosure.js' %}" defer></script>
+  <script src="{% static 'cronrack/js/add-host.js' %}" defer></script>
+{% endblock %}
 
 {% block content %}
   <div class="page-head">
-    <h1 class="page-title">{{ host.name }} created</h1>
-    <p class="page-sub">Step 2 of 3: put the token on the host.</p>
+    <h1 class="page-title">Add a host</h1>
+    <p class="page-sub"><span class="install__name">{{ host.name }}</span> is created. Install the agent on it and it checks in.</p>
   </div>
+  {% include "components/add_steps.html" with current=2 %}
   {% include "components/agent_setup.html" %}
-  {# Step 3 (Apo): poll /api/v1/hosts/<id>/status.json every 3s with the logo-bar loader. #}
-  <section class="surface panel">
-    <h2 class="section-title">Waiting for {{ host.name }} to check in…</h2>
-    <a class="btn" href="{% url 'host-detail' host.pk %}">Go to host</a>
+
+  {% comment %}
+    Step 3 (add-host.js): polls /api/v1/hosts/<id>/status.json every 3s while the tab is
+    visible. The first report swaps the loader for the host's lamp + "Connected", marks the
+    steps done, shows "Go to host" (href built from data-host-id, a number, and checked
+    against /^\/hosts\/\d+\/$/) and a toast. After 10 minutes without a report it stops and
+    shows the agent commands + "Keep waiting". data-host-id is the only data attribute
+    here; the token is never in one. The host name is read from #connect-name's text.
+    Without JS: the loader and the waiting line stay, and the <noscript> link goes to the
+    host page (it says "Waiting" there until the first report).
+  {% endcomment %}
+  <section class="surface panel connect" id="connect" aria-labelledby="connect-title" data-host-id="{{ host.pk }}">
+    <h2 class="section-title" id="connect-title" tabindex="-1">Connect</h2>
+    <div class="connect__state">
+      <div class="connect__signal">
+        <div class="loader surface" id="connect-loader" aria-hidden="true"><span></span><span></span><span></span></div>
+        <span class="connect__lamp" id="connect-lamp" hidden></span>
+      </div>
+      <div class="connect__text" role="status">
+        <p class="connect__line" id="connect-line">Waiting for <strong class="install__name" id="connect-name">{{ host.name }}</strong> to check in…</p>
+        <p class="muted" id="connect-sub">This page checks every few seconds. The host checks in within a minute after the installer finishes.</p>
+      </div>
+    </div>
+    <div class="connect__stuck" id="connect-stuck" hidden>
+      <p class="connect__stuck-text">Still waiting. Check the agent on the host:</p>
+      <div class="code-head">
+        <h3 class="install-step__title install-step__title--sub">Agent status and log</h3>
+        <button type="button" class="btn btn--sm js-copy" aria-controls="connect-agent-check">Copy</button>
+      </div>
+      <pre class="code code--wrap" id="connect-agent-check">sudo systemctl status cronrack-agent
+sudo journalctl -u cronrack-agent -n 50 --no-pager</pre>
+      <button type="button" class="btn connect__keep" id="connect-keep-waiting">Keep waiting</button>
+    </div>
+    <a class="btn btn--primary connect__go" id="connect-go" hidden>Go to host</a>
+    <noscript><a class="btn" href="{% url 'host-detail' host.pk %}">Go to host</a></noscript>
   </section>
 {% endblock %}

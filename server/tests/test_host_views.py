@@ -18,7 +18,8 @@ from .sample import make_report
 
 pytestmark = pytest.mark.django_db
 
-TOKEN_RE = re.compile(r'token = "([A-Za-z0-9_-]{40,})"')
+# The token's code well (components/agent_setup.html): the only place it appears.
+TOKEN_RE = re.compile(r'<pre [^>]*id="agent-token"[^>]*>([A-Za-z0-9_-]{40,})</pre>')
 
 
 def token_from(response) -> str:
@@ -53,9 +54,10 @@ def test_add_host_shows_the_token_once(alice_client: Client, alice, caplog):
         "curl -fsSL http://testserver/agent/install.sh | sudo bash -s -- "
         "--server http://testserver" in html
     )
-    # ... the token to paste at the prompt, and the manual agent.toml fallback.
-    assert f'<pre class="code well">{token}</pre>' in html
-    assert 'server_url = "http://testserver"' in html
+    # ... the token to paste at the prompt, and the manual agent.toml fallback (which
+    # leaves the token out: it is shown exactly once).
+    assert html.count(token) == 1
+    assert 'server_url = "http://testserver"\ntoken = ""' in html
     assert "sudo install -m 640 -o root -g cronrack /dev/null /etc/cronrack/agent.toml" in html
     assert "no-store" in response["Cache-Control"]
 

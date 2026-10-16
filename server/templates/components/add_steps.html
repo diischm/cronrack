@@ -1,0 +1,36 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  Step header for Add host (handoff 5.5): 1 Name, 2 Install, 3 Connect.
+  Usage: {% include "components/add_steps.html" with current=1 %}
+  Steps before `current` are done (a check icon instead of the number, "Done"), `current`
+  is highlighted (orange number, aria-current="step", "Now"), later ones say "Next".
+  Every state is said in words too, never by colour alone. Each number sits in a recessed
+  well. add-host.js marks steps 2 and 3 done when the agent connects (it swaps the hidden
+  attribute on the number and the check, and sets the state word with textContent).
+{% endcomment %}
+<ol class="steps" aria-label="Add host steps">
+  <li class="step{% if current > 1 %} step--done{% elif current == 1 %} step--current{% endif %}" id="step-1"{% if current == 1 %} aria-current="step"{% endif %}>
+    <span class="step__well well" aria-hidden="true">
+      <span class="step__num"{% if current > 1 %} hidden{% endif %}>1</span>
+      <svg class="step__check" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"{% if current <= 1 %} hidden{% endif %}><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+    </span>
+    <span class="step__label"><span class="visually-hidden">Step 1: </span>Name</span>
+    <span class="step__state">{% if current > 1 %}Done{% elif current == 1 %}Now{% else %}Next{% endif %}</span>
+  </li>
+  <li class="step{% if current > 2 %} step--done{% elif current == 2 %} step--current{% endif %}" id="step-2"{% if current == 2 %} aria-current="step"{% endif %}>
+    <span class="step__well well" aria-hidden="true">
+      <span class="step__num"{% if current > 2 %} hidden{% endif %}>2</span>
+      <svg class="step__check" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"{% if current <= 2 %} hidden{% endif %}><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+    </span>
+    <span class="step__label"><span class="visually-hidden">Step 2: </span>Install</span>
+    <span class="step__state">{% if current > 2 %}Done{% elif current == 2 %}Now{% else %}Next{% endif %}</span>
+  </li>
+  <li class="step{% if current > 3 %} step--done{% elif current == 3 %} step--current{% endif %}" id="step-3"{% if current == 3 %} aria-current="step"{% endif %}>
+    <span class="step__well well" aria-hidden="true">
+      <span class="step__num"{% if current > 3 %} hidden{% endif %}>3</span>
+      <svg class="step__check" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"{% if current <= 3 %} hidden{% endif %}><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+    </span>
+    <span class="step__label"><span class="visually-hidden">Step 3: </span>Connect</span>
+    <span class="step__state">{% if current > 3 %}Done{% elif current == 3 %}Now{% else %}Next{% endif %}</span>
+  </li>
+</ol>

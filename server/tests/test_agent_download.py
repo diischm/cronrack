@@ -131,7 +131,9 @@ def test_rotated_token_page_shows_command_and_token(alice_client, host):
     html = response.content.decode()
 
     assert "curl -fsSL http://testserver/agent/install.sh | sudo bash -s --" in html
-    assert "server_url = &quot;http://testserver&quot;" in html
+    # The manual fallback names the server but leaves the token out (it is shown once, above).
+    assert 'server_url = "http://testserver"' in html
+    assert 'id="agent-token"' in html
 
 
 # --- settings: DEBUG default for ALLOWED_HOSTS -----------------------------------------

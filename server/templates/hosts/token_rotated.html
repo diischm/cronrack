@@ -1,7 +1,11 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}New token · CronRack{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/disclosure.js' %}" defer></script>
+{# Only for its token guard: hides the token if the page is restored from the back/forward cache. #}
+<script src="{% static 'cronrack/js/add-host.js' %}" defer></script>{% endblock %}
 
 {% block content %}
   <div class="page-head">
