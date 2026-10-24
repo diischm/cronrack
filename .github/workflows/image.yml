@@ -1,0 +1,190 @@
+name: Image
+
+# The server image for linux/amd64 and linux/arm64 (Raspberry Pi), on GHCR.
+#
+#   pull request      build both platforms and scan the amd64 image; nothing is pushed,
+#                     no registry login, no secrets
+#   push to main      build, push ghcr.io/diischm/cronrack:sha-<short sha>, scan it
+#   tag vX.Y.Z        the same, also tagged X.Y.Z and X.Y
+#
+# There is no `latest` tag on purpose: a deployment names the exact version it runs.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+# Nothing by default; each job asks for exactly what it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/diischm/cronrack
+  PLATFORMS: linux/amd64,linux/arm64
+  # Trivy, installed from its GitHub release and checked against this SHA-256 (taken from
+  # the release's official trivy_0.75.0_checksums.txt). v0.75.0 (2026-10-01) is newer
+  # than the March 2026 supply-chain incident (GHSA-69fq-xp46-6x23: only binary v0.69.4
+  # was affected). Upgrade on purpose: change both values together.
+  TRIVY_VERSION: "0.75.0"
+  TRIVY_SHA256: "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
+
+jobs:
+  # --- pull requests: build only ----------------------------------------------------------
+  build:
+    name: Build (no push)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+
+      - name: Build both platforms
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The same build again (from the cache), loaded into Docker so Trivy can read it.
+      - name: Load the amd64 image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: cronrack-server:pr
+          cache-from: type=gha
+
+      - name: Install Trivy
+        run: |
+          cd /tmp
+          FILE="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sSLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${FILE}"
+          echo "${TRIVY_SHA256}  ${FILE}" | sha256sum --check
+          tar -xzf "${FILE}" trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+
+      - name: Scan (fail on HIGH/CRITICAL with a fix available)
+        run: >-
+          trivy image --no-progress --ignore-unfixed --severity HIGH,CRITICAL
+          --exit-code 1 cronrack-server:pr
+
+  # --- main and version tags: build and push ----------------------------------------------
+  publish:
+    name: Build and push
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write  # push to ghcr.io with the workflow's own GITHUB_TOKEN
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: |
+            latest=false
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build both platforms and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # --- scan exactly the pushed digest, per platform ------------------------------------------
+  scan:
+    name: Scan (${{ matrix.platform }})
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read  # pull the image, also while the package is private
+      security-events: write  # upload the SARIF report to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    env:
+      DIGEST: ${{ needs.publish.outputs.digest }}
+      PLATFORM: ${{ matrix.platform }}
+      # Trivy's registry login for ghcr.io, read-only in this job.
+      TRIVY_USERNAME: ${{ github.actor }}
+      TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Install Trivy
+        run: |
+          cd /tmp
+          FILE="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sSLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${FILE}"
+          echo "${TRIVY_SHA256}  ${FILE}" | sha256sum --check
+          tar -xzf "${FILE}" trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+
+      # Every finding, for the Security tab; this step itself never fails on findings.
+      - name: Report (SARIF)
+        run: >-
+          trivy image --no-progress --platform "$PLATFORM" --format sarif
+          --output trivy.sarif "${IMAGE}@${DIGEST}"
+
+      - name: Upload to code scanning
+        if: always() && hashFiles('trivy.sarif') != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d  # v4.38.3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-${{ matrix.platform }}
+
+      - name: Gate (fail on HIGH/CRITICAL with a fix available)
+        run: >-
+          trivy image --no-progress --platform "$PLATFORM" --ignore-unfixed
+          --severity HIGH,CRITICAL --exit-code 1 "${IMAGE}@${DIGEST}"
