@@ -32,10 +32,12 @@ FROM ${PYTHON_IMAGE}
 
 # PATH: use the venv's python/uvicorn. PYTHONDONTWRITEBYTECODE: the filesystem is
 # read-only at runtime (bytecode is compiled below instead). PYTHONUNBUFFERED: logs
-# show up in `docker compose logs` immediately.
+# show up in `docker compose logs` immediately. SQLITE_PATH: the database lives in /data,
+# the one directory meant for a volume (see below).
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    SQLITE_PATH=/data/db.sqlite3
 
 # The base image's own pip goes too (the venv above has none): nothing in this image
 # installs packages at runtime.
@@ -57,19 +59,20 @@ COPY agent/ agent/
 COPY deploy/ deploy/
 
 # - collectstatic: gather all CSS/JS (ours and the admin's) into /app/staticfiles, each
-#   file also under a content-hashed name, plus the manifest staticfiles.json that
-#   {% static %} reads at runtime (settings.STORAGES). Built into the image, so every
-#   image has a manifest that matches its own files.
+#   file also under a content-hashed name and gzipped, plus the manifest staticfiles.json
+#   that {% static %} reads at runtime (settings.STORAGES). Built into the image, so every
+#   image has a manifest that matches its own files; WhiteNoise serves them from there.
 #   Settings need a SECRET_KEY to load; this throwaway one exists only for this one
 #   command and is not stored in the image.
 # - compileall: precompile .py to .pyc now, since nothing can be written at runtime.
-# - data/ (SQLite) and /srv/static (the files handed to Caddy) belong to the app
-#   user; Docker copies that ownership into the named volumes mounted there.
+# - /data: the only place the server writes, apart from /tmp. SQLite keeps db.sqlite3
+#   and its -wal/-shm helper files here. Owned by the app user AND group-writable, so it
+#   works both as a Docker named volume (Docker copies this ownership into an empty
+#   volume) and in Kubernetes with fsGroup: 10001 (the group gets write access).
 RUN SECRET_KEY=collectstatic-only STATIC_ROOT=/app/staticfiles \
        python server/manage.py collectstatic --noinput --verbosity 0 \
     && python -m compileall -q server agent \
-    && install -d -o cronrack -g cronrack -m 0750 server/data \
-    && install -d -o cronrack -g cronrack -m 0755 /srv/static
+    && install -d -o 10001 -g 10001 -m 0770 /data
 
 WORKDIR /app/server
 USER 10001:10001

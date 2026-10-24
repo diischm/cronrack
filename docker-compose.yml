@@ -1,10 +1,13 @@
 # CronRack server: `docker compose up -d` (after creating .env from .env.example).
 #
 #   caddy      the only service with published ports: 80 (redirects to https) and 443
+#   migrate    one-shot: applies database migrations, then exits; app and scheduler
+#              start only after it finished successfully
 #   app        Django + Channels under uvicorn (pages, JSON, the agents' WebSocket)
 #   scheduler  marks hosts that stopped reporting as offline (dead-man's switch)
 #
-# app and scheduler run from the same image and share the SQLite database volume.
+# migrate, app and scheduler run from the same image (its entrypoint picks the role)
+# and share the SQLite database volume.
 
 name: cronrack
 
@@ -12,7 +15,7 @@ name: cronrack
 # headers (real client IP, "this was https") only from this address.
 x-caddy-ip: &caddy-ip 172.29.80.10
 
-# Hardening shared by app and scheduler.
+# Hardening shared by migrate, app and scheduler.
 x-hardening: &hardening
   # The container's filesystem is read-only; only the volumes and /tmp are writable.
   read_only: true
@@ -26,49 +29,66 @@ x-hardening: &hardening
     - ALL
   restart: unless-stopped
 
-# Built once from server/Dockerfile and used by both app and scheduler.
+# Built once from server/Dockerfile and used by migrate, app and scheduler.
 x-build: &build
   context: .
   dockerfile: server/Dockerfile
 
 services:
+  migrate:
+    <<: *hardening
+    build: *build
+    image: cronrack-server:local
+    command: ["migrate"]
+    env_file: .env
+    volumes:
+      - data:/data
+    # Needs no network at all: it only talks to the database file.
+    network_mode: none
+    # A one-shot job: it must NOT be restarted after it exits (the shared hardening
+    # block says unless-stopped, which would rerun it forever).
+    restart: "no"
+    # The image's HEALTHCHECK is for the web server; this container has none.
+    healthcheck:
+      disable: true
+
   app:
     <<: *hardening
     build: *build
     image: cronrack-server:local
+    command: ["web"]
     env_file: .env
     environment:
       FORWARDED_ALLOW_IPS: *caddy-ip
     volumes:
-      - data:/app/server/data
-      # The app fills this on start; Caddy reads it (read-only) to serve /static/*.
-      - static:/srv/static
+      # The database (SQLITE_PATH=/data/db.sqlite3, set in the image). Before 0.1.0 this
+      # same volume was mounted at /app/server/data; the files in it are unchanged.
+      - data:/data
     networks:
       - cronrack
     # No `ports:` on purpose. Port 8000 is reachable only inside the cronrack network.
+    # On `docker compose stop`/`down`, uvicorn gets up to 20 s to finish requests in
+    # flight (docker-entrypoint.sh); Docker's default of 10 s before SIGKILL is too short.
+    stop_grace_period: 25s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   scheduler:
     <<: *hardening
     build: *build
     image: cronrack-server:local
-    command:
-      - python
-      - manage.py
-      - check_hosts
-      - --loop
-      - --every
-      - "30"
-      - --heartbeat-file
-      - /tmp/check_hosts.alive
+    # check_hosts --loop --every 30 --heartbeat-file /tmp/check_hosts.alive
+    command: ["scheduler"]
     env_file: .env
     volumes:
-      - data:/app/server/data
+      - data:/data
     networks:
       - cronrack
-    # Start after the app has run the database migrations and is answering.
+    # Start once the database migrations are applied.
     depends_on:
-      app:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     # Healthy while the loop keeps finishing passes (it touches the file every 30 s).
     healthcheck:
       test:
@@ -96,7 +116,6 @@ services:
       # single-file mount would keep showing the container the old copy. caddy/ holds
       # only the Caddyfile. After editing it: docker compose restart caddy
       - ./caddy:/etc/caddy:ro
-      - static:/srv/static:ro
       # Certificates and Caddy's own CA (keep this volume: agents trust that CA).
       - caddy_data:/data
       - caddy_config:/config
@@ -140,6 +159,5 @@ networks:
 
 volumes:
   data:
-  static:
   caddy_data:
   caddy_config:
