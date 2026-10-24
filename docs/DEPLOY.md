@@ -157,7 +157,12 @@ cronrack-scheduler-1   scheduler   Up 2 minutes (healthy)    8000/tcp
 Only `caddy` has `0.0.0.0:...->` entries: those are the published ports. `8000/tcp` on the
 app only means "listens inside the Docker network".
 
-Logs, if something isn't healthy: `docker compose logs app` (or `scheduler`, `caddy`).
+There is a fourth service, `migrate`, that you don't see in that list: it applies the
+database migrations, then exits, and `app` and `scheduler` only start after it finished
+successfully. `docker compose ps -a` shows it as `Exited (0)`, which is what it should be.
+
+Logs, if something isn't healthy: `docker compose logs app` (or `migrate`, `scheduler`,
+`caddy`).
 
 ### 1.6 First run: create your account (do this right away)
 
@@ -371,7 +376,17 @@ docker compose up -d --build
 docker compose ps            # wait until all three are (healthy) again
 ```
 
-The app applies database migrations on start. Read `CHANGELOG.md` for anything special.
+`docker compose up -d` first runs the one-shot `migrate` service, which applies any new
+database migrations, and starts `app` and `scheduler` only after it succeeded. If an
+update seems stuck, `docker compose logs migrate` shows why. Read `CHANGELOG.md` for
+anything special.
+
+**The database moved to `/data` inside the containers.** Earlier builds mounted the
+`data` volume at `/app/server/data`; now the same volume is mounted at `/data` and the
+image sets `SQLITE_PATH=/data/db.sqlite3`. The volume and the files in it stay exactly
+as they are, so `git pull` and `docker compose up -d --build` keep your database. Only
+if you wrote your own commands or scripts with the old path (`data/db.sqlite3` inside
+the app), change them to `/data/db.sqlite3`, like the backup commands below.
 Then upgrade the agents by re-running the install command on each host (2.5); they
 download the new agent from your server.
 
@@ -386,7 +401,7 @@ consistent copy while CronRack keeps running:
 ```bash
 docker compose exec -T app python -c 'import sqlite3, sys, tempfile
 with tempfile.NamedTemporaryFile() as tmp:
-    sqlite3.connect("data/db.sqlite3").backup(sqlite3.connect(tmp.name))
+    sqlite3.connect("/data/db.sqlite3").backup(sqlite3.connect(tmp.name))
     sys.stdout.buffer.write(open(tmp.name, "rb").read())' > cronrack-backup-$(date +%F).sqlite3
 ls -l cronrack-backup-*.sqlite3
 ```
@@ -414,7 +429,7 @@ docker compose stop app scheduler
 docker compose run --rm --no-deps -T --entrypoint python app -c 'import sqlite3, sys, tempfile
 with tempfile.NamedTemporaryFile() as tmp:
     tmp.write(sys.stdin.buffer.read()); tmp.flush()
-    sqlite3.connect(tmp.name).backup(sqlite3.connect("data/db.sqlite3"))' < cronrack-backup-2026-10-13.sqlite3
+    sqlite3.connect(tmp.name).backup(sqlite3.connect("/data/db.sqlite3"))' < cronrack-backup-2026-10-13.sqlite3
 docker compose up -d
 ```
 
@@ -516,6 +531,10 @@ docker compose logs app
   `/setup/` answers "not found" and you log in at `/login/`), or the log was cut off;
   `docker compose restart app` prints a fresh code.
 - `CRONRACK_DOMAIN must be a bare host name`: remove `https://`, ports or slashes.
+- `DEBUG must be 1 or 0` (or `BEHIND_PROXY`, `CRONRACK_ENABLE_ADMIN`): a typo in a
+  yes/no setting. Use `1` or `0`; a typo is an error instead of quietly meaning "off".
+- `LOG_LEVEL must be one of …`, `CSRF_TRUSTED_ORIGINS entries must be origins …`,
+  `SQLITE_PATH must be an absolute path …`: the message says what is expected.
 - `set CRONRACK_DOMAIN in .env` from `docker compose` itself: there is no `.env` in this
   folder, or the line is missing.
 - `Pool overlaps with other one on this network`: another Docker network already uses
