@@ -121,6 +121,24 @@
   </div>
 
   <div class="sg-block">
+    <h3 class="sg-label">Toggle switch (recessed track, raised thumb, orange when on; role="switch")</h3>
+    <div class="sg-row">
+      <label class="switch"><input class="switch__input visually-hidden" type="checkbox" role="switch"><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span><span class="switch__label">Off</span></label>
+      <label class="switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" checked><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span><span class="switch__label">On</span></label>
+      <label class="switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" checked><span class="switch__track is-focus" aria-hidden="true"><span class="switch__thumb"></span></span><span class="switch__label">Focus</span></label>
+      <label class="switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" disabled><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span><span class="switch__label">Disabled</span></label>
+    </div>
+  </div>
+
+  <div class="sg-block">
+    <h3 class="sg-label">Checkbox (confirm without JavaScript)</h3>
+    <div class="sg-row">
+      <label class="check"><input class="check__input visually-hidden" type="checkbox"><span class="check__box well" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg></span><span class="check__label">Yes, revoke the token</span></label>
+      <label class="check"><input class="check__input visually-hidden" type="checkbox" checked><span class="check__box well" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg></span><span class="check__label">Ticked</span></label>
+    </div>
+  </div>
+
+  <div class="sg-block">
     <h3 class="sg-label">Segmented control</h3>
     <nav class="seg-track well sg-seg" aria-label="Segmented control example ({{ theme }})">
       <a class="seg" href="#{{ theme }}-seg">Light</a>

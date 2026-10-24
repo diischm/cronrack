@@ -56,7 +56,8 @@ def test_other_users_host_is_404(client: Client, bob, host, method, url):
     token_hash = AgentToken.objects.get(host=host).token_hash
     client.force_login(bob)
 
-    data = {"name": "stolen", "confirm_name": host.name}
+    # Every confirmation is sent, so the 404 can't come from a missing confirm field.
+    data = {"name": "stolen", "confirm_name": host.name, "confirm": "yes"}
     response = getattr(client, method)(url.format(id=host.pk), data if method == "post" else None)
 
     assert response.status_code == 404

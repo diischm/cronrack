@@ -129,7 +129,7 @@ def test_rotate_requires_post(alice_client: Client, host):
 def test_revoke(alice_client: Client, host):
     token = AgentToken.issue(host)
     with mock.patch("hosts.views.close_agent") as close:
-        response = alice_client.post(f"/hosts/{host.pk}/revoke/")
+        response = alice_client.post(f"/hosts/{host.pk}/revoke/", {"confirm": "yes"})
 
     assert response.status_code == 302
     assert AgentToken.verify(token) is None

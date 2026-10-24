@@ -204,17 +204,22 @@ def _disk_rows(report: dict, findings: list[Finding]):
     ]
 
 
+def host_status(host: Host, now: datetime, data: OwnerData | None = None) -> dict[str, str]:
+    """The status the UI shows for one host and its words (host detail header, host settings
+    title). Offline is worked out now, not only by the scheduler."""
+    status = (data or OwnerData(host.owner)).status(host, now)
+    return {"status": status, "status_label": STATUS_LABELS.get(status, status)}
+
+
 def detail_context(host: Host, now: datetime) -> dict[str, Any]:
     data = OwnerData(host.owner)
-    status = data.status(host, now)
     findings = active_findings(host, now, data)
     report = host.latest_report
     context: dict[str, Any] = {
         "host": {
             "id": host.pk,
             "name": host.name,
-            "status": status,
-            "status_label": STATUS_LABELS.get(status, status),
+            **host_status(host, now, data),
             "last_seen_human": ago(host.last_seen_at, now),
             "has_report": report is not None,
             # From the agent's last report (validated, at most 32 characters); None
