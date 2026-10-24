@@ -9,6 +9,7 @@ import pytest
 import pytest_asyncio
 from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
+from django.test import Client
 
 from activity.models import StatusEvent
 from agents.consumers import ENABLED_CHECKS, AgentConsumer, bearer_token
@@ -36,6 +37,12 @@ async def empty_channel_layer():
 @pytest.fixture
 def token(host):
     return AgentToken.issue(host)
+
+
+@pytest.fixture
+def no_report_spacing(monkeypatch):
+    """For tests that send several reports in a row on purpose."""
+    monkeypatch.setattr(AgentConsumer, "min_report_interval", 0)
 
 
 def agent(token=None, *, header=None):
@@ -201,6 +208,35 @@ async def test_new_connection_replaces_the_old_one(host, token):
     assert (await get_host(host.pk)).connected is False
 
 
+async def test_late_close_of_an_old_socket_keeps_the_new_one_connected(host, token):
+    """The reconnect race: the old socket closes only after the new one said hello."""
+    first = await connected_agent(token)
+    first_id = (await get_host(host.pk)).connection_id
+    second = await connected_agent(token)
+
+    fresh = await get_host(host.pk)
+    assert fresh.connection_id not in ("", first_id)  # the new socket is the active one
+    # The old socket's close arrives late, as a plain disconnect (no 4409 handled first).
+    await first.disconnect()
+
+    fresh = await get_host(host.pk)
+    assert fresh.connected is True
+    assert fresh.connection_id not in ("", first_id)
+    await second.disconnect()
+    assert (await get_host(host.pk)).connected is False
+
+
+async def test_report_sets_connected_again_after_the_scheduler_cleared_it(host, token):
+    comm = await connected_agent(token)
+    await database_sync_to_async(Host.objects.filter(pk=host.pk).update)(connected=False)
+
+    await comm.send_json_to({"type": "report", "report": make_report()})
+    assert await comm.receive_nothing(timeout=0.2)
+
+    assert (await get_host(host.pk)).connected is True
+    await comm.disconnect()
+
+
 # --- reports -----------------------------------------------------------------------
 
 
@@ -220,7 +256,7 @@ async def test_valid_report_updates_host_and_status(host, token):
     await comm.disconnect()
 
 
-async def test_same_status_records_no_new_event(host, token):
+async def test_same_status_records_no_new_event(host, token, no_report_spacing):
     comm = await connected_agent(token)
 
     for _ in range(2):
@@ -257,7 +293,7 @@ async def test_three_invalid_reports_close_4400(host, token):
     await comm.disconnect()
 
 
-async def test_valid_report_resets_the_invalid_count(host, token):
+async def test_valid_report_resets_the_invalid_count(host, token, no_report_spacing):
     comm = await connected_agent(token)
     bad = {"type": "report", "report": make_report(extra_field=1)}
 
@@ -374,4 +410,109 @@ async def test_deleted_host_closes_4410(host, token):
     await comm.send_json_to({"type": "report", "report": make_report()})
 
     await expect_close(comm, 4410)
+    await comm.disconnect()
+
+
+# --- report flood ---------------------------------------------------------------------
+
+
+async def test_reports_too_soon_after_the_last_one_are_ignored(host, token):
+    comm = await connected_agent(token)
+    first = make_report()
+    second = make_report(failed_units=["x.service"])
+
+    await comm.send_json_to({"type": "report", "report": first})
+    assert await comm.receive_nothing(timeout=0.2)
+    await comm.send_json_to({"type": "report", "report": second})
+
+    assert await comm.receive_nothing(timeout=0.2)  # no error, no close: just ignored
+    fresh = await get_host(host.pk)
+    assert fresh.latest_report == first
+    assert fresh.status == "green"
+    await comm.disconnect()
+
+
+async def test_report_after_the_interval_is_accepted(host, token, monkeypatch):
+    monkeypatch.setattr(AgentConsumer, "min_report_interval", 0.3)
+    comm = await connected_agent(token)
+    second = make_report(failed_units=["x.service"])
+
+    await comm.send_json_to({"type": "report", "report": make_report()})
+    assert await comm.receive_nothing(timeout=0.4)
+    await comm.send_json_to({"type": "report", "report": second})
+    assert await comm.receive_nothing(timeout=0.2)
+
+    assert (await get_host(host.pk)).latest_report == second
+    await comm.disconnect()
+
+
+async def test_repeated_early_reports_close_4400(host, token):
+    comm = await connected_agent(token)
+    await comm.send_json_to({"type": "report", "report": make_report()})
+    assert await comm.receive_nothing(timeout=0.2)
+
+    for _ in range(AgentConsumer.max_early_reports - 1):
+        await comm.send_json_to({"type": "report", "report": make_report()})
+    assert await comm.receive_nothing(timeout=0.2)  # still open
+    await comm.send_json_to({"type": "report", "report": make_report()})
+
+    await expect_close(comm, 4400)
+    await comm.disconnect()
+
+
+async def test_answers_to_collect_are_never_early(host, token):
+    """The server asked: the report is the answer, however soon it arrives."""
+    comm = await connected_agent(token)
+    await comm.send_json_to({"type": "report", "report": make_report()})
+    assert await comm.receive_nothing(timeout=0.2)
+
+    for i in range(20):
+        await database_sync_to_async(request_collect)(host)
+        assert await comm.receive_json_from() == {"type": "collect"}
+        report = make_report(updates={"total": i, "security": 0})
+        await comm.send_json_to({"type": "report", "report": report})
+        assert await comm.receive_nothing(timeout=0.05)
+
+    assert (await get_host(host.pk)).latest_report == report  # all accepted
+    await comm.disconnect()
+
+
+async def test_twenty_rapid_check_now_requests_never_close_the_agent(host, token, alice):
+    """The real path: the "Check now" view, with an agent that answers every collect."""
+    comm = await connected_agent(token)
+    browser = Client()
+    await database_sync_to_async(browser.force_login)(alice)
+    url = f"/hosts/{host.pk}/collect/"
+
+    for _ in range(20):
+        response = await database_sync_to_async(browser.post)(url, HTTP_ACCEPT="application/json")
+        assert response.json()["ok"] is True
+        if not await comm.receive_nothing(timeout=0.05):
+            # Asked (not skipped): answer at once, like an eager agent.
+            assert await comm.receive_json_from() == {"type": "collect"}
+            await comm.send_json_to({"type": "report", "report": make_report()})
+            assert await comm.receive_nothing(timeout=0.1)  # saved, never closed
+
+    assert await comm.receive_nothing(timeout=0.3)  # still open
+    await database_sync_to_async(request_collect)(host)
+    assert await comm.receive_json_from() == {"type": "collect"}
+    await comm.disconnect()
+
+
+async def test_accepted_report_resets_the_early_count(host, token):
+    comm = await connected_agent(token)
+    await comm.send_json_to({"type": "report", "report": make_report()})
+    assert await comm.receive_nothing(timeout=0.2)
+
+    for _ in range(2):
+        for _ in range(AgentConsumer.max_early_reports - 1):
+            await comm.send_json_to({"type": "report", "report": make_report()})
+        assert await comm.receive_nothing(timeout=0.2)  # all 9 handled (ignored)
+        # An accepted report (the answer to a collect) in between...
+        await database_sync_to_async(request_collect)(host)
+        assert await comm.receive_json_from() == {"type": "collect"}
+        await comm.send_json_to({"type": "report", "report": make_report()})
+
+    # ...so 2 x 9 early reports never added up to 10 in a row.
+    assert await comm.receive_nothing(timeout=0.3)
     await comm.disconnect()

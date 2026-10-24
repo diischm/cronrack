@@ -120,6 +120,31 @@ def test_csp_header_on_anonymous_and_error_pages(client: Client, alice):
     assert client.get("/hosts/999999/")["Content-Security-Policy"] == EXPECTED_CSP
 
 
+EXPECTED_HEADERS = {
+    # cronrack.middleware.SecurityHeadersMiddleware
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    # Django's SecurityMiddleware defaults (not set again in our middleware)
+    "Referrer-Policy": "same-origin",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "X-Content-Type-Options": "nosniff",
+    # XFrameOptionsMiddleware
+    "X-Frame-Options": "DENY",
+}
+
+
+@pytest.mark.parametrize("url", ["/", "/login/", "/api/v1/overview.json", "/hosts/999999/"])
+def test_security_headers_present(alice_client: Client, url):
+    response = alice_client.get(url)
+    for name, value in EXPECTED_HEADERS.items():
+        assert response[name] == value, name
+
+
+def test_security_headers_on_anonymous_pages(client: Client, alice):
+    response = client.get("/login/")
+    for name, value in EXPECTED_HEADERS.items():
+        assert response[name] == value, name
+
+
 XSS = "<script>alert(1)</script>"
 XSS_ATTR = '"><img src=x onerror=alert(1)>'
 

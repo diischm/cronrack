@@ -12,6 +12,7 @@
   <form class="surface panel form" method="post" action="{% url 'setup' %}" novalidate>
     {% csrf_token %}
     {% include "components/form_errors.html" with form=form %}
+    {% include "components/field.html" with field=form.setup_code %}
     {% include "components/field.html" with field=form.username %}
     {% include "components/field.html" with field=form.password1 %}
     {% include "components/field.html" with field=form.password2 %}

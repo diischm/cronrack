@@ -25,7 +25,7 @@ from hosts.humanize import ago
 from hosts.models import AgentToken, Host
 from hosts.presenters import detail_context, host_preview, iso_utc, overview_context
 from hosts.samples import EXAMPLE_DETAIL_CONTEXT
-from hosts.services import close_agent, request_collect
+from hosts.services import close_agent, just_reported, request_collect
 from rules.engine import effective_status
 
 AGENT_CONFIG_PATH = "/etc/cronrack/agent.toml"
@@ -173,6 +173,13 @@ def host_collect(request: HttpRequest, host_id: int) -> HttpResponse:
             return JsonResponse({"ok": False, "error": OFFLINE_ERROR}, status=409)
         messages.error(request, OFFLINE_ERROR)
         return redirect("host-detail", host_id=host.pk)
+    if just_reported(host):
+        # The report on screen is seconds old; asking again would only make the agent
+        # send an early report.
+        if wants_json(request):
+            return JsonResponse({"ok": True, "skipped": "just_reported"})
+        messages.success(request, f"{host.name} reported just now.")
+        return redirect("host-detail", host_id=host.pk)
     request_collect(host)
     if wants_json(request):
         return JsonResponse({"ok": True}, status=202)
@@ -183,16 +190,27 @@ def host_collect(request: HttpRequest, host_id: int) -> HttpResponse:
 @login_required
 @require_POST
 def host_collect_all(request: HttpRequest) -> HttpResponse:
-    """Check all now: ask every connected host the user owns; never anyone else's."""
-    asked = offline = 0
+    """Check all now: ask every connected host the user owns; never anyone else's.
+
+    Hosts that reported in the last few seconds aren't asked again ("just_reported"),
+    but count as asked in the message: their data is current either way.
+    """
+    asked = offline = skipped = 0
+    now = timezone.now()
     for host in Host.objects.filter(owner=request.user):
-        if host.connected:
-            request_collect(host)
-            asked += 1
-        else:
+        if not host.connected:
             offline += 1
+            continue
+        asked += 1
+        if just_reported(host, now):
+            skipped += 1
+        else:
+            request_collect(host)
     if wants_json(request):
-        return JsonResponse({"ok": True, "asked": asked, "offline": offline}, status=202)
+        return JsonResponse(
+            {"ok": True, "asked": asked, "offline": offline, "just_reported": skipped},
+            status=202,
+        )
     messages.success(request, f"Asked {asked} host{pluralize(asked)} · {offline} offline.")
     return redirect("overview")
 

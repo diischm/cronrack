@@ -10,13 +10,14 @@ One agent = one open connection. The conversation (backend guide section 6):
 The server only ever sends fixed messages (welcome, collect, and an error notice
 for a rejected report). It never sends commands.
 
-Close codes: 4400 invalid message, 4408 no hello in time, 4409 replaced by a newer
-connection, 4410 token revoked or host deleted.
+Close codes: 4400 invalid message (or too many reports too fast), 4408 no hello in
+time, 4409 replaced by a newer connection, 4410 token revoked or host deleted.
 """
 
 import asyncio
 import json
 import logging
+import time
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -31,6 +32,7 @@ from hosts.services import (
     CLOSE_INVALID_MESSAGE,
     CLOSE_REPLACED,
     CLOSE_TOKEN_REVOKED,
+    MIN_REPORT_INTERVAL_SECONDS,
     REPORT_INTERVAL_SECONDS,
     host_group,
     save_report,
@@ -70,18 +72,33 @@ def verify_token(raw: str) -> int | None:
 
 
 @database_sync_to_async
-def mark_connected(host_id: int) -> bool:
-    """connected=True after hello. False if the host no longer exists."""
-    return Host.objects.filter(pk=host_id).update(connected=True, last_seen_at=timezone.now()) > 0
+def mark_connected(host_id: int, connection_id: str) -> bool:
+    """connected=True after hello, and this socket becomes the host's active one.
+
+    False if the host no longer exists.
+    """
+    return (
+        Host.objects.filter(pk=host_id).update(
+            connected=True, connection_id=connection_id, last_seen_at=timezone.now()
+        )
+        > 0
+    )
 
 
 @database_sync_to_async
-def mark_disconnected(host_id: int) -> None:
-    Host.objects.filter(pk=host_id).update(connected=False, last_seen_at=timezone.now())
+def mark_disconnected(host_id: int, connection_id: str) -> None:
+    """connected=False, but only if this socket is still the host's active one.
+
+    When an agent reconnects, the old socket may close after the new one already said
+    hello; that late close must not mark the live connection as gone.
+    """
+    Host.objects.filter(pk=host_id, connection_id=connection_id).update(
+        connected=False, connection_id="", last_seen_at=timezone.now()
+    )
 
 
 @database_sync_to_async
-def ingest_report(host_id: int, report: dict) -> None:
+def ingest_report(host_id: int, report: dict, connection_id: str) -> None:
     """Save the report and, if the status changed, record it. Raises Host.DoesNotExist."""
     with transaction.atomic():
         host = Host.objects.get(pk=host_id)
@@ -90,6 +107,11 @@ def ingest_report(host_id: int, report: dict) -> None:
             record_status_change(
                 host, result.old_status, result.new_status, top_issues(result.findings)
             )
+        # The scheduler clears `connected` when it marks a host offline. If this
+        # (still active) socket reports again after all, it is connected after all.
+        Host.objects.filter(pk=host_id, connection_id=connection_id, connected=False).update(
+            connected=True
+        )
 
 
 class AgentConsumer(AsyncJsonWebsocketConsumer):
@@ -106,15 +128,26 @@ class AgentConsumer(AsyncJsonWebsocketConsumer):
 
     hello_timeout = 10  # seconds; tests make this shorter
     max_invalid_reports = 3
+    # Agents report every 60 s, or right away when asked to collect. A report sooner
+    # than this after the last accepted one is "early" and ignored (no validation, no
+    # database work), unless it answers a "collect" we sent. max_early_reports early
+    # reports in a row, with no accepted report in between, close the socket (4400).
+    min_report_interval = MIN_REPORT_INTERVAL_SECONDS  # tests set 0 to send quickly
+    max_early_reports = 10
 
     # --- connection lifecycle ------------------------------------------------
 
     async def connect(self):
         self.host_id = None
         self.hello_received = False
-        self.replaced = False
         self.closing = False
         self.invalid_reports = 0
+        self.early_reports = 0  # early reports since the last accepted one
+        self.last_report_at = None  # time.monotonic() of the last accepted report
+        # True after we sent "collect" until a report arrives: that report is the
+        # answer the user asked for, so it is never early. (The agent merges several
+        # collects into one report and never reports more often than every 5 s.)
+        self.collect_pending = False
         self.hello_timer = None
 
         token = bearer_token(self.scope.get("headers", []))
@@ -148,9 +181,8 @@ class AgentConsumer(AsyncJsonWebsocketConsumer):
         if self.host_id is None:
             return  # rejected handshake: nothing to clean up
         await self.channel_layer.group_discard(self.group, self.channel_name)
-        # A replaced connection leaves the host alone: the new one is live.
-        if not self.replaced:
-            await mark_disconnected(self.host_id)
+        # Only clears `connected` if no newer socket has taken over (see mark_disconnected).
+        await mark_disconnected(self.host_id, self.channel_name)
 
     async def _close(self, code: int):
         self.closing = True
@@ -189,7 +221,7 @@ class AgentConsumer(AsyncJsonWebsocketConsumer):
         self.hello_received = True
         if self.hello_timer is not None:
             self.hello_timer.cancel()
-        if not await mark_connected(self.host_id):
+        if not await mark_connected(self.host_id, self.channel_name):
             await self._close(CLOSE_TOKEN_REVOKED)
             return
         await self.send_json(
@@ -203,6 +235,18 @@ class AgentConsumer(AsyncJsonWebsocketConsumer):
     async def handle_report(self, message):
         if not self.hello_received:
             await self._close(CLOSE_INVALID_MESSAGE)
+            return
+        now = time.monotonic()
+        early = (
+            self.last_report_at is not None
+            and now - self.last_report_at < self.min_report_interval
+            and not self.collect_pending
+        )
+        if early:
+            self.early_reports += 1
+            if self.early_reports >= self.max_early_reports:
+                logger.warning("Host %s: too many reports too fast, closing", self.host_id)
+                await self._close(CLOSE_INVALID_MESSAGE)
             return
         serializer = ReportMessageSerializer(data=message)
         if not serializer.is_valid():
@@ -218,15 +262,22 @@ class AgentConsumer(AsyncJsonWebsocketConsumer):
             return
         self.invalid_reports = 0
         try:
-            await ingest_report(self.host_id, serializer.validated_data["report"])
+            await ingest_report(
+                self.host_id, serializer.validated_data["report"], self.channel_name
+            )
         except Host.DoesNotExist:
             await self._close(CLOSE_TOKEN_REVOKED)
+            return
+        self.last_report_at = now
+        self.early_reports = 0
+        self.collect_pending = False
 
     # --- messages from the rest of the server (channel layer group) ----------
 
     async def host_collect(self, event):
         """hosts.services.request_collect(): ask the agent for a report now."""
         if self.hello_received and not self.closing:
+            self.collect_pending = True
             await self.send_json({"type": "collect"})
 
     async def host_close(self, event):
@@ -236,6 +287,4 @@ class AgentConsumer(AsyncJsonWebsocketConsumer):
         code = event.get("code")
         if not isinstance(code, int) or not 4000 <= code <= 4999:
             code = CLOSE_TOKEN_REVOKED
-        if code == CLOSE_REPLACED:
-            self.replaced = True
         await self._close(code)

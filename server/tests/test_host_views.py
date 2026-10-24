@@ -171,7 +171,7 @@ def test_collect_all_only_asks_my_connected_hosts(alice_client: Client, alice, b
         response = alice_client.post("/hosts/collect-all/", HTTP_ACCEPT="application/json")
 
     assert response.status_code == 202
-    assert response.json() == {"ok": True, "asked": 1, "offline": 1}
+    assert response.json() == {"ok": True, "asked": 1, "offline": 1, "just_reported": 0}
     assert [c.args[0] for c in collect.call_args_list] == [mine]
 
 

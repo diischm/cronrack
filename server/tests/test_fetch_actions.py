@@ -11,9 +11,10 @@ from unittest import mock
 import pytest
 from django.contrib.messages import get_messages
 from django.test import Client
+from django.utils import timezone
 
 from hosts.models import Host
-from hosts.services import save_report
+from hosts.services import MIN_REPORT_INTERVAL_SECONDS, save_report
 from prefs.models import Prefs
 
 from .sample import make_report
@@ -100,7 +101,7 @@ def test_collect_all_json_counts_and_only_asks_my_hosts(alice_client: Client, al
         response = alice_client.post("/hosts/collect-all/", HTTP_ACCEPT=JSON)
 
     assert response.status_code == 202
-    assert response.json() == {"ok": True, "asked": 2, "offline": 1}
+    assert response.json() == {"ok": True, "asked": 2, "offline": 1, "just_reported": 0}
     asked = [c.args[0] for c in collect.call_args_list]
     assert sorted(h.pk for h in asked) == sorted(h.pk for h in mine)
     assert all(h.owner_id == alice.pk for h in asked)
@@ -119,7 +120,7 @@ def test_collect_all_plain_post_redirects_to_overview(alice_client: Client, alic
 def test_collect_all_with_no_hosts(alice_client: Client):
     with mock.patch("hosts.views.request_collect") as collect:
         response = alice_client.post("/hosts/collect-all/", HTTP_ACCEPT=JSON)
-    assert response.json() == {"ok": True, "asked": 0, "offline": 0}
+    assert response.json() == {"ok": True, "asked": 0, "offline": 0, "just_reported": 0}
     collect.assert_not_called()
 
 
@@ -234,3 +235,55 @@ def test_collect_all_flash_message_is_escaped(alice_client: Client, alice):
     assert "Asked 1 host · 0 offline." in html
     # The host name also appears on the overview card: escaped there too.
     assert_escaped(html)
+
+
+# --- a host that just reported isn't asked again ------------------------------------
+
+
+def report_ago(host, seconds):
+    Host.objects.filter(pk=host.pk).update(
+        report_received_at=timezone.now() - timedelta(seconds=seconds)
+    )
+
+
+def test_collect_skips_a_host_that_just_reported(alice_client: Client, online):
+    report_ago(online, 1)
+    with mock.patch("hosts.views.request_collect") as collect:
+        response = alice_client.post(f"/hosts/{online.pk}/collect/", HTTP_ACCEPT=JSON)
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "skipped": "just_reported"}
+    collect.assert_not_called()
+
+
+def test_collect_skip_plain_post(alice_client: Client, online):
+    report_ago(online, 1)
+    with mock.patch("hosts.views.request_collect") as collect:
+        response = alice_client.post(f"/hosts/{online.pk}/collect/")
+
+    assert response.status_code == 302
+    assert response["Location"] == f"/hosts/{online.pk}/"
+    assert flash(response) == ["homeserver reported just now."]
+    collect.assert_not_called()
+
+
+def test_collect_asks_once_the_report_is_old_enough(alice_client: Client, online):
+    report_ago(online, MIN_REPORT_INTERVAL_SECONDS + 1)
+    with mock.patch("hosts.views.request_collect") as collect:
+        response = alice_client.post(f"/hosts/{online.pk}/collect/", HTTP_ACCEPT=JSON)
+
+    assert response.status_code == 202
+    collect.assert_called_once()
+
+
+def test_collect_all_skips_hosts_that_just_reported(alice_client: Client, alice):
+    fresh = Host.objects.create(owner=alice, name="fresh", connected=True)
+    old = Host.objects.create(owner=alice, name="old", connected=True)
+    report_ago(fresh, 1)
+    report_ago(old, 60)
+
+    with mock.patch("hosts.views.request_collect") as collect:
+        response = alice_client.post("/hosts/collect-all/", HTTP_ACCEPT=JSON)
+
+    assert response.json() == {"ok": True, "asked": 2, "offline": 0, "just_reported": 1}
+    assert [c.args[0].pk for c in collect.call_args_list] == [old.pk]

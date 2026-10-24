@@ -54,6 +54,22 @@ The first release: the MVP. One question, answered from your phone in seconds:
   always escaped in pages.
 - Every page and API only ever shows your own hosts. Login rate limiting; the first-run
   setup page locks itself after the first account.
+- Hardening from an external audit:
+  - The login rate limit is enforced for every login (also Django's `/admin/login/`), and
+    there is a per-address limit (20 failures per 15 minutes) so a flood of made-up
+    usernames can't push a lockout out of the cache. `/admin/` is off unless
+    `CRONRACK_ENABLE_ADMIN=1` (on by default only with `DEBUG=1`).
+  - `/setup/` asks for a one-time setup code printed in `docker compose logs app`, and
+    two simultaneous setups can't create two accounts. SQLite runs in WAL mode with
+    immediate write locks, shared safely by the app and the scheduler.
+  - An agent can't flood the server with reports (at most one every 4 seconds per
+    connection, except answers to "Check now"), and "Check now" doesn't ask a host that
+    reported seconds ago. A host whose status flaps sends at most one Discord alert per
+    minute; changes in between are summed up in one alert with the current status.
+  - The "connected" flag is cleared on server start and when a host goes offline, and an
+    agent reconnecting can no longer leave its host marked disconnected.
+  - New `Permissions-Policy` header. The agent runs its commands with a fixed `PATH`
+    (systemd's default plus `/snap/bin`), whatever `PATH` it was started with.
 
 ### Fixed
 

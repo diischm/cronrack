@@ -6,7 +6,6 @@ from django.urls import include, path
 from cronrack import dev_views
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
     path("", include("accounts.urls")),
     path("", include("hosts.urls")),
     path("", include("activity.urls")),
@@ -17,6 +16,11 @@ urlpatterns = [
     path("dev/preview/", dev_views.preview, name="dev-preview"),
     path("dev/styleguide/", dev_views.styleguide, name="dev-styleguide"),
 ]
+
+# Django's admin only when CRONRACK_ENABLE_ADMIN allows it (see settings); otherwise
+# /admin/ doesn't exist and answers 404.
+if settings.CRONRACK_ENABLE_ADMIN:
+    urlpatterns.insert(0, path("admin/", admin.site.urls))
 
 # uvicorn does not serve static files (CSS/JS, the admin's styles) by itself.
 # In development (DEBUG=1) Django serves them from /static/. In production this

@@ -18,6 +18,7 @@ from typing import Any
 from agent import AGENT_VERSION
 from agent import collectors as agent_collectors
 from agent.config import AgentConfig
+from agent.protocol import _clean
 
 Collector = Callable[[], Any]
 
@@ -93,7 +94,8 @@ def build_report(
         collectors = DEFAULT_COLLECTORS
 
     report: dict[str, Any] = {
-        "hostname": socket.gethostname(),
+        # Same cleanup as the hello message: one line, at most 253 characters, never empty.
+        "hostname": _clean(socket.gethostname(), 253),
         "agent_version": AGENT_VERSION,
         "timestamp": format_timestamp(now),
     }

@@ -127,6 +127,11 @@ random string, `BEHIND_PROXY=1` and `DEBUG=0`.
 - `CRONRACK_DOMAIN` is only the name: no `https://`, no port, no slash.
 - `BEHIND_PROXY=1` tells the app that Caddy sits in front of it.
 - `DEBUG=0`: never set this to 1 on a server.
+- `CRONRACK_ENABLE_ADMIN` (optional, not in the list above because it's commented out):
+  Django's admin pages at `/admin/`. Off by default on a server, and CronRack's own
+  pages cover everything, so leave it off. To turn it on, add `CRONRACK_ENABLE_ADMIN=1`
+  to `.env` and run `docker compose up -d`. Its login has the same rate limit as the
+  normal login page.
 
 ### 1.5 Start it
 
@@ -156,15 +161,30 @@ Logs, if something isn't healthy: `docker compose logs app` (or `scheduler`, `ca
 
 ### 1.6 First run: create your account (do this right away)
 
+First get the one-time **setup code** from the app's log:
+
+```bash
+docker compose logs app | grep "setup code"
+```
+
+It looks like `CronRack first-run setup code: K7QF-9M2X-HT4P-WB8C`. Only someone who can
+run `docker compose` on the server can read it, so nobody else on your network can
+create the account before you.
+
 Open `https://cronrack.home.lan/` (your name) in a browser.
 
 1. The browser warns that the certificate isn't trusted. That's expected with Caddy's own
    certificate authority (next step makes it go away). Continue anyway this once.
-2. CronRack sends you to `/setup/`. Choose a username and a strong password. There is no
-   default account and no default password.
+2. CronRack sends you to `/setup/`. Enter the setup code (dashes and upper/lower case
+   don't matter), then choose a username and a strong password. There is no default
+   account and no default password.
 
-Until that account exists, **anyone** who can reach the server could create it, so do
-this right after `docker compose up -d`. Afterwards `/setup/` answers "not found".
+Good to know:
+
+- The code works once. Every restart of the app makes a new one (and the old one stops
+  working), so after `docker compose restart app` read the log again.
+- After 5 wrong codes from one address, `/setup/` refuses that address for 15 minutes.
+- Once the account exists, no code is printed any more and `/setup/` answers "not found".
 
 ### 1.7 The root certificate (trusting your server)
 
@@ -358,7 +378,10 @@ download the new agent from your server.
 ### 3.2 Back up
 
 Everything CronRack knows (account, hosts, token hashes, settings, history) is one SQLite
-file in the `data` volume. This makes a consistent copy while CronRack keeps running:
+database in the `data` volume: `db.sqlite3`, plus `db.sqlite3-wal` and `db.sqlite3-shm`
+next to it while the app runs (SQLite's WAL mode, which lets the app and the scheduler
+use the database at the same time). Don't copy those files by hand; this makes a
+consistent copy while CronRack keeps running:
 
 ```bash
 docker compose exec -T app python -c 'import sqlite3, sys, tempfile
@@ -489,6 +512,9 @@ docker compose logs app
 ```
 
 - `SECRET_KEY environment variable is required`: `.env` is missing the key (step 1.4).
+- No `setup code` line in `docker compose logs app`: an account already exists (then
+  `/setup/` answers "not found" and you log in at `/login/`), or the log was cut off;
+  `docker compose restart app` prints a fresh code.
 - `CRONRACK_DOMAIN must be a bare host name`: remove `https://`, ports or slashes.
 - `set CRONRACK_DOMAIN in .env` from `docker compose` itself: there is no `.env` in this
   folder, or the line is missing.

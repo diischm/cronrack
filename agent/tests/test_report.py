@@ -216,3 +216,17 @@ def test_report_items_match_the_contract() -> None:
         assert set(disk) == {"mount", "percent"}
         assert isinstance(disk["percent"], int)
     assert report["errors"] == []
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("nas\nfake-line", "nas fake-line"),
+        ("a" * 300, "a" * 253),
+        ("", "unknown"),
+    ],
+)
+def test_hostname_is_cleaned_like_the_hello_message(monkeypatch, raw, expected) -> None:
+    monkeypatch.setattr("agent.report.socket.gethostname", lambda: raw)
+    report = build_report(AgentConfig(), now=NOW, collectors=fake_collectors())
+    assert report["hostname"] == expected
