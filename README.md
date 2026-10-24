@@ -100,10 +100,10 @@ After about a minute, `app`, `scheduler` and `caddy` all show `(healthy)`.
 
 ### 4. Create your admin account
 
-Open `https://<CRONRACK_DOMAIN>/` in a browser (for Tailscale, finish Option A first).
-On the first visit CronRack sends you to `/setup/`, where you choose a username and
-password. There is no default account. Do this right away: until the account exists,
-anyone who can reach the server could create it. Afterwards `/setup/` is gone.
+Get the one-time setup code from the log: `docker compose logs app | grep "setup code"`.
+Then open `https://<CRONRACK_DOMAIN>/` in a browser (for Tailscale, finish Option A first).
+On the first visit CronRack sends you to `/setup/`, where you enter the code and choose a
+username and password. There is no default account. Afterwards `/setup/` is gone.
 
 ### 5. Reach it securely
 
@@ -442,14 +442,16 @@ Stop it with Ctrl+C.
 ### 6. First run: create the admin account
 
 Open http://127.0.0.1:8000/. With no account yet, every page sends you to `/setup/`.
-Pick a username and password there. There is no default password.
+It asks for a setup code: the server prints it in the terminal where uvicorn runs
+(`CronRack first-run setup code: ...`). Then pick a username and password. There is no
+default password.
 
 ### 7. Pages to open
 
 | URL | What it is |
 |---|---|
 | http://127.0.0.1:8000/ | The overview (the status page) |
-| http://127.0.0.1:8000/admin/ | Django admin, with the same account |
+| http://127.0.0.1:8000/admin/ | Django admin, with the same account (only with `DEBUG=1` or `CRONRACK_ENABLE_ADMIN=1`) |
 | http://127.0.0.1:8000/dev/preview/ | The overview filled with sample hosts, to check the design. Only exists with `DEBUG=1`. Add `?state=empty` for the "no hosts" page |
 
 Make the browser window narrower than 900px to see the phone layout, wider for the
@@ -515,7 +517,7 @@ shows detailed error pages. Go back to the plain command from step 5 when you're
 Stop the server and the scheduler, then:
 
 ```bash
-rm server/data/db.sqlite3
+rm -f server/data/db.sqlite3 server/data/db.sqlite3-wal server/data/db.sqlite3-shm
 cd server
 python manage.py migrate
 ```

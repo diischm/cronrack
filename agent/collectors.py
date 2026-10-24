@@ -22,7 +22,13 @@ COMMAND_TIMEOUT = 15
 # Commands run with a fixed locale and timezone so their output looks the same on
 # every host: apt translates "Listing...", systemd localizes weekday names, and
 # timer timestamps come back in UTC (the report format uses UTC).
-_COMMAND_ENV_OVERRIDES = {"LC_ALL": "C", "TZ": "UTC"}
+# PATH is fixed too (systemd's default plus /snap/bin for Docker installed as a snap),
+# so a command is never found in a directory that happens to be in the agent's PATH.
+_COMMAND_ENV_OVERRIDES = {
+    "LC_ALL": "C",
+    "TZ": "UTC",
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin",
+}
 
 REBOOT_REQUIRED_PATH = "/var/run/reboot-required"
 

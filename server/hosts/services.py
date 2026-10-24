@@ -24,6 +24,9 @@ from rules.registry import get_rule
 
 # How often a connected agent reports (sent to it in the "welcome" message).
 REPORT_INTERVAL_SECONDS = 60
+# A report sooner than this after the previous one is "early": the agent socket
+# ignores it (unless it answers a collect), and "Check now" doesn't ask for one.
+MIN_REPORT_INTERVAL_SECONDS = 4
 
 # WebSocket close codes the server uses (backend guide section 6).
 CLOSE_INVALID_MESSAGE = 4400
@@ -94,6 +97,18 @@ def _group_send(host: Host, message: dict[str, Any]) -> None:
     async_to_sync(get_channel_layer().group_send)(host_group(host.pk), message)
 
 
+def just_reported(host: Host, now: datetime | None = None) -> bool:
+    """True if the host's last report is fresher than MIN_REPORT_INTERVAL_SECONDS.
+
+    "Check now" then skips the collect: the data on screen is already current.
+    """
+    if host.report_received_at is None:
+        return False
+    if now is None:
+        now = timezone.now()
+    return (now - host.report_received_at).total_seconds() < MIN_REPORT_INTERVAL_SECONDS
+
+
 def request_collect(host: Host) -> None:
     """Ask the host's agent for a fresh report now (the "Check now" button).
 
@@ -105,6 +120,16 @@ def request_collect(host: Host) -> None:
 def close_agent(host: Host, code: int = CLOSE_TOKEN_REVOKED) -> None:
     """Close the host's agent connection (token rotated or revoked, host deleted)."""
     _group_send(host, {"type": "host.close", "code": code})
+
+
+def reset_connections() -> int:
+    """On app start: no agent socket can be open yet, so no host is connected.
+
+    Without this, a host whose socket was open when the server stopped would show
+    "connected" until it reconnects (agents do that within seconds). Returns how many
+    hosts were changed.
+    """
+    return Host.objects.filter(connected=True).update(connected=False, connection_id="")
 
 
 # --- dead-man's switch (run by the check_hosts scheduler) -----------------------------
@@ -181,7 +206,11 @@ def mark_silent_hosts_offline(now: datetime | None = None) -> list[Host]:
                 continue
             old_status = host.status
             host.status = Host.Status.OFFLINE
-            host.save(update_fields=["status"])
+            # An offline host is not connected, whatever the flag said (a stuck socket,
+            # or a flag left over from a crash). If that socket is somehow still alive,
+            # its next report sets the flag again (agents.consumers.ingest_report).
+            host.connected = False
+            host.save(update_fields=["status", "connected"])
             record_status_change(host, old_status, host.status, [_offline_finding(host, reason)])
         marked.append(host)
     return marked

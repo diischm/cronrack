@@ -36,6 +36,14 @@ class Host(models.Model):
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.WAITING)
     connected = models.BooleanField(default=False)
+    # The channel name of the agent socket that set connected=True. A socket closing
+    # only clears `connected` if it is still this one, so an old socket going away
+    # after its replacement said hello leaves the host connected.
+    connection_id = models.CharField(max_length=128, blank=True, default="", editable=False)
+    # When the last Discord alert for this host was sent, and the status it announced
+    # (alerts.discord: cooldown, and catching up on changes held back by it).
+    last_alert_at = models.DateTimeField(null=True, blank=True, editable=False)
+    last_alert_status = models.CharField(max_length=16, blank=True, default="", editable=False)
     last_seen_at = models.DateTimeField(null=True, blank=True)
     latest_report = models.JSONField(null=True, blank=True)
     report_received_at = models.DateTimeField(null=True, blank=True)

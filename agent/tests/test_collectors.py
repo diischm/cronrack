@@ -275,6 +275,10 @@ def test_run_success_returns_stdout(fake_run, runner, command):
     assert kwargs["check"] is False
     assert kwargs.get("shell", False) is False
     assert kwargs["env"]["LC_ALL"] == "C"
+    # Only the system's own programs, whatever PATH the agent was started with.
+    assert kwargs["env"]["PATH"] == (
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+    )
 
 
 @pytest.mark.parametrize(("runner", "command"), RUNNERS_AND_COMMANDS)

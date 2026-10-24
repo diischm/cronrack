@@ -14,6 +14,10 @@ fi
 # Settings refuse to load without SECRET_KEY, so a missing key stops here with a clear error.
 python manage.py migrate --noinput
 
+# Clear stale "agent connected" flags and, while no account exists, print the one-time
+# setup code that /setup/ asks for (read it with: docker compose logs app).
+python manage.py startup
+
 # Caddy serves /static/* from the shared "static" volume. Refresh it from this image
 # on every start, so an upgraded image never leaves Caddy serving old CSS/JS.
 # staticfiles.json (the manifest: plain name -> hashed name) is read by Django from

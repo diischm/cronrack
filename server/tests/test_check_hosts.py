@@ -67,6 +67,26 @@ def test_connected_but_stuck_goes_offline(alice):
 
     assert mark_silent_hosts_offline(NOW) == [host]
     assert StatusEvent.objects.get(host=host).summary.startswith("Connected, but no report")
+    host.refresh_from_db()
+    assert host.status == "offline"
+    assert host.connected is False
+
+
+def test_startup_clears_every_connected_flag(alice, bob):
+    hosts = [
+        reported_host(alice, "a", connected=True, seen_ago=0),
+        reported_host(bob, "b", connected=True, seen_ago=0),
+        reported_host(alice, "c", connected=False, seen_ago=0),
+    ]
+    Host.objects.filter(name="a").update(connection_id="specific.old!socket")
+
+    call_command("startup")
+
+    for host in hosts:
+        host.refresh_from_db()
+        assert host.connected is False
+        assert host.connection_id == ""
+        assert host.status == "green"  # only the flag; status is the scheduler's job
 
 
 def test_connected_and_reporting_stays(alice):
@@ -118,6 +138,9 @@ def test_command_rejects_tiny_interval():
         call_command("check_hosts", "--loop", "--every", "1")
 
 
+# transaction=True: the loop calls close_old_connections(), which closes the database
+# connection, as it should in production. Inside a test transaction that would end it.
+@pytest.mark.django_db(transaction=True)
 def test_loop_touches_the_heartbeat_file(alice, tmp_path, monkeypatch):
     from hosts.management.commands import check_hosts
 

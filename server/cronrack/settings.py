@@ -130,10 +130,25 @@ CHANNEL_LAYERS = {
 
 # --- Database ---------------------------------------------------------------
 
+# The app and the scheduler (two containers) write to the same SQLite file on the
+# shared data volume. WAL mode lets readers and one writer work at the same time; its
+# helper files (db.sqlite3-wal, db.sqlite3-shm) sit next to db.sqlite3 in data/.
+# WAL needs a local filesystem shared by one machine, which a Docker volume is
+# (never put this file on NFS/SMB).
+# - transaction_mode IMMEDIATE: a transaction takes the write lock when it starts, not
+#   halfway through, so two writers queue up instead of failing with "database is locked".
+# - timeout: wait up to 20 s for that lock.
+# - synchronous=NORMAL: the usual setting with WAL; a power cut can lose the last
+#   moments of writes, but never corrupts the database.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": os.environ.get("SQLITE_PATH", str(BASE_DIR / "data" / "db.sqlite3")),
+        "OPTIONS": {
+            "transaction_mode": "IMMEDIATE",
+            "timeout": 20,
+            "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+        },
     }
 }
 
@@ -148,14 +163,29 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+# Django's normal username/password check plus the login rate limit, so every login
+# (/login/, /admin/login/, anything added later) is rate-limited (accounts/backends.py).
+AUTHENTICATION_BACKENDS = ["accounts.backends.RateLimitedModelBackend"]
+
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
 
+# Django's admin at /admin/. Off on a server unless asked for: CronRack's own pages
+# cover everything, and a second login page is one more thing to attack.
+# Default: on with DEBUG=1, off otherwise. CRONRACK_ENABLE_ADMIN=1 turns it on.
+CRONRACK_ENABLE_ADMIN = env_bool("CRONRACK_ENABLE_ADMIN", default=DEBUG)
+
 # In-memory cache, used for the login rate limit. Each process has its own copy,
 # which is fine with the single uvicorn process CronRack runs.
+# MAX_ENTRIES: Django's default is 300, after which it throws old entries away. Lockout
+# entries must not be pushed out that easily (accounts/ratelimit.py also limits how many
+# entries one IP can create).
 CACHES = {
-    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "OPTIONS": {"MAX_ENTRIES": 10_000},
+    },
 }
 
 
