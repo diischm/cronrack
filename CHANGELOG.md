@@ -71,6 +71,52 @@ The first release: the MVP. One question, answered from your phone in seconds:
   - New `Permissions-Policy` header. The agent runs its commands with a fixed `PATH`
     (systemd's default plus `/snap/bin`), whatever `PATH` it was started with.
 
+### Changed (container layout)
+
+- **The database lives in `/data`.** The image sets `SQLITE_PATH=/data/db.sqlite3`, and
+  docker compose mounts the same `data` volume at `/data` (it was `/app/server/data`).
+  Nothing to migrate: the volume and its files are unchanged, so upgrading keeps your
+  database. Commands that used the old path inside the app (`data/db.sqlite3`) now use
+  `/data/db.sqlite3`; the backup and restore commands in `docs/DEPLOY.md` are updated.
+  The containers write only to `/data` and `/tmp`.
+- **Settings are checked strictly.** A yes/no setting with a typo (`DEBUG=ture`) stops
+  the server with a clear message instead of quietly meaning "off". New optional
+  settings: `CSRF_TRUSTED_ORIGINS` (extra origins), `LOG_LEVEL`. `FORWARDED_ALLOW_IPS`
+  accepts networks (`10.42.0.0/16`) as well as addresses, and a malformed entry or `*`
+  is refused.
+- **One image, several roles.** The image's entrypoint takes a role: `migrate` (apply
+  database migrations, then exit), `web` (the web server; it no longer migrates) and
+  `scheduler`; anything else runs as-is. docker compose has a new one-shot `migrate`
+  service, and `app` and `scheduler` start only after it succeeded, so
+  `docker compose up -d` still does everything in one command.
+  **Note:** with no arguments the image now runs `web`, which does *not* apply
+  migrations. If you run the image without docker compose, run it once with `migrate`
+  first (and after every update).
+- **The app serves its own static files** (CSS, JS, fonts) with WhiteNoise, gzipped,
+  with the same caching as before: content-hashed files are cached for good, everything
+  else is re-checked. Caddy now passes every request to the app, and the security
+  headers (CSP, nosniff, Permissions-Policy, HSTS) come from the app for static files
+  too. The `static` volume is no longer used; after updating you may remove it with
+  `docker volume rm cronrack_static`. Pages and JSON without their own Cache-Control
+  get `no-cache` from the app (Caddy used to add it).
+- **Logging**: everything (CronRack, Django, uvicorn) goes to stdout in one format;
+  `LOG_FORMAT=json` gives one JSON object per line. Errors (500s) are now logged with
+  `DEBUG=0` as well; before, Django only printed them in debug mode. Successful
+  `/healthz` and `/readyz` calls are left out of the access log (failed ones stay in).
+  An invalid report from an agent is logged with field paths and error codes only,
+  never with the values or unknown keys it contained.
+- **Images for amd64 and arm64** are built by CI (`.github/workflows/image.yml`) and
+  pushed to `ghcr.io/diischm/cronrack` from `main` (`sha-<commit>`) and version tags
+  (`X.Y.Z`, `X.Y`), then scanned with Trivy. Docker Compose still builds the image
+  locally, as before.
+- **Graceful stop**: the scheduler handles SIGTERM itself and exits right away (before,
+  `docker compose stop` waited 10 s and killed it); the web server gets up to 20 s to
+  finish requests and closes agent connections cleanly, and agents reconnect.
+- With the optional `POD_NAME` and `NODE_NAME` variables set, the sidebar shows which
+  pod and node served the page (nothing changes without them).
+- **`/readyz`**: a second health check that says "ready" only when the database answers
+  and every migration has been applied (`/healthz` stays the cheap "process is up" check).
+
 ### Fixed
 
 - HTTPS failed with "internal error" (Firefox `SSL_ERROR_INTERNAL_ERROR_ALERT`) when

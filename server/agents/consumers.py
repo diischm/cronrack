@@ -15,6 +15,7 @@ time, 4409 replaced by a newer connection, 4410 token revoked or host deleted.
 """
 
 import asyncio
+import functools
 import json
 import logging
 import time
@@ -23,6 +24,8 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.db import transaction
 from django.utils import timezone
+from rest_framework import serializers
+from rest_framework.settings import api_settings
 
 from activity.events import record_status_change
 from agents.serializers import HelloSerializer, ReportMessageSerializer
@@ -60,6 +63,55 @@ def bearer_token(headers) -> str | None:
             return None
         return token
     return None
+
+
+MAX_LOGGED_ERRORS = 10
+
+
+def _field_names(field) -> set[str]:
+    """Every field name declared in a serializer, its nested serializers and list items."""
+    names: set[str] = set()
+    child = getattr(field, "child", None)  # ListField / many=True
+    if child is not None:
+        names |= _field_names(child)
+    if isinstance(field, serializers.Serializer):
+        for name, nested in field.fields.items():
+            names.add(name)
+            names |= _field_names(nested)
+    return names
+
+
+@functools.cache
+def declared_field_names() -> frozenset[str]:
+    names = _field_names(ReportMessageSerializer()) | {api_settings.NON_FIELD_ERRORS_KEY}
+    return frozenset(names)
+
+
+def error_summary(errors, path: str = "") -> list[str]:
+    """'report.updates.total: invalid' lines for a serializer's errors, without the data.
+
+    DRF error messages can repeat what was sent ('"x" is not a valid choice'), and an
+    unknown key the agent sent comes back as an error key, so only the error codes and
+    the path are kept, and a path shows only field names the serializers declare. List
+    positions become [n]; any other key (unknown, or a name from the report) becomes "?".
+    """
+    lines: list[str] = []
+    if isinstance(errors, dict):
+        for key, value in errors.items():
+            if isinstance(key, int):  # position in a list (many=True)
+                lines += error_summary(value, f"{path}[{key}]")
+                continue
+            name = key if key in declared_field_names() else "?"
+            lines += error_summary(value, f"{path}.{name}" if path else name)
+    elif isinstance(errors, list) and errors and all(isinstance(e, str) for e in errors):
+        codes = sorted({getattr(e, "code", None) or "invalid" for e in errors})
+        lines.append(f"{path or 'message'}: {','.join(codes)}")
+    elif isinstance(errors, list):
+        for index, value in enumerate(errors):
+            lines += error_summary(value, f"{path}[{index}]")
+    else:
+        lines.append(f"{path or 'message'}: {getattr(errors, 'code', None) or 'invalid'}")
+    return lines[:MAX_LOGGED_ERRORS]
 
 
 # --- database work (the ORM is synchronous, so each call runs in a worker thread) ---
@@ -251,9 +303,12 @@ class AgentConsumer(AsyncJsonWebsocketConsumer):
         serializer = ReportMessageSerializer(data=message)
         if not serializer.is_valid():
             self.invalid_reports += 1
-            # Log the field errors (not the data) to help debug a broken agent.
+            # Log where and what kind of error (to help debug a broken agent), never
+            # the data: see error_summary.
             logger.warning(
-                "Host %s sent an invalid report: %s", self.host_id, str(serializer.errors)[:500]
+                "Host %s sent an invalid report: %s",
+                self.host_id,
+                "; ".join(error_summary(serializer.errors)),
             )
             if self.invalid_reports >= self.max_invalid_reports:
                 await self._close(CLOSE_INVALID_MESSAGE)

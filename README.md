@@ -176,6 +176,8 @@ name in front of volume names. `docker-compose.yml` sets it to `cronrack` with
 [docs/DEPLOY.md](docs/DEPLOY.md) is the longer guide: installing Docker on Ubuntu, DNS
 names, the firewall, a real public domain with Let's Encrypt, and restoring backups.
 
+Experimental: running on Kubernetes, see [docs/kubernetes.md](docs/kubernetes.md).
+
 ## Add a host to monitor
 
 1. In the dashboard, click **Add host**, give the host a name and click **Create**. The
@@ -241,7 +243,8 @@ git pull
 docker compose up -d --build
 ```
 
-The app applies database changes on start. CSS and JavaScript file names change with
+`docker compose up -d` first runs the one-shot `migrate` service, which applies database
+changes, and then starts the app and the scheduler. CSS and JavaScript file names change with
 their content, so browsers pick up the new versions by themselves: no hard refresh needed.
 See [CHANGELOG.md](CHANGELOG.md) for what changed.
 
@@ -290,7 +293,7 @@ while CronRack keeps running:
 ```bash
 docker compose exec -T app python -c 'import sqlite3, sys, tempfile
 with tempfile.NamedTemporaryFile() as tmp:
-    sqlite3.connect("data/db.sqlite3").backup(sqlite3.connect(tmp.name))
+    sqlite3.connect("/data/db.sqlite3").backup(sqlite3.connect(tmp.name))
     sys.stdout.buffer.write(open(tmp.name, "rb").read())' > cronrack-backup-$(date +%F).sqlite3
 ```
 
@@ -353,12 +356,12 @@ On the server (paths relative to the `cronrack` folder; Docker volume names as
 
 | Where | What it is | Back it up? |
 |---|---|---|
-| `docker-compose.yml` | Defines the three services | No (in git) |
+| `docker-compose.yml` | Defines the services (caddy, migrate, app, scheduler) | No (in git) |
 | `.env` | Your config, including `SECRET_KEY` | Yes, keep it private |
 | `docker-compose.override.yml` | Only with Option A: Caddy on `127.0.0.1:8443` | Yes (or recreate it) |
 | `caddy/Caddyfile` | Caddy's config | Only if you edited it |
-| volume `cronrack_data` (`/app/server/data/db.sqlite3` in the app) | The database | Yes |
-| volume `cronrack_static` | CSS, JS and fonts, refilled on every app start | No |
+| volume `cronrack_data` (`/data/db.sqlite3` in the app) | The database | Yes |
+| volume `cronrack_static` | No longer used (the app serves CSS/JS itself); `docker volume rm cronrack_static` | No |
 | volume `cronrack_caddy_data` | Caddy's certificates and its own CA | Yes with Option B |
 | volume `cronrack_caddy_config` | Caddy's saved runtime config | No |
 | `docker compose logs app` (or `scheduler`, `caddy`) | Logs, kept by Docker | No |

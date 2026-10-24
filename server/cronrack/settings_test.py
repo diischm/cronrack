@@ -27,6 +27,10 @@ DATABASES = {
 
 # Plain static storage: tests never need collectstatic or its manifest. The manifest
 # storage itself is tested in tests/test_static_manifest.py.
+# An existing (empty) STATIC_ROOT, so WhiteNoise has a folder to read and doesn't warn
+# "No directory at ..." for every test client.
+STATIC_ROOT = str(Path(tempfile.gettempdir()) / f"cronrack-test-static-{os.getpid()}")
+Path(STATIC_ROOT).mkdir(exist_ok=True)
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},

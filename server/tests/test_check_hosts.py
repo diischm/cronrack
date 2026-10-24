@@ -1,4 +1,11 @@
+import io
+import os
+import signal
+import subprocess
+import sys
+import time
 from datetime import timedelta
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -15,6 +22,7 @@ from .sample import make_report
 pytestmark = pytest.mark.django_db
 
 NOW = timezone.now()
+SERVER_DIR = Path(__file__).resolve().parents[1]
 
 
 def reported_host(owner, name="nas", *, connected, seen_ago, report_ago=None, status="green"):
@@ -144,14 +152,81 @@ def test_command_rejects_tiny_interval():
 def test_loop_touches_the_heartbeat_file(alice, tmp_path, monkeypatch):
     from hosts.management.commands import check_hosts
 
-    # Stop the endless loop after the first pass, the way Ctrl+C would.
+    # Stop the endless loop during the first wait, the way `docker stop` would: a real
+    # SIGTERM to this process, handled by the command's own handler.
     def stop(seconds):
-        raise KeyboardInterrupt
+        os.kill(os.getpid(), signal.SIGTERM)
 
     monkeypatch.setattr(check_hosts.time, "sleep", stop)
     heartbeat = tmp_path / "alive"
-    call_command("check_hosts", "--loop", "--heartbeat-file", str(heartbeat))
+    before = signal.getsignal(signal.SIGTERM)
+    out = io.StringIO()
+    call_command("check_hosts", "--loop", "--heartbeat-file", str(heartbeat), stdout=out)
     assert heartbeat.exists()
+    assert out.getvalue().rstrip().endswith("Stopped.")
+    assert signal.getsignal(signal.SIGTERM) == before  # handlers put back
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sigterm_during_a_pass_finishes_it_and_does_not_wait(alice, monkeypatch):
+    from hosts.management.commands import check_hosts
+
+    passes = []
+
+    def pass_that_gets_sigterm(self):
+        os.kill(os.getpid(), signal.SIGTERM)  # arrives while the pass runs
+        passes.append("done")  # ...and the pass still finishes
+
+    def must_not_sleep(seconds):
+        raise AssertionError("waited after a stop was requested")
+
+    monkeypatch.setattr(check_hosts.Command, "run_pass", pass_that_gets_sigterm)
+    monkeypatch.setattr(check_hosts.time, "sleep", must_not_sleep)
+    call_command("check_hosts", "--loop", stdout=io.StringIO())
+    assert passes == ["done"]
+
+
+def test_scheduler_process_stops_on_sigterm(tmp_path):
+    """The real command in its own process, as PID 1 runs it: SIGTERM -> exit 0, quickly."""
+    env = {
+        **{k: v for k, v in os.environ.items() if k not in {"DJANGO_SETTINGS_MODULE"}},
+        "DJANGO_SETTINGS_MODULE": "cronrack.settings",
+        "DEBUG": "1",
+        "SQLITE_PATH": str(tmp_path / "db.sqlite3"),
+    }
+    manage = [sys.executable, "manage.py"]
+    subprocess.run(
+        [*manage, "migrate", "--noinput"],
+        cwd=SERVER_DIR,
+        env=env,
+        check=True,
+        capture_output=True,
+        timeout=120,
+    )
+    heartbeat = tmp_path / "alive"
+    process = subprocess.Popen(
+        [*manage, "check_hosts", "--loop", "--every", "30", "--heartbeat-file", str(heartbeat)],
+        cwd=SERVER_DIR,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 60
+        while not heartbeat.exists():  # the first pass is done; now it waits 30 s
+            assert process.poll() is None, process.communicate()[0]
+            assert time.monotonic() < deadline, "no pass within 60 s"
+            time.sleep(0.1)
+        started = time.monotonic()
+        process.send_signal(signal.SIGTERM)
+        output, _ = process.communicate(timeout=10)
+    finally:
+        if process.poll() is None:
+            process.kill()
+    assert process.returncode == 0, output
+    assert time.monotonic() - started < 5  # not the 30 s wait, not a kill after a timeout
+    assert "Stopped." in output
 
 
 def test_back_online_after_next_report(alice):

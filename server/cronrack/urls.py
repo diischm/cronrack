@@ -22,9 +22,9 @@ urlpatterns = [
 if settings.CRONRACK_ENABLE_ADMIN:
     urlpatterns.insert(0, path("admin/", admin.site.urls))
 
-# uvicorn does not serve static files (CSS/JS, the admin's styles) by itself.
-# In development (DEBUG=1) Django serves them from /static/. In production this
-# route doesn't exist: Caddy serves the collected files (see caddy/Caddyfile).
+# Static files (CSS/JS, the admin's styles): in production WhiteNoise serves the files
+# collectstatic gathered into the image (settings.MIDDLEWARE), and this route doesn't
+# exist. In development (DEBUG=1) Django serves the source files from /static/.
 # dev_views.static is Django's static view plus "Cache-Control: no-cache" (and it checks
 # DEBUG again itself).
 if settings.DEBUG:
