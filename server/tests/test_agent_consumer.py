@@ -5,6 +5,8 @@ sends JSON and reads what the server sends back. The consumer talks to the
 database from worker threads, so these tests need transaction=True.
 """
 
+import logging
+
 import pytest
 import pytest_asyncio
 from channels.db import database_sync_to_async
@@ -278,6 +280,32 @@ async def test_invalid_report_is_rejected(host, token):
     assert fresh.latest_report is None
     assert fresh.status == "waiting"
     await comm.disconnect()
+
+
+async def test_invalid_report_log_has_no_report_data(host, token, caplog):
+    comm = await connected_agent(token)
+    bad = make_report(updates={"total": "LEAKED-VALUE", "security": 0}, leaked_key=1)
+
+    with caplog.at_level(logging.DEBUG):
+        await comm.send_json_to({"type": "report", "report": bad})
+        assert await comm.receive_json_from() == {"type": "error", "code": "invalid_report"}
+
+    assert f"Host {host.pk} sent an invalid report: " in caplog.text
+    assert "report.?: invalid" in caplog.text  # the unknown key, by position only
+    assert "LEAKED-VALUE" not in caplog.text
+    assert "leaked_key" not in caplog.text
+    await comm.disconnect()
+
+
+async def test_tokens_are_never_logged(host, token, caplog):
+    with caplog.at_level(logging.DEBUG):
+        comm = await connected_agent(token)
+        await comm.disconnect()
+        rejected = agent("wrong-token-0123456789abcdefghij")
+        connected, _ = await rejected.connect()
+        assert not connected
+    assert token not in caplog.text
+    assert "wrong-token" not in caplog.text
 
 
 async def test_three_invalid_reports_close_4400(host, token):

@@ -44,15 +44,16 @@ def test_unchanged_file_answers_304_with_no_cache(client: Client, debug_urls):
 
 @pytest.mark.parametrize("url", [URL, "/static/cronrack/css/components.css"])
 def test_without_debug_django_has_no_static_route(client: Client, url):
-    """Production: Caddy serves the hashed files with its own headers, Django serves nothing."""
+    """Production: only WhiteNoise serves static files, and only the collected ones
+    (tests/test_static_manifest.py); Django's dev route doesn't exist."""
     rebuild_urls()  # built with DEBUG off, like production
-    response = client.get(url)
+    response = client.get(url)  # the test STATIC_ROOT is empty
     assert response.status_code == 404
-    assert "no-cache" not in response.get("Cache-Control", "")
+    assert not response.has_header("Last-Modified")  # the dev view never ran
 
 
 def test_dev_view_refuses_when_debug_is_off(client: Client, debug_urls):
     """Even if the route exists, the view itself checks DEBUG again."""
     response = client.get(URL)  # DEBUG is off here
     assert response.status_code == 404
-    assert "no-cache" not in response.get("Cache-Control", "")
+    assert not response.has_header("Last-Modified")

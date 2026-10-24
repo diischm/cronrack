@@ -194,6 +194,53 @@ def test_sidebar_footer_shows_server_version(alice_client):
     assert '<p class="side-version">CronRack v0.1.0</p>' in html
 
 
+def test_no_pod_line_outside_kubernetes(alice_client, monkeypatch):
+    monkeypatch.delenv("POD_NAME", raising=False)
+    monkeypatch.delenv("NODE_NAME", raising=False)
+    assert "Served by pod" not in alice_client.get("/").content.decode()
+
+
+@pytest.mark.parametrize("missing", ["POD_NAME", "NODE_NAME"])
+def test_no_pod_line_with_only_one_of_the_two(alice_client, monkeypatch, missing):
+    monkeypatch.setenv("POD_NAME", "cronrack-web-7d9f-x2k4p")
+    monkeypatch.setenv("NODE_NAME", "dimiserver")
+    monkeypatch.setenv(missing, "")
+    assert "Served by pod" not in alice_client.get("/").content.decode()
+
+
+def test_pod_line_in_kubernetes(alice_client, monkeypatch):
+    monkeypatch.setenv("POD_NAME", "cronrack-web-7d9f-x2k4p")
+    monkeypatch.setenv("NODE_NAME", "dimiserver")
+    html = alice_client.get("/").content.decode()
+    assert (
+        '<p class="side-version">Served by pod cronrack-web-7d9f-x2k4p on node dimiserver</p>'
+        in html
+    )
+
+
+def test_namespace_is_optional_and_not_shown(alice_client, monkeypatch):
+    monkeypatch.setenv("POD_NAME", "cronrack-web-7d9f-x2k4p")
+    monkeypatch.setenv("POD_NAMESPACE", "cronrack-ns")
+    monkeypatch.setenv("NODE_NAME", "dimiserver")
+    response = alice_client.get("/")
+    assert response.context["pod_identity"]["namespace"] == "cronrack-ns"
+    assert "cronrack-ns" not in response.content.decode()
+
+
+def test_pod_line_is_escaped(alice_client, monkeypatch):
+    monkeypatch.setenv("POD_NAME", "<script>alert(1)</script>")
+    monkeypatch.setenv("NODE_NAME", "n&de")
+    html = alice_client.get("/").content.decode()
+    assert "<script>alert(1)</script>" not in html
+    assert "Served by pod &lt;script&gt;alert(1)&lt;/script&gt; on node n&amp;de" in html
+
+
+def test_pod_line_is_only_for_logged_in_users(client, alice, monkeypatch):
+    monkeypatch.setenv("POD_NAME", "cronrack-web-7d9f-x2k4p")
+    monkeypatch.setenv("NODE_NAME", "dimiserver")
+    assert "Served by pod" not in client.get("/login/").content.decode()
+
+
 def test_healthz_does_not_show_the_version(alice):
     assert b"0.1.0" not in Client().get("/healthz").content
 

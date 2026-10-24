@@ -146,6 +146,19 @@ def test_security_headers_on_anonymous_pages(client: Client, alice):
         assert response[name] == value, name
 
 
+@pytest.mark.parametrize("url", ["/", "/api/v1/overview.json", "/activity/", "/hosts/999999/"])
+def test_pages_must_be_revalidated_by_default(alice_client: Client, url):
+    # Caddy used to add this; the app does it now, behind any proxy.
+    assert alice_client.get(url)["Cache-Control"] == "no-cache"
+
+
+def test_a_views_own_cache_control_is_kept(client: Client):
+    # /healthz uses never_cache, which is stricter than the default.
+    cache_control = client.get("/healthz")["Cache-Control"]
+    assert "no-store" in cache_control
+    assert cache_control != "no-cache"
+
+
 XSS = "<script>alert(1)</script>"
 XSS_ATTR = '"><img src=x onerror=alert(1)>'
 
