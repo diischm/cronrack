@@ -86,9 +86,9 @@ IP) both work for `CRONRACK_DOMAIN`. Pick one:
 | Option | Example | Works from |
 |---|---|---|
 | A local DNS name | `cronrack.home.lan` | your home network, if your router / Pi-hole / AdGuard resolves it |
-| Your Tailscale MagicDNS name | `homeserver.tail1234.ts.net` | every device in your tailnet, at home or away |
-| The server's LAN IP address | `192.168.1.50` | your home network; nothing to set up, but harder to remember |
-| The server's Tailscale IP | `100.101.102.103` (`tailscale ip -4`) | every device in your tailnet; nothing to set up |
+| Your Tailscale MagicDNS name | `<tailscale-name>` | every device in your tailnet, at home or away |
+| The server's LAN IP address | `192.0.2.50` | your home network; nothing to set up, but harder to remember |
+| The server's Tailscale IP | `<tailscale-ip>` (`tailscale ip -4`) | every device in your tailnet; nothing to set up |
 
 With an IP address, skip "Make the name resolve" below: there is nothing to resolve.
 
@@ -97,7 +97,7 @@ pointing the name at the server's IP. For a quick test on one Linux machine you 
 also add it to that machine's `/etc/hosts`:
 
 ```bash
-echo "192.168.1.50 cronrack.home.lan" | sudo tee -a /etc/hosts
+echo "192.0.2.50 cronrack.home.lan" | sudo tee -a /etc/hosts
 ```
 
 Phones can't do that, so use router DNS or Tailscale for them. With Tailscale, install
@@ -221,7 +221,8 @@ The CA stays the same as long as the `caddy_data` volume exists. **Don't delete 
 **Other certificate options** (edit the `tls` line in `caddy/Caddyfile`; it explains all
 three): a real public domain gets a trusted Let's Encrypt certificate automatically (then
 agents need no `--ca-file`), and Tailscale can issue trusted certificates for your
-`*.ts.net` name. Restart Caddy after editing: `docker compose restart caddy` (see
+MagicDNS name (`<tailscale-name>`). Restart Caddy after editing:
+`docker compose restart caddy` (see
 [Applying Caddyfile edits](#applying-caddyfile-edits)).
 
 ### 1.8 Firewall
@@ -247,8 +248,8 @@ automatically; keep it out of git):
 services:
   caddy:
     ports: !override
-      - "100.101.102.103:80:80"
-      - "100.101.102.103:443:443"
+      - "<tailscale-ip>:80:80"
+      - "<tailscale-ip>:443:443"
 ```
 
 Then `docker compose up -d` again. Never forward ports 80/443 on your router to CronRack
@@ -540,8 +541,44 @@ docker compose logs app
 - `Pool overlaps with other one on this network`: another Docker network already uses
   `172.29.80.0/24`. Change the subnet, `ip_range` and `x-caddy-ip` in
   `docker-compose.yml` to a free range (the comments there explain how).
-- Port 80 or 443 `address already in use`: another web server runs on this machine
-  (`sudo ss -ltnp | grep -E ':(80|443) '` shows which).
+- Port 80 or 443 `address already in use`: see the next section.
+
+### caddy fails: port 443 already in use
+
+`docker compose up -d` stops with `address already in use` (or `failed to bind`) for
+port 443 (or 80): something else on this machine holds the port. Find out what:
+
+```bash
+sudo ss -ltnp 'sport = :443'
+sudo ss -ltnp 'sport = :80'
+```
+
+(Without `sudo` you still see *that* something listens, but not which program.) A
+program that listens on one address only, e.g. your Tailscale IP, is enough to block
+Docker. Common causes:
+
+- **`tailscale serve`** (or `tailscale funnel`) on the default HTTPS port. Check with
+  `tailscale serve status`; remove it with `sudo tailscale serve reset`, or run your
+  own serve on another port (`tailscale serve --bg --https=8443 <port>`).
+- **A k3d or k3s load balancer**: k3d's `serverlb` container, or k3s' ServiceLB
+  (Traefik) publishing 80/443 on the node. `docker ps` shows a k3d container with
+  `0.0.0.0:443->`; for k3s, `kubectl get svc -A` shows a `LoadBalancer` on 443. Don't
+  run CronRack's Compose stack and a cluster's ingress on the same machine's 443.
+- **Another web server**: nginx, Apache, another Caddy (`systemctl status nginx` …).
+
+Free the port, then **recreate caddy**:
+
+```bash
+docker compose up -d --force-recreate caddy
+docker compose ps        # caddy must show 0.0.0.0:443->443/tcp under PORTS
+```
+
+`--force-recreate` matters. A caddy container that was created while the port was
+busy can come back up "healthy" (its health check only asks Caddy itself) but with **no
+published ports**: `docker compose ps` shows an empty PORTS column and `docker port
+cronrack-caddy-1` prints nothing. A plain `docker compose up -d` or `restart` keeps
+that container; recreating it publishes the ports again. Connected agents reconnect on
+their own (their retry backoff tops out at 5 minutes).
 
 ### Checking the whole stack
 
