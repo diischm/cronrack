@@ -7,9 +7,25 @@ This page lists everything the CronRack image expects from Kubernetes: environme
 variables, ports, paths, volumes, the user it runs as, probes, resources and the
 limits that come from SQLite. It contains no manifests; snippets show single fields only.
 
-The setup it was written for: a k3s cluster with two nodes connected over Tailscale,
-`dimiserver` (x86_64, Ubuntu 24.04, HDD) and a Raspberry Pi 4B (arm64), with k3s'
-default ingress controller, Traefik.
+The setup it was written for: a k3s cluster with two nodes on the same LAN, a
+**server node** (x86_64, Ubuntu 24.04, HDD, the k3s server) and a **worker node**
+(arm64, e.g. a Raspberry Pi 4B, a k3s agent), with k3s' default ingress controller,
+Traefik.
+
+**Network.** The nodes talk to each other over the LAN only:
+
+- The worker joins the server node by its **LAN IP**: `k3s agent --server
+  https://<server-lan-ip>:6443 --token <token>` (or
+  `K3S_URL=https://<server-lan-ip>:6443` with the install script).
+- Node-to-node traffic stays on the LAN: the API server (6443/tcp), flannel's VXLAN
+  between pods on different nodes (8472/udp) and kubelet (10250/tcp). If a firewall runs
+  on the nodes, allow these from the LAN.
+- **Tailscale is not part of the cluster.** It is only for SSH to the nodes and for
+  reaching the Ingress (Traefik on 80/443) remotely, e.g. the dashboard from a phone.
+- **A node with several interfaces** (LAN plus `tailscale0`, Docker bridges, …): k3s
+  picks the interface of the default route. To be sure it uses the LAN, start k3s on
+  every node with `--node-ip <that node's LAN IP>` and `--flannel-iface <LAN interface,
+  e.g. eth0>`. Check with `kubectl get nodes -o wide`: `INTERNAL-IP` must be the LAN IP.
 
 ---
 
@@ -86,7 +102,7 @@ is in the log.
 | Variable | Required | Default | Secret | Roles | What |
 |---|---|---|---|---|---|
 | `SECRET_KEY` | **yes** | — | **yes** | all | Django's signing key. Same value for every role, and keep it: changing it logs everyone out. Put it in a Secret. |
-| `CRONRACK_DOMAIN` | yes for `web` | — | no | web | The name browsers and agents use, e.g. `cronrack.tailnet-name.ts.net`. Bare name: no `https://`, no port. Feeds `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` and the agent install command. |
+| `CRONRACK_DOMAIN` | yes for `web` | — | no | web | The name browsers and agents use, e.g. `<tailscale-name>`. Bare name: no `https://`, no port. Feeds `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` and the agent install command. |
 | `BEHIND_PROXY` | yes behind Traefik: `1` | `0` | no | web | Believe `X-Forwarded-Proto` (needed for secure cookies and the https redirect). |
 | `FORWARDED_ALLOW_IPS` | **yes** for `web` | — | no | web | Addresses/networks uvicorn believes `X-Forwarded-For`/`-Proto` from: the k3s pod network, `10.42.0.0/16` (Traefik's pod IP changes). Comma-separated IPs and CIDRs; `*` and malformed entries are refused. See section 10 for the NetworkPolicy this needs. |
 | `ALLOWED_HOSTS` | no | — | no | web | Extra host names, comma-separated. |
@@ -209,8 +225,8 @@ The math:
   one, `1` (1000 m) keeps every peak unthrottled.
 - **scheduler:** 42 MiB flat → **64Mi** request (+50 %), **128Mi** limit. CPU is
   near zero, 34 m for a moment each pass → **10m** request.
-- These numbers come from an x86 machine. The Raspberry Pi is slower per core, but
-  CronRack is pinned to dimiserver anyway (section 9).
+- These numbers come from an x86 machine. An arm64 worker such as a Raspberry Pi is slower
+  per core, but CronRack is pinned to the server node anyway (section 9).
 
 ## 9. Constraints (read this before writing manifests)
 
@@ -229,12 +245,13 @@ The math:
   and the new pod's start clears every agent's "connected" flag while the old pod still
   holds their sockets.
 - **web and scheduler must be on the same node** and share the one `ReadWriteOnce`
-  volume. Pin them to dimiserver with `nodeSelector: {kubernetes.io/hostname: dimiserver}`
+  volume. Pin them to the server node with
+  `nodeSelector: {kubernetes.io/hostname: <server-node-name>}`
   (or the equivalent `nodeAffinity`). With k3s' default `local-path` provisioner, the
   volume is a directory on that node's disk (by default under
   `/var/lib/rancher/k3s/storage/`): here, the HDD. That's fine for CronRack's small
-  writes; just know that the data is on dimiserver only, so back it up (section 5), and
-  if dimiserver is down, CronRack is down.
+  writes; just know that the data is on the server node only, so back it up (section 5), and
+  if the server node is down, CronRack is down.
 - **Scaling out** needs other parts first: PostgreSQL instead of SQLite, a Redis
   channel layer (`channels-redis`) and a shared cache (Redis) for the rate limits.
   None of that is in CronRack today.
@@ -258,10 +275,10 @@ Both keep the two processes on one node with one volume.
   requests add up for the pod.
 
 **(2) Two Deployments** (web and scheduler, each `replicas: 1`, `strategy: Recreate`,
-both pinned to dimiserver; `migrate` as a Job):
+both pinned to the server node; `migrate` as a Job):
 
 - *Same node and volume:* only because both are pinned to the same node. If the
-  pinning of one of them is changed or forgotten, it can land on the Pi, where the
+  pinning of one of them is changed or forgotten, it can land on the worker node, where the
   volume isn't, and stay Pending.
 - *Restart coupling:* none: each can be restarted or rolled on its own.
 - *Probes:* the same per container.
@@ -328,12 +345,13 @@ look if they do.
 
 **TLS: two good options.**
 
-- **Tailscale certificates** (a `*.ts.net` name with HTTPS enabled in the Tailscale
+- **Tailscale certificates** (a MagicDNS name, `<tailscale-name>`, with HTTPS enabled in
+  the Tailscale
   admin console). Trusted by every browser and by the agents' system CA store: **agents
-  need no `--ca-file`**. Run `tailscale cert <name>` on dimiserver and load the result
-  into a `kubernetes.io/tls` Secret that the Ingress uses. Tailscale certificates are
+  need no `--ca-file`**. Run `tailscale cert <tailscale-name>` on the server node and load
+  the result into a `kubernetes.io/tls` Secret that the Ingress uses. Tailscale certificates are
   valid for 90 days, so renewing (and updating the Secret) has to be automated, e.g. a
-  systemd timer on dimiserver. (Tailscale's Kubernetes operator can also do this; it is
+  systemd timer on the server node. (Tailscale's Kubernetes operator can also do this; it is
   a bigger piece of software to run.)
 - **cert-manager**, with either
   - a **private CA** (a `CA` or self-signed `ClusterIssuer`): works for any name, but
