@@ -8,7 +8,7 @@ src = [".", "server"]
 "server/*/migrations/*.py" = ["RUF012"]
 
 [tool.pytest.ini_options]
-testpaths = ["agent/tests", "server"]
+testpaths = ["agent/tests", "server", "tests"]
 # Lets "import hosts" / "import cronrack" work, like running from server/.
 pythonpath = ["server"]
 # pytest-django: which settings to load for the server tests.

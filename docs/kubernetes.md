@@ -380,3 +380,66 @@ certificate means re-running the install command on every host with the new
    `Disconnected:` (section 11).
 6. Delete the web pod: the new one is ready within a minute, the agent reconnects
    within seconds.
+
+## 13. Promote flow (GitOps)
+
+The cluster never pulls "whatever is newest". Which image runs is one line in a separate
+deploy repository, `diischm/k8s-gitops-lab` (`charts/cronrack/values.yaml`, key
+`image.tag`), and Argo CD deploys what its `main` branch says. CI only *proposes* a new
+tag, as a pull request:
+
+```
+merge to main (cronrack)
+  → Image workflow: build + push sha-<short>, Trivy scan of that digest (amd64 and arm64)
+  → promote job: opens a PR in k8s-gitops-lab  "cronrack: deploy sha-<short>"
+  → you review + merge the PR
+  → Argo CD syncs: the pod restarts with the new image
+```
+
+- The PR changes exactly one line (`tag:`), checked by `scripts/ci/promote-tag.sh`
+  with `git diff --numstat`. Its body links the source commit, the image with its digest
+  and the workflow run.
+- Nothing is promoted for pull requests, version tags or a failed scan.
+- Re-running the workflow is safe: if `image.tag` already has that value, or a PR for that
+  tag is already open, the job stops without changes.
+- Two merges in a row open two PRs. Merge the newest and close the older one.
+
+### The token
+
+The job talks to the deploy repo with `DEPLOY_REPO_TOKEN`, a **fine-grained personal
+access token**:
+
+- **Repository access:** only `diischm/k8s-gitops-lab` ("Only select repositories").
+- **Permissions:** Contents: read and write, Pull requests: read and write (Metadata:
+  read is added automatically). Nothing else.
+- **Expiry:** set one (for example 90 days).
+
+It is stored in the `deploy` **Environment** of the cronrack repository, not as a
+repository secret, so only jobs that run on `main` can read it:
+
+1. cronrack → Settings → Environments → New environment → `deploy`.
+2. Deployment branches and tags → "Selected branches and tags" → add `main`.
+3. Environment secrets → Add secret → `DEPLOY_REPO_TOKEN` → paste the token.
+4. Settings → Secrets and variables → Actions → delete the old repository secret
+   `DEPLOY_REPO_TOKEN` (otherwise any workflow on any branch could still read it).
+
+**Rotation**, before the token expires (GitHub emails a reminder): create a new token
+with the same scope, replace the `deploy` Environment secret, re-run the latest Image
+workflow to check it works, then delete the old token under Settings → Developer
+settings → Personal access tokens.
+
+**Protect `main` in the deploy repo** (Settings → Rules → Rulesets, target `main`):
+require a pull request before merging, block force pushes and deletions, and leave the
+bypass list empty. The token acts as you, so without this rule it could push to `main`
+directly. Because the PR is opened in your name, GitHub won't let you approve it
+yourself: set "required approvals" to 0 and review it by reading the diff.
+
+### Rolling back
+
+Revert the deploy PR in `k8s-gitops-lab` (the PR page → "Revert" → merge the revert PR).
+Argo CD syncs the previous tag. The next merge to cronrack's `main` will propose a new
+tag again, as usual.
+
+If the newer image applied a database migration, the older image may not match the
+database. Take a backup (section 5) before merging a deploy PR that includes
+migrations.
