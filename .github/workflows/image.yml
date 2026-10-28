@@ -4,7 +4,8 @@ name: Image
 #
 #   pull request      build both platforms and scan the amd64 image; nothing is pushed,
 #                     no registry login, no secrets
-#   push to main      build, push ghcr.io/diischm/cronrack:sha-<short sha>, scan it
+#   push to main      build, push ghcr.io/diischm/cronrack:sha-<short sha>, scan it, then
+#                     open a deploy PR in the GitOps repo (promote, docs/kubernetes.md)
 #   tag vX.Y.Z        the same, also tagged X.Y.Z and X.Y
 #
 # There is no `latest` tag on purpose: a deployment names the exact version it runs.
@@ -99,6 +100,7 @@ jobs:
       packages: write  # push to ghcr.io with the workflow's own GITHUB_TOKEN
     outputs:
       digest: ${{ steps.build.outputs.digest }}
+      tag: ${{ steps.sha-tag.outputs.tag }}  # sha-<short sha>, as pushed; for promote
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -140,6 +142,16 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # The sha-<short> tag out of the exact list the build just pushed (never
+      # recomputed). Never fails: an empty value makes the promote job stop.
+      - name: Pushed sha tag
+        id: sha-tag
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          tag="$(printf '%s\n' "$TAGS" | sed -n "s|^${IMAGE}:\(sha-[0-9a-f]*\)\$|\1|p" | head -n 1)"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
   # --- scan exactly the pushed digest, per platform ------------------------------------------
   scan:
@@ -188,3 +200,111 @@ jobs:
         run: >-
           trivy image --no-progress --platform "$PLATFORM" --ignore-unfixed
           --severity HIGH,CRITICAL --exit-code 1 "${IMAGE}@${DIGEST}"
+
+  # --- main only: open a deploy PR in the GitOps repo -------------------------------------------
+  # Sets image.tag in the GitOps repo's values file to the tag pushed above and opens a
+  # pull request there. Nothing is deployed until that PR is merged; Argo CD then syncs.
+  promote:
+    name: Promote (deploy PR)
+    needs: [publish, scan]  # every scan leg must pass
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Only to check out this repository (for scripts/ci/promote-tag.sh). Everything in
+    # the GitOps repo uses DEPLOY_REPO_TOKEN, never GITHUB_TOKEN.
+    permissions:
+      contents: read
+    # DEPLOY_REPO_TOKEN lives in this Environment, which only main may use.
+    environment: deploy
+    concurrency:
+      group: promote-cronrack
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEPLOY_REPO: diischm/k8s-gitops-lab
+      VALUES_FILE: charts/cronrack/values.yaml
+      TAG: ${{ needs.publish.outputs.tag }}
+      DIGEST: ${{ needs.publish.outputs.digest }}
+      SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - name: Validate inputs
+        run: |
+          [[ $TAG =~ ^sha-[0-9a-f]{7,12}$ ]] || { echo "::error::invalid image tag"; exit 1; }
+          [[ $DIGEST =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::invalid digest"; exit 1; }
+          [[ $SOURCE_SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::invalid commit SHA"; exit 1; }
+          echo "Promoting ${IMAGE}:${TAG}@${DIGEST}"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the GitOps repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: ${{ env.DEPLOY_REPO }}
+          ref: main
+          path: gitops
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          persist-credentials: false
+
+      - name: Set the tag
+        id: bump
+        run: |
+          result="$(scripts/ci/promote-tag.sh "gitops/${VALUES_FILE}" "$TAG")"
+          echo "$result"
+          if [[ $result == "already set" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Look for an open deploy PR
+        id: existing
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+        run: |
+          count="$(gh pr list --repo "$DEPLOY_REPO" --head "deploy/cronrack-${TAG}" \
+            --state open --json number --jq length)"
+          if [[ $count != 0 ]]; then
+            echo "A deploy PR for ${TAG} is already open; nothing to do."
+            echo "open=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "open=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The token is only in this step's environment; gh hands it to git as a credential
+      # helper. Nothing here prints it.
+      - name: Commit and push the deploy branch
+        if: steps.bump.outputs.changed == 'true' && steps.existing.outputs.open == 'false'
+        working-directory: gitops
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+        run: |
+          branch="deploy/cronrack-${TAG}"
+          gh auth setup-git --hostname github.com
+          git switch -c "$branch"
+          git add -- "$VALUES_FILE"
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898283+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "cronrack: deploy ${TAG}"
+          # A branch left over from an earlier, unfinished run (pushed, but no open PR)
+          # is replaced; an empty expected value means "must not exist yet".
+          remote="$(git ls-remote --heads origin "refs/heads/${branch}" | cut -f1)"
+          git push --force-with-lease="refs/heads/${branch}:${remote}" origin "HEAD:refs/heads/${branch}"
+
+      - name: Open the deploy PR
+        if: steps.bump.outputs.changed == 'true' && steps.existing.outputs.open == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          body="$(printf '%s\n' \
+            "Source commit: ${REPO_URL}/commit/${SOURCE_SHA}" \
+            "Image: ${IMAGE}:${TAG}@${DIGEST}" \
+            "Workflow run: ${REPO_URL}/actions/runs/${RUN_ID}")"
+          gh pr create --repo "$DEPLOY_REPO" --base main --head "deploy/cronrack-${TAG}" \
+            --title "cronrack: deploy ${TAG}" --body "$body"
