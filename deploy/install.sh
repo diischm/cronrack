@@ -21,10 +21,21 @@
 #      (docker group = root-equivalent; default: no)
 #   6. installs and starts the cronrack-agent systemd service
 #
+# Kubernetes (optional, off unless you ask; see docs/kubernetes-monitoring.md):
+#   --k8s                  report this host's Kubernetes role (k3s server / agent / kubelet).
+#                          Asks nothing and needs no token: run it on every cluster node.
+#   --k8s-cluster-view     also let this agent read the cluster through the Kubernetes API.
+#                          Implies --k8s. Run it on ONE node only. Asks for a read-only
+#                          service account token (hidden input) and copies the cluster's CA
+#                          certificate (default: /var/lib/rancher/k3s/server/tls/server-ca.crt).
+#   --k8s-ca PATH          use this CA certificate instead (only with --k8s-cluster-view)
+#   --k8s-api URL          API server address (default https://127.0.0.1:6443)
+#
 # Re-running it upgrades the agent in place and keeps the existing config and token:
 #   --server URL     always updates server_url in the existing config
 #   --new-token      asks for a new token and replaces only the token
 #   --ca-file PATH   copies the CA certificate to /etc/cronrack/ca.crt and sets ca_file
+#   --k8s...         only changes the [kubernetes] settings you name; the rest is kept
 #
 # Remove the agent again (asks before deleting /etc/cronrack, which holds the token):
 #
@@ -40,6 +51,9 @@ VENV_DIR="$PREFIX/venv"
 CONFIG_DIR=/etc/cronrack
 CONFIG_FILE="$CONFIG_DIR/agent.toml"
 CA_DEST="$CONFIG_DIR/ca.crt"
+K8S_TOKEN_FILE="$CONFIG_DIR/k8s-token"
+K8S_CA_DEST="$CONFIG_DIR/k8s-ca.crt"
+K8S_CA_DEFAULT=/var/lib/rancher/k3s/server/tls/server-ca.crt
 UNIT_NAME=cronrack-agent.service
 UNIT_FILE="/etc/systemd/system/$UNIT_NAME"
 DOCKER_DROPIN_DIR="/etc/systemd/system/$UNIT_NAME.d"
@@ -61,6 +75,7 @@ ask_yes_no() {  # ask_yes_no "Question? [y/N] " -> 0 for yes
 usage() {
   cat <<'USAGE'
 Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
+                  [--k8s | --k8s-cluster-view [--k8s-ca PATH] [--k8s-api URL]]
        install.sh --uninstall
 
   --server URL     Base URL of your CronRack server, e.g. https://cronrack.lan
@@ -69,6 +84,13 @@ Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
                    private CA such as Caddy's `tls internal`. Used by curl here and
                    copied to /etc/cronrack/ca.crt for the agent.
   --new-token      On a re-run: ask for a new token (default: keep the existing one)
+  --k8s            Report this host's Kubernetes role (k3s server/agent). No token needed.
+  --k8s-cluster-view
+                   Also read the cluster via the Kubernetes API (implies --k8s). Use it on
+                   ONE node. Asks for a read-only service account token (hidden input).
+  --k8s-ca PATH    Cluster CA certificate to copy (default: the k3s server CA). Public
+                   certificate only: files with a private key are refused.
+  --k8s-api URL    Kubernetes API address, https only (default https://127.0.0.1:6443)
   --uninstall      Stop and remove the service, /opt/cronrack-agent and the cronrack
                    user; asks before deleting /etc/cronrack
 USAGE
@@ -80,6 +102,10 @@ SERVER=""
 CA_FILE=""
 NEW_TOKEN=0
 UNINSTALL=0
+K8S=0
+K8S_VIEW=0
+K8S_CA=""
+K8S_API=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --server) [ $# -ge 2 ] || die "--server needs a URL"; SERVER="$2"; shift 2 ;;
@@ -87,6 +113,12 @@ while [ $# -gt 0 ]; do
     --ca-file) [ $# -ge 2 ] || die "--ca-file needs a path"; CA_FILE="$2"; shift 2 ;;
     --ca-file=*) CA_FILE="${1#--ca-file=}"; shift ;;
     --new-token) NEW_TOKEN=1; shift ;;
+    --k8s) K8S=1; shift ;;
+    --k8s-cluster-view) K8S=1; K8S_VIEW=1; shift ;;
+    --k8s-ca) [ $# -ge 2 ] || die "--k8s-ca needs a path"; K8S_CA="$2"; shift 2 ;;
+    --k8s-ca=*) K8S_CA="${1#--k8s-ca=}"; shift ;;
+    --k8s-api) [ $# -ge 2 ] || die "--k8s-api needs a URL"; K8S_API="$2"; shift 2 ;;
+    --k8s-api=*) K8S_API="${1#--k8s-api=}"; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown argument: $1" ;;
@@ -156,6 +188,16 @@ else
   die "--server must be https://HOST (plain http:// is only allowed for localhost, 127.0.0.1 and [::1])"
 fi
 
+# Same rule as the agent (agent/config.py): the Kubernetes API is https only, no path.
+if [ -n "$K8S_CA" ] || [ -n "$K8S_API" ]; then
+  [ "$K8S_VIEW" -eq 1 ] || die "--k8s-ca and --k8s-api only make sense with --k8s-cluster-view"
+fi
+if [ -n "$K8S_API" ]; then
+  K8S_API="${K8S_API%/}"
+  [[ "$K8S_API" =~ ^https://([A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\])(:[0-9]{1,5})?$ ]] \
+    || die "--k8s-api must be https://HOST[:PORT] (no path; plain http:// is not allowed)"
+fi
+
 # curl trusts exactly this CA (not the system's) when --ca-file is given.
 CURL_CA=()
 if [ -n "$CA_FILE" ]; then
@@ -188,6 +230,61 @@ if ! python3 -c 'import venv, ensurepip' 2>/dev/null; then
 fi
 
 [ -r /dev/tty ] || die "no terminal to ask questions on; run this from an interactive shell"
+
+# --- Kubernetes: check everything and ask for the token BEFORE changing anything ------------
+
+# check_k8s_ca FILE: a readable PEM certificate, never a private key.
+check_k8s_ca() {
+  local file="$1"
+  if [ ! -f "$file" ] || [ ! -r "$file" ]; then
+    die "Kubernetes CA: cannot read $file (pass --k8s-ca PATH)"
+  fi
+  [[ "$file" != *.key ]] || die "Kubernetes CA: $file is a .key file; pass the public .crt"
+  if grep -q 'PRIVATE KEY' "$file"; then
+    die "Kubernetes CA: $file contains a private key; pass the public certificate only"
+  fi
+  grep -q -- '-----BEGIN CERTIFICATE-----' "$file" \
+    || die "Kubernetes CA: $file is not a PEM certificate"
+}
+
+# ask_k8s_token: reads the service account token into K8S_TOKEN, hidden. It is only ever
+# written to a file with printf (a bash builtin), never printed or passed as an argument.
+ask_k8s_token() {
+  echo
+  echo "Paste the Kubernetes service account token for the cluster view."
+  echo "(Typing is hidden. It must be a read-only token; see docs/kubernetes-monitoring.md.)"
+  K8S_TOKEN=""
+  read -r -s -p "Kubernetes token: " K8S_TOKEN </dev/tty || true
+  echo
+  if [ "${#K8S_TOKEN}" -gt 12000 ] \
+    || ! [[ "$K8S_TOKEN" =~ ^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$ ]]; then
+    die "that doesn't look like a Kubernetes service account token; nothing was changed"
+  fi
+}
+
+K8S_TOKEN=""
+K8S_CA_SRC=""
+if [ "$K8S_VIEW" -eq 1 ]; then
+  if [ -n "$K8S_CA" ]; then
+    K8S_CA_SRC="$K8S_CA"
+  elif [ -f "$K8S_CA_DEFAULT" ]; then
+    K8S_CA_SRC="$K8S_CA_DEFAULT"
+  elif [ -f "$K8S_CA_DEST" ]; then
+    K8S_CA_SRC="$K8S_CA_DEST"  # a re-run on a host without the k3s server CA: keep the copy
+  else
+    die "Kubernetes CA: $K8S_CA_DEFAULT not found; pass the cluster CA certificate with --k8s-ca PATH"
+  fi
+  check_k8s_ca "$K8S_CA_SRC"
+  if [ -f "$K8S_TOKEN_FILE" ]; then
+    if ask_yes_no "A Kubernetes token is already installed. Replace it? [y/N] "; then
+      ask_k8s_token
+    else
+      say "Keeping the existing Kubernetes token"
+    fi
+  else
+    ask_k8s_token
+  fi
+fi
 
 # --- 1. user ----------------------------------------------------------------------
 
@@ -292,6 +389,47 @@ set_config_key() {
   mv -f "$tmp" "$CONFIG_FILE"
 }
 
+# set_kubernetes_table KEY=VALUE...: in $CONFIG_FILE, set these keys inside the
+# [kubernetes] table (created if missing) and keep every other line, including the
+# table's other keys, as it is. VALUE is already TOML (true, or "quoted"). Bash builtins
+# only, new file root:cronrack 0640 before it is written, then moved over the old one.
+set_kubernetes_table() {
+  local tmp line pair key in_table=0 seen=0 skip
+  tmp="$(mktemp "$CONFIG_DIR/.agent.toml.XXXXXX")"
+  if ! { chown root:"$AGENT_USER" "$tmp" && chmod 0640 "$tmp"; }; then
+    rm -f "$tmp"
+    die "cannot prepare $tmp"
+  fi
+  {
+    while IFS= read -r line || [ -n "$line" ]; do
+      if [[ "$line" =~ ^[[:space:]]*\[ ]]; then
+        # A table header ends the [kubernetes] table: add the keys it was missing.
+        if [ "$in_table" -eq 1 ]; then printf '%s\n' "$@"; fi
+        in_table=0
+        if [[ "$line" =~ ^[[:space:]]*\[kubernetes\][[:space:]]*(#.*)?$ ]]; then
+          in_table=1
+          seen=1
+        fi
+      elif [ "$in_table" -eq 1 ]; then
+        skip=0
+        for pair in "$@"; do
+          key="${pair%%=*}"
+          if [[ "$line" =~ ^[[:space:]]*${key}[[:space:]]*= ]]; then skip=1; fi
+        done
+        if [ "$skip" -eq 1 ]; then continue; fi
+      fi
+      printf '%s\n' "$line"
+    done <"$CONFIG_FILE"
+    if [ "$in_table" -eq 1 ]; then
+      printf '%s\n' "$@"
+    elif [ "$seen" -eq 0 ]; then
+      printf '\n[kubernetes]\n'
+      printf '%s\n' "$@"
+    fi
+  } >"$tmp" || { rm -f "$tmp"; die "cannot write $tmp"; }
+  mv -f "$tmp" "$CONFIG_FILE"
+}
+
 install -d -m 0750 -o root -g "$AGENT_USER" "$CONFIG_DIR"
 if [ -f "$CONFIG_FILE" ]; then
   say "Keeping the existing $CONFIG_FILE"
@@ -302,6 +440,13 @@ if [ -f "$CONFIG_FILE" ]; then
     chown root:"$AGENT_USER" "$CA_DEST"
     chmod 0640 "$CA_DEST"
   fi
+  # Kept Kubernetes files (e.g. after --uninstall kept /etc/cronrack) must be readable again.
+  for kept in "$K8S_TOKEN_FILE" "$K8S_CA_DEST"; do
+    if [ -f "$kept" ]; then
+      chown root:"$AGENT_USER" "$kept"
+      chmod 0640 "$kept"
+    fi
+  done
   set_config_key server_url "$SERVER"
   say "server_url = \"$SERVER\""
   # grep only reads the file; the token itself never becomes an argument.
@@ -329,6 +474,29 @@ if [ -n "$CA_FILE" ]; then
   install -m 0640 -o root -g "$AGENT_USER" "$CA_FILE" "$CA_DEST"
   set_config_key ca_file "$CA_DEST"
   say "Installed the CA certificate as $CA_DEST (root:$AGENT_USER, 0640)"
+fi
+
+if [ "$K8S" -eq 1 ]; then
+  if [ "$K8S_VIEW" -eq 0 ]; then
+    set_kubernetes_table 'enabled = true'
+    say "Kubernetes: this host reports its node role ([kubernetes] enabled = true)"
+  else
+    # The token file is created root:cronrack 0640 BEFORE the token goes in.
+    if [ -n "$K8S_TOKEN" ]; then
+      install -m 0640 -o root -g "$AGENT_USER" /dev/null "$K8S_TOKEN_FILE"
+      printf '%s\n' "$K8S_TOKEN" >"$K8S_TOKEN_FILE"
+      K8S_TOKEN=""
+      say "Wrote $K8S_TOKEN_FILE (root:$AGENT_USER, 0640)"
+    fi
+    if [ "$K8S_CA_SRC" != "$K8S_CA_DEST" ]; then
+      install -m 0640 -o root -g "$AGENT_USER" "$K8S_CA_SRC" "$K8S_CA_DEST"
+    fi
+    say "Installed the Kubernetes CA certificate as $K8S_CA_DEST"
+    set_kubernetes_table 'enabled = true' 'cluster_view = true' \
+      "token_file = \"$K8S_TOKEN_FILE\"" "ca_file = \"$K8S_CA_DEST\""
+    if [ -n "$K8S_API" ]; then set_kubernetes_table "api_server = \"$K8S_API\""; fi
+    say "Kubernetes: cluster view on ([kubernetes] cluster_view = true)"
+  fi
 fi
 
 # The config is complete. From here on, nothing optional may stop the install:
@@ -371,3 +539,7 @@ say "Done. The agent is running and connecting to $SERVER."
 echo "    Status:  systemctl status cronrack-agent"
 echo "    Logs:    journalctl -u cronrack-agent -f"
 echo "    Upgrade: re-run the same install command (the config and token are kept)"
+if [ "$K8S_VIEW" -eq 1 ]; then
+  echo "    Check the Kubernetes access:"
+  echo "      cd $APP_DIR && sudo -u $AGENT_USER ../venv/bin/python -m agent --check-k8s --config $CONFIG_FILE"
+fi

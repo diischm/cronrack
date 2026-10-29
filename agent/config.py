@@ -32,6 +32,13 @@ WEBSOCKET_PATH = "/ws/agent/"
 # the shape also keeps anything odd (spaces, newlines) out of the HTTP header.
 _TOKEN = re.compile(r"[A-Za-z0-9_-]{20,128}")
 
+# The Kubernetes cluster view talks to the API server over TLS only; k3s listens on 6443.
+DEFAULT_KUBE_API_SERVER = "https://127.0.0.1:6443"
+# /etc/rancher/k3s/k3s.yaml is the cluster *admin* kubeconfig. The agent must never use it.
+FORBIDDEN_KUBE_DIR = "/etc/rancher"
+MAX_TOKEN_FILE_BYTES = 16 * 1024
+MAX_CA_FILE_BYTES = 1024 * 1024
+
 PERMISSION_FIX = (
     "Run: sudo chown root:cronrack {path} && sudo chmod 640 {path} "
     "(installed service), or chmod 600 {path} for your own test file."
@@ -43,6 +50,17 @@ class ConfigError(Exception):
 
 
 @dataclass
+class KubernetesConfig:
+    """The [kubernetes] table. Everything is off until the host owner turns it on here."""
+
+    enabled: bool = False  # report this host's node role (needs no token)
+    cluster_view: bool = False  # also read the cluster through the API (needs token + CA)
+    api_server: str = DEFAULT_KUBE_API_SERVER
+    token_file: str | None = None
+    ca_file: str | None = None
+
+
+@dataclass
 class AgentConfig:
     server_url: str | None = None
     token: str | None = None
@@ -50,6 +68,7 @@ class AgentConfig:
     interval_seconds: int = 60
     enabled_checks: list[str] = field(default_factory=lambda: list(MVP_CHECKS))
     actions: dict[str, Any] = field(default_factory=dict)
+    kubernetes: KubernetesConfig = field(default_factory=KubernetesConfig)
 
     def __repr__(self) -> str:
         # Written by hand so the token can't leak into logs or tracebacks.
@@ -58,7 +77,8 @@ class AgentConfig:
         return (
             f"AgentConfig(server_url={self.server_url!r}, token={token}, "
             f"ca_file={self.ca_file!r}, interval_seconds={self.interval_seconds!r}, "
-            f"enabled_checks={self.enabled_checks!r}, actions={self.actions!r})"
+            f"enabled_checks={self.enabled_checks!r}, actions={self.actions!r}, "
+            f"kubernetes={self.kubernetes!r})"
         )
 
 
@@ -145,6 +165,101 @@ def check_token(token: str) -> str:
     return token
 
 
+def check_api_server(url: str) -> str:
+    """Validate the Kubernetes API server's base URL and return it. Raises ConfigError.
+
+    https:// only, even for localhost: the service account token is sent to it.
+    """
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        parts.port  # noqa: B018 - raises ValueError for a bad port
+    except ValueError:
+        raise ConfigError("'api_server' is not a valid URL") from None
+    if parts.scheme != "https":
+        raise ConfigError("'api_server' must start with https://")
+    if not host:
+        raise ConfigError("'api_server' has no host name")
+    if parts.username or parts.password or parts.query or parts.fragment:
+        raise ConfigError("'api_server' must not contain a user name, password, ? or #")
+    if parts.path not in ("", "/"):
+        raise ConfigError("'api_server' must be just the address, without a path")
+    return url.rstrip("/")
+
+
+def _check_kube_path(path: str, key: str) -> str:
+    if not os.path.isabs(path):
+        raise ConfigError(f"'{key}' must be an absolute path")
+    resolved = os.path.realpath(path)  # also follows symlinks and ..
+    if resolved == FORBIDDEN_KUBE_DIR or resolved.startswith(FORBIDDEN_KUBE_DIR + "/"):
+        raise ConfigError(
+            f"'{key}' must not point into {FORBIDDEN_KUBE_DIR} (that holds cluster admin "
+            "credentials; create a read-only service account token instead)"
+        )
+    return path
+
+
+def read_secret_file(path: str, key: str, limit: int) -> bytes:
+    """Read a secret file after checking the file we actually opened (same rules as agent.toml)."""
+    try:
+        with open(path, "rb") as f:
+            _check_stat(os.fstat(f.fileno()), path, os.getuid(), _process_groups())
+            data = f.read(limit + 1)
+    except OSError as exc:
+        raise ConfigError(f"cannot read '{key}' {path}: {exc.strerror}") from None
+    if len(data) > limit:
+        raise ConfigError(f"'{key}' {path} is too large")
+    return data
+
+
+def check_ca_file(path: str) -> None:
+    """The cluster CA certificate must exist and must not be (or contain) a private key."""
+    if path.endswith(".key"):
+        raise ConfigError("'ca_file' must be a CA certificate, not a .key file")
+    try:
+        with open(path, "rb") as f:
+            data = f.read(MAX_CA_FILE_BYTES + 1)
+    except OSError as exc:
+        raise ConfigError(f"cannot read 'ca_file' {path}: {exc.strerror}") from None
+    if len(data) > MAX_CA_FILE_BYTES:
+        raise ConfigError(f"'ca_file' {path} is too large")
+    if b"PRIVATE KEY" in data:
+        raise ConfigError(f"'ca_file' {path} contains a private key; use the public .crt only")
+
+
+def _parse_kubernetes(data: Any) -> KubernetesConfig:
+    if not isinstance(data, dict):
+        raise ConfigError("'kubernetes' must be a table")
+    unknown = sorted(set(data) - {"enabled", "cluster_view", "api_server", "token_file", "ca_file"})
+    if unknown:
+        raise ConfigError(f"unknown [kubernetes] setting(s): {', '.join(unknown)}")
+    for key in ("enabled", "cluster_view"):
+        if not isinstance(data.get(key, False), bool):
+            raise ConfigError(f"'{key}' must be true or false")
+
+    config = KubernetesConfig(
+        enabled=data.get("enabled", False),
+        cluster_view=data.get("cluster_view", False),
+        token_file=_optional_str(data, "token_file"),
+        ca_file=_optional_str(data, "ca_file"),
+    )
+    if "api_server" in data:
+        server = _optional_str(data, "api_server")
+        config.api_server = check_api_server(server) if server else DEFAULT_KUBE_API_SERVER
+    if config.token_file is not None:
+        _check_kube_path(config.token_file, "token_file")
+    if config.ca_file is not None:
+        _check_kube_path(config.ca_file, "ca_file")
+    if config.cluster_view:
+        if config.token_file is None:
+            raise ConfigError("'cluster_view' needs 'token_file' in [kubernetes]")
+        if config.ca_file is None:
+            raise ConfigError("'cluster_view' needs 'ca_file' in [kubernetes]")
+        read_secret_file(config.token_file, "token_file", MAX_TOKEN_FILE_BYTES)
+        check_ca_file(config.ca_file)
+    return config
+
+
 def _optional_str(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     if value is not None and not isinstance(value, str):
@@ -153,7 +268,15 @@ def _optional_str(data: dict[str, Any], key: str) -> str | None:
 
 
 def _parse(data: dict[str, Any]) -> AgentConfig:
-    known = {"server_url", "token", "ca_file", "interval_seconds", "enabled_checks", "actions"}
+    known = {
+        "server_url",
+        "token",
+        "ca_file",
+        "interval_seconds",
+        "enabled_checks",
+        "actions",
+        "kubernetes",
+    }
     unknown = sorted(set(data) - known)
     if unknown:
         raise ConfigError(f"unknown setting(s): {', '.join(unknown)}")
@@ -196,6 +319,9 @@ def _parse(data: dict[str, Any]) -> AgentConfig:
         if not isinstance(data["actions"], dict):
             raise ConfigError("'actions' must be a table")
         config.actions = data["actions"]
+
+    if "kubernetes" in data:
+        config.kubernetes = _parse_kubernetes(data["kubernetes"])
 
     return config
 

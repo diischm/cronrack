@@ -8,19 +8,28 @@ The server's ReportSerializer (Phase 5) mirrors this format exactly. Keys:
 
 A check is null when it is disabled, its tool is missing, or it crashed.
 Only a crash adds an entry to errors.
+
+When [kubernetes] enabled is set, a `kubernetes` key ({"node": ..., "cluster": ...})
+is added before errors. Without it the report is exactly as before.
 """
 
+import json
 import socket
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 from agent import AGENT_VERSION
 from agent import collectors as agent_collectors
-from agent.config import AgentConfig
-from agent.protocol import _clean
+from agent.config import AgentConfig, KubernetesConfig
+from agent.kube_api import KubeClient
+from agent.kube_cluster import SHRINK_STEPS, collect_cluster_view, shrink_cluster_view
+from agent.protocol import MAX_REPORT_BYTES, _clean, report_message
 
 Collector = Callable[[], Any]
+
+KUBERNETES_KEY = "kubernetes"
 
 # Config check name -> key in the report, in report order.
 REPORT_KEYS: dict[str, str] = {
@@ -72,6 +81,15 @@ def safe_collect(name: str, fn: Collector) -> tuple[Any, dict[str, str] | None]:
         return None, {"check": name, "error": type(exc).__name__}
 
 
+def collect_kubernetes(kube: KubernetesConfig, now: datetime) -> dict[str, Any]:
+    """This host's Kubernetes node role, plus the cluster view if it is switched on."""
+    cluster = None
+    if kube.cluster_view:
+        client = KubeClient(kube.api_server, kube.token_file, kube.ca_file)
+        cluster = collect_cluster_view(client, now)
+    return {"node": agent_collectors.collect_node_role(), "cluster": cluster}
+
+
 def format_timestamp(now: datetime) -> str:
     """UTC, ISO 8601, whole seconds, 'Z' suffix: 2026-10-12T12:00:00Z."""
     if now.tzinfo is None:
@@ -108,5 +126,44 @@ def build_report(
         report[key] = result
         if error is not None:
             errors.append(error)
+    if config.kubernetes.enabled:
+        collect = collectors.get(KUBERNETES_KEY) or partial(
+            collect_kubernetes, config.kubernetes, now
+        )
+        result, error = safe_collect(KUBERNETES_KEY, collect)
+        report[KUBERNETES_KEY] = result
+        if error is not None:
+            errors.append(error)
     report["errors"] = errors
     return report
+
+
+def _message_size(report: dict[str, Any]) -> int:
+    # Measured the way connection._send writes it, so the number is what goes on the wire.
+    return len(json.dumps(report_message(report)).encode())
+
+
+def fit_report(report: dict[str, Any], max_bytes: int = MAX_REPORT_BYTES) -> dict[str, Any]:
+    """Make sure the report fits in one message, cutting Kubernetes data if it must.
+
+    The server drops connections that send more than 256 KiB, and the agent would then
+    reconnect and send the same thing again forever. The least important cluster data
+    goes first (see kube_cluster.shrink_cluster_view); `truncated` and `cut` say what.
+    The input is not modified. Host data (containers, units ...) is never cut here.
+    """
+    kube = report.get(KUBERNETES_KEY)
+    if _message_size(report) <= max_bytes or not isinstance(kube, dict):
+        return report
+    view = kube.get("cluster")
+    if not isinstance(view, dict):
+        return report
+    for step in range(1, SHRINK_STEPS + 1):
+        shrunk = shrink_cluster_view(view, step)
+        if shrunk is None:
+            continue
+        view = shrunk
+        candidate = {**report, KUBERNETES_KEY: {**kube, "cluster": view}}
+        if _message_size(candidate) <= max_bytes:
+            return candidate
+    # Even the bare identity doesn't fit (the host part alone is huge): drop the cluster.
+    return {**report, KUBERNETES_KEY: {**kube, "cluster": None}}

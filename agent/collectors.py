@@ -15,6 +15,7 @@ that don't look right are skipped. Everything they return is still untrusted
 import json
 import os
 import re
+import socket
 import subprocess
 
 COMMAND_TIMEOUT = 15
@@ -61,6 +62,13 @@ _DOCKER_HEALTH_VALUES = {
 _TIMESTAMP = re.compile(r"[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+", re.ASCII)
 
 _PERCENT = re.compile(r"(\d{1,3})%", re.ASCII)
+
+# "k3s version v1.31.2+k3s1 (6f4217a7)" -> v1.31.2+k3s1
+_K3S_VERSION = re.compile(r"k3s version (v\d+\.\d+\.\d+\+k3s\d+)", re.ASCII)
+# "Kubernetes v1.31.2" (or v1.31.2-rc.1)
+_KUBELET_VERSION = re.compile(r"Kubernetes (v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)", re.ASCII)
+# "v3.16.2+g13654a5" -> v3.16.2 (the git sha after + is dropped)
+_HELM_VERSION = re.compile(r"v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?", re.ASCII)
 
 
 def _run(args: list[str]) -> str | None:
@@ -276,3 +284,81 @@ def parse_df(text: str) -> list[dict]:
             continue  # header line ("Capacity") or "-" for pseudo filesystems
         disks.append({"mount": mount, "percent": int(percent[1])})
     return disks
+
+
+# --- 7. Kubernetes node role ----------------------------------------------------
+
+
+def run_unit_active(unit: str) -> str | None:
+    # Exit code 0 only for "active"; any other state makes _run() return None.
+    return _run(["systemctl", "is-active", unit])
+
+
+def parse_unit_active(text: str) -> bool:
+    return text.strip() == "active"
+
+
+def run_k3s_version() -> str | None:
+    return _run(["k3s", "--version"])
+
+
+def parse_k3s_version(text: str) -> str | None:
+    match = _K3S_VERSION.search(text)
+    return match[1] if match else None
+
+
+def run_kubelet_version() -> str | None:
+    return _run(["kubelet", "--version"])
+
+
+def parse_kubelet_version(text: str) -> str | None:
+    match = _KUBELET_VERSION.search(text)
+    return match[1] if match else None
+
+
+def run_helm_version() -> str | None:
+    return _run(["helm", "version", "--short"])
+
+
+def parse_helm_version(text: str) -> str | None:
+    match = _HELM_VERSION.match(text.strip())
+    return match[0] if match else None
+
+
+def _unit_is_active(unit: str) -> bool:
+    raw = run_unit_active(unit)
+    return raw is not None and parse_unit_active(raw)
+
+
+def _version(run, parse) -> str | None:
+    raw = run()
+    return None if raw is None else parse(raw)
+
+
+def collect_node_role() -> dict:
+    """What this host is in a Kubernetes cluster: role, distribution, versions.
+
+    role: "server" (k3s control plane), "agent" (k3s worker), "node" (plain kubelet)
+          or "none". Needs no token: it only asks systemd and the local tools.
+    """
+    role, dist = "none", None
+    for unit, unit_role, unit_dist in (
+        ("k3s", "server", "k3s"),
+        ("k3s-agent", "agent", "k3s"),
+        ("kubelet", "node", "kubernetes"),
+    ):
+        if _unit_is_active(unit):
+            role, dist = unit_role, unit_dist
+            break
+    # The node name defaults to the lowercased host name; the server matches on it.
+    name = socket.gethostname().lower().split(".")[0][:63]
+    return {
+        "role": role,
+        "dist": dist,
+        "name": name or "unknown",
+        "k3s": _version(run_k3s_version, parse_k3s_version) if dist == "k3s" else None,
+        "kubelet": (
+            _version(run_kubelet_version, parse_kubelet_version) if role == "node" else None
+        ),
+        "helm": _version(run_helm_version, parse_helm_version),
+    }
