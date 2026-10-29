@@ -432,6 +432,7 @@ def cluster(text: str = "x", events_text: str = "m") -> dict:
         ],
         "truncated": False,
         "cut": [],
+        "incomplete": [],
     }
 
 
@@ -472,6 +473,7 @@ def test_fit_report_first_drops_healthy_pods() -> None:
     assert view["ok_pods"] == {}
     assert view["truncated"] is True
     assert view["cut"] == ["ok_pods"]
+    assert view["incomplete"] == []  # only healthy pods went: nothing that needs you is hidden
     assert len(view["problem_pods"]) == 100
     assert len(view["workloads"]) == 200
     assert len(view["events"]) == 20
@@ -494,6 +496,7 @@ def test_fit_report_then_drops_healthy_workloads_then_events() -> None:
     assert step3["cut"] == ["ok_pods", "workloads", "events"]
     assert step3["events"] == []
     assert len(step3["workloads"]) == 100
+    assert step3["incomplete"] == []  # healthy items and old warnings only
 
 
 def test_fit_report_keeps_problems_nodes_and_denied_to_the_end() -> None:
@@ -510,6 +513,8 @@ def test_fit_report_keeps_problems_nodes_and_denied_to_the_end() -> None:
     assert view["denied"] == [{"g": "", "r": "pods", "v": "list"}]
     assert view["truncated"] is True
     assert {"ok_pods", "workloads", "events", "helm", "argo", "pvcs"} <= set(view["cut"])
+    # Step 4 drops whole lists, unhealthy apps and pending claims included: say so.
+    assert view["incomplete"] == ["workloads", "helm", "argo", "pvcs"]
     assert view["pod_counts"]["total"] == 500  # counts survive every cut
 
 
@@ -523,6 +528,7 @@ def test_fit_report_last_resort_keeps_identity_and_errors_only() -> None:
     assert view["api"] == {"error": None, "cert_days": 290}
     assert view["nodes"] == [] and view["problem_pods"] == []
     assert view["truncated"] is True
+    assert {"nodes", "pods"} <= set(view["incomplete"])
     assert fitted["kubernetes"]["node"] == NODE
 
 

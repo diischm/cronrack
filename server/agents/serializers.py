@@ -8,6 +8,8 @@ format agent/report.py builds and nothing else:
 - every key present (a check the agent couldn't run is null, not missing)
 - unknown keys rejected at every level
 - length limits on every string and list, and no control characters in strings
+- Kubernetes names must be DNS-1123 names; one that isn't is replaced, not refused
+  (KubeNameField), so a single odd pod name can't hide the rest of the cluster
 - keys added after agent 0.1.0 (kubernetes) are optional, so older agents keep working
 
 If agent/report.py changes, change this file in the same pull request.
@@ -187,6 +189,19 @@ _IMAGE = r"[A-Za-z0-9][A-Za-z0-9._/:+-]{0,254}(?:@sha256:[0-9a-f]{64})?"
 _IMAGE_MAX = 255 + len("@sha256:") + 64
 _STORAGE = r"\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E|m)?"
 _CUT_NAME = r"[a-z_]{1,32}"
+# DNS-1123, as Kubernetes itself checks names: a label (namespaces) or a subdomain
+# (pods, nodes, workloads, claims, Argo CD apps, Helm releases).
+_DNS_LABEL = r"[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?"
+_DNS_PART = r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?"
+_DNS_SUBDOMAIN = rf"{_DNS_PART}(?:\.{_DNS_PART})*"
+# "Kind/name": what owns a pod, what an event is about. The only place a / is allowed.
+_OBJECT_REF = rf"[A-Z][A-Za-z0-9]{{0,62}}/(?=.{{1,{K8S_NAME}}}$){_DNS_SUBDOMAIN}"
+K8S_LABEL = 63
+K8S_REF = 63 + 1 + K8S_NAME
+
+# What a name that isn't one becomes. Not a valid name itself, so it can't be mistaken
+# for a real object.
+INVALID_K8S_NAME = "(invalid name)"
 _REVISION = r"[A-Za-z0-9._-]{1,7}"
 
 POD_PHASES = ["Pending", "Running", "Succeeded", "Failed", "Unknown"]
@@ -207,8 +222,49 @@ def _k8s_age(**kwargs):
     return StrictIntegerField(min_value=0, max_value=K8S_MAX_AGE, **kwargs)
 
 
+class KubeNameField(serializers.CharField):
+    """A Kubernetes name. A string that isn't one becomes INVALID_K8S_NAME.
+
+    Only the field is refused, not the report: the pod or app is still listed (it may be
+    the broken one) and its problems still count; the odd name is never stored or shown.
+    Anything that isn't a string (or null where allowed) still refuses the report.
+    """
+
+    default_error_messages = {"invalid": "Must be a string."}  # noqa: RUF012 - read by DRF
+
+    def __init__(self, pattern: str, longest: int, **kwargs):
+        self.pattern = re.compile(pattern)
+        self.longest = longest
+        kwargs.setdefault("trim_whitespace", False)
+        kwargs.setdefault("allow_blank", True)  # "" is not refused, it is replaced
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail("invalid")
+        if len(data) > self.longest or not self.pattern.fullmatch(data):
+            return INVALID_K8S_NAME
+        return data
+
+    def run_validation(self, data=serializers.empty):
+        if data == "":
+            return INVALID_K8S_NAME
+        return super().run_validation(data)
+
+
 def _k8s_name(**kwargs):
-    return StrictCharField(max_length=K8S_NAME, **kwargs)
+    """Pods, nodes, workloads, claims, Argo CD apps, Helm releases: a DNS-1123 subdomain."""
+    return KubeNameField(_DNS_SUBDOMAIN, K8S_NAME, **kwargs)
+
+
+def _k8s_namespace(**kwargs):
+    """A namespace: a DNS-1123 label (no dots, at most 63)."""
+    return KubeNameField(_DNS_LABEL, K8S_LABEL, **kwargs)
+
+
+def _k8s_ref(**kwargs):
+    """ "Kind/name" of an object."""
+    return KubeNameField(_OBJECT_REF, K8S_REF, **kwargs)
 
 
 def _k8s_version(**kwargs):
@@ -254,7 +310,7 @@ class KubeClusterNodeSerializer(StrictSerializer):
 
 
 class KubeProblemPodSerializer(StrictSerializer):
-    ns = _k8s_name()
+    ns = _k8s_namespace()
     name = _k8s_name()
     node = _k8s_name(allow_null=True)
     phase = StrictChoiceField(choices=POD_PHASES)
@@ -264,7 +320,7 @@ class KubeProblemPodSerializer(StrictSerializer):
     last = StrictPatternField(_REASON, max_length=64, allow_null=True)
     last_age_s = _k8s_age(allow_null=True)
     age_s = _k8s_age(allow_null=True)
-    owner = StrictCharField(max_length=400)
+    owner = _k8s_ref()
 
 
 class OkPodsField(serializers.Field):
@@ -280,7 +336,7 @@ class OkPodsField(serializers.Field):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._ns = _k8s_name()
+        self._ns = _k8s_namespace()
         self._name = _k8s_name()
         self._node = _k8s_name(allow_null=True)
         self._restarts = _k8s_count()
@@ -309,7 +365,8 @@ class OkPodsField(serializers.Field):
                         self._age.run_validation(pod[3]),
                     ]
                 )
-            result[self._ns.run_validation(ns)] = rows
+            # Two bad namespaces both become INVALID_K8S_NAME: keep the pods of both.
+            result.setdefault(self._ns.run_validation(ns), []).extend(rows)
         return result
 
     def to_representation(self, value):
@@ -327,7 +384,7 @@ class KubePodCountsSerializer(StrictSerializer):
 
 class KubeWorkloadSerializer(StrictSerializer):
     kind = StrictChoiceField(choices=WORKLOAD_KINDS)
-    ns = _k8s_name()
+    ns = _k8s_namespace()
     name = _k8s_name()
     desired = _k8s_count()
     ready = _k8s_count()
@@ -343,7 +400,7 @@ class KubeWorkloadSerializer(StrictSerializer):
 
 class KubeHelmSerializer(StrictSerializer):
     name = _k8s_name()
-    ns = _k8s_name()
+    ns = _k8s_namespace()
     chart = StrictCharField(max_length=120, allow_null=True)
     app_version = StrictCharField(max_length=120, allow_null=True)
     source = StrictChoiceField(choices=["labels", "helmchart"])
@@ -351,7 +408,7 @@ class KubeHelmSerializer(StrictSerializer):
 
 class KubeArgoSerializer(StrictSerializer):
     name = _k8s_name()
-    ns = _k8s_name()
+    ns = _k8s_namespace()
     project = _k8s_name(allow_null=True)
     sync = StrictChoiceField(choices=SYNC_STATUSES)
     health = StrictChoiceField(choices=HEALTH_STATUSES)
@@ -363,7 +420,7 @@ class KubeArgoSerializer(StrictSerializer):
 
 
 class KubePvcSerializer(StrictSerializer):
-    ns = _k8s_name()
+    ns = _k8s_namespace()
     name = _k8s_name()
     phase = StrictChoiceField(choices=PVC_PHASES)
     # "class" is a Python keyword, so it is declared as `class_` and renamed below.
@@ -378,8 +435,8 @@ class KubePvcSerializer(StrictSerializer):
 
 
 class KubeEventSerializer(StrictSerializer):
-    ns = _k8s_name()
-    obj = StrictCharField(max_length=400)
+    ns = _k8s_namespace()
+    obj = _k8s_ref()
     reason = StrictPatternField(_REASON, max_length=64, allow_null=True)
     msg = StrictCharField(max_length=256, allow_blank=True)
     count = _k8s_count()
@@ -408,6 +465,10 @@ class ClusterViewSerializer(StrictSerializer):
     events = KubeEventSerializer(many=True, max_length=K8S_MAX_EVENTS)
     truncated = StrictBooleanField()
     cut = serializers.ListField(
+        child=StrictPatternField(_CUT_NAME, max_length=32), max_length=K8S_MAX_CUT
+    )
+    # Lists the agent could not read in full: problems may be missing from them.
+    incomplete = serializers.ListField(
         child=StrictPatternField(_CUT_NAME, max_length=32), max_length=K8S_MAX_CUT
     )
 
