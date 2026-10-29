@@ -486,6 +486,65 @@ def test_list_all_stops_at_max_pages_and_says_truncated(token_file, monkeypatch)
     assert len(script.requests) == 3
 
 
+def too_large() -> FakeResponse:
+    return ok(b"{" + b" " * 1_000 + b"}")
+
+
+def test_too_large_page_is_asked_again_with_the_small_limit(token_file, monkeypatch):
+    monkeypatch.setattr(kube_api, "MAX_RESPONSE_BYTES", 100)
+    script = Script(too_large(), page([{"n": 1}]))
+    client = make_client(script, token_file)
+
+    items, truncated = client.list_all("/api/v1/pods")
+
+    assert items == [{"n": 1}]
+    assert truncated is False
+    assert script.query(0)["limit"] == [str(kube_api.PAGE_LIMIT)]
+    assert script.query(1)["limit"] == [str(kube_api.SMALL_PAGE_LIMIT)]
+    assert kube_api.SMALL_PAGE_LIMIT == 50
+    assert len(script.connections) == 2  # the half-read answer closed the first one
+
+
+def test_still_too_large_with_the_small_limit_gives_up(token_file, monkeypatch):
+    monkeypatch.setattr(kube_api, "MAX_RESPONSE_BYTES", 100)
+    script = Script(too_large(), too_large(), page([{"n": 1}]))
+    client = make_client(script, token_file)
+
+    items, truncated = client.list_all("/api/v1/pods")
+
+    assert items == []
+    assert truncated is True
+    assert len(script.requests) == 2  # one retry, then it stops
+
+
+def test_a_later_page_is_retried_with_the_same_continue_token(token_file, monkeypatch):
+    monkeypatch.setattr(kube_api, "MAX_RESPONSE_BYTES", 100)
+    script = Script(page([{"n": 1}], "t1"), too_large(), page([{"n": 2}], "t2"), page([{"n": 3}]))
+    client = make_client(script, token_file)
+
+    items, truncated = client.list_all("/api/v1/pods")
+
+    assert items == [{"n": 1}, {"n": 2}, {"n": 3}]
+    assert truncated is False
+    assert script.query(2) == {"limit": ["50"], "continue": ["t1"]}
+    assert script.query(3) == {"limit": ["50"], "continue": ["t2"]}  # stays small
+
+
+def test_small_pages_get_the_same_item_budget_as_full_ones(token_file, monkeypatch):
+    # MAX_PAGES full pages are MAX_PAGES * PAGE_LIMIT items; small pages may add up to that.
+    monkeypatch.setattr(kube_api, "MAX_RESPONSE_BYTES", 100)
+    monkeypatch.setattr(kube_api, "MAX_PAGES", 1)
+    small = [page([{"n": n}], f"t{n}") for n in range(1, 6)]
+    script = Script(too_large(), *small, page([{"n": 6}]))
+    client = make_client(script, token_file)
+
+    items, truncated = client.list_all("/api/v1/pods")
+
+    assert [i["n"] for i in items] == [1, 2, 3, 4, 5]
+    assert truncated is True  # 5 x 50 = one full page; the sixth is never asked for
+    assert len(script.requests) == 6
+
+
 def test_410_restarts_the_listing_once(token_file):
     script = Script(
         page([{"n": 1}], "t1"),
@@ -521,13 +580,15 @@ def test_second_410_gives_up_with_what_it_has(token_file):
 def test_oversized_page_keeps_earlier_pages_and_says_truncated(token_file, monkeypatch):
     first = page([{"n": 1}, {"n": 2}], "t1")
     monkeypatch.setattr(kube_api, "MAX_RESPONSE_BYTES", len(first.body) + 5)
-    script = Script(first, ok(b'{"items": [' + b'{"n": 0},' * 100 + b'{"n": 0}]}'))
+    huge = b'{"items": [' + b'{"n": 0},' * 100 + b'{"n": 0}]}'
+    script = Script(first, ok(huge), ok(huge))  # too large, and again with the small limit
     client = make_client(script, token_file)
 
     items, truncated = client.list_all("/api/v1/pods")
 
     assert items == [{"n": 1}, {"n": 2}]
     assert truncated is True
+    assert len(script.requests) == 3
 
 
 def test_list_without_items_is_a_bad_response(token_file):

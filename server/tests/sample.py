@@ -118,6 +118,7 @@ SAMPLE_KUBERNETES: dict[str, Any] = {
         "events": [],
         "truncated": False,
         "cut": [],
+        "incomplete": [],
     },
 }
 

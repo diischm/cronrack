@@ -81,6 +81,22 @@ def test_detail_page_shows_findings_with_why_and_a_copy_only_fix(alice_client: C
     assert "Healthy pods" in html
 
 
+def test_detail_page_says_when_a_list_could_not_be_read_in_full(alice_client: Client, cluster):
+    Cluster.objects.filter(pk=cluster.pk).update(
+        status="yellow",
+        latest_snapshot=make_cluster(incomplete=["pods"]),
+        snapshot_received_at=timezone.now(),
+        last_seen_at=timezone.now(),
+    )
+    html = alice_client.get(f"/clusters/{cluster.pk}/").content.decode()
+
+    assert "Not read in full" in html
+    assert "Problems may be hidden there" in html
+    assert "CronRack couldn&#x27;t read all pods" in html
+    assert "kubectl get pods -A" in html
+    assert "healthy items" not in html
+
+
 def test_detail_page_of_a_waiting_cluster(alice_client: Client, cluster):
     response = alice_client.get(f"/clusters/{cluster.pk}/")
     assert response.status_code == 200

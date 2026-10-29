@@ -185,4 +185,5 @@ def cluster_context(cluster: Cluster, now: datetime) -> dict[str, Any]:
         "missing": snapshot.get("missing") or [],
         "truncated": snapshot.get("truncated") is True,
         "cut": snapshot.get("cut") or [],
+        "incomplete": snapshot.get("incomplete") or [],
     }

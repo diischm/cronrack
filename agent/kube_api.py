@@ -30,7 +30,8 @@ from agent.config import MAX_TOKEN_FILE_BYTES, ConfigError, read_secret_file
 REQUEST_TIMEOUT = 10  # seconds for connecting and for each socket read
 CLUSTER_DEADLINE = 30  # seconds for one whole collection
 PAGE_LIMIT = 250  # items per page (the API's `limit` parameter)
-MAX_PAGES = 10
+SMALL_PAGE_LIMIT = 50  # a page over MAX_RESPONSE_BYTES is asked again this small, once
+MAX_PAGES = 10  # full pages; small pages may add up to the same number of items
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024  # per page
 _READ_CHUNK = 64 * 1024
 
@@ -283,8 +284,9 @@ class KubeClient:
     def list_all(self, path: str, query: dict[str, str] | None = None) -> tuple[list[dict], bool]:
         """Every item of a list, page by page. Returns (items, truncated).
 
-        truncated is true if the pages ran out (MAX_PAGES), one was too large, or the
-        listing expired twice (410: the continue token got too old; we restart once).
+        truncated is true if the pages ran out (MAX_PAGES), one was too large even at
+        SMALL_PAGE_LIMIT, or the listing expired twice (410: the continue token got too
+        old; we restart once).
         """
         items: list[dict] = []
         for _ in range(2):
@@ -297,14 +299,22 @@ class KubeClient:
 
     def _pages(self, path: str, query: dict[str, str], items: list[dict]) -> bool:
         token: str | None = None
-        for _ in range(MAX_PAGES):
-            page_query = {**query, "limit": str(PAGE_LIMIT)}
+        limit = PAGE_LIMIT
+        budget = MAX_PAGES * PAGE_LIMIT  # items' worth of pages, so small pages aren't cut early
+        while budget > 0:
+            page_query = {**query, "limit": str(limit)}
             if token:
                 page_query["continue"] = token
             try:
                 body = self.get_json(path, page_query)
             except ResponseTooLarge:
-                return True
+                if limit == SMALL_PAGE_LIMIT:
+                    return True
+                # Big objects (many containers, long annotations): the same page in
+                # smaller bites. The continue token stays valid with another limit.
+                limit = SMALL_PAGE_LIMIT
+                continue
+            budget -= limit
             page = body.get("items")
             if not isinstance(page, list):
                 raise ApiError("bad_response")

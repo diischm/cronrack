@@ -677,13 +677,18 @@ class _Run:
         self.client = client
         self.denied: list[dict] = []
         self.missing: set[str] = set()
-        self.cut: list[str] = []
+        self.cut: list[str] = []  # read in full, but not all of it is listed
+        self.incomplete: list[str] = []  # could not be read in full: problems may be hidden
         self.error: str | None = None
         self.reached = False  # did the API answer at all (even with 403/404)?
 
     def mark_cut(self, name: str) -> None:
         if name not in self.cut:
             self.cut.append(name)
+
+    def mark_incomplete(self, name: str) -> None:
+        if name not in self.incomplete:
+            self.incomplete.append(name)
 
     def fetch(self, resource: Resource, name: str, *, listing: bool = True) -> Any:
         """The response body, or None if it could not be read (the reason is remembered)."""
@@ -693,7 +698,7 @@ class _Run:
             if listing:
                 items, truncated = self.client.list_all(resource.path, resource.query)
                 if truncated:
-                    self.mark_cut(name)
+                    self.mark_incomplete(name)
                 body: Any = {"items": items}
             else:
                 body = self.client.get_json(resource.path, resource.query)
@@ -709,9 +714,9 @@ class _Run:
             if resource.optional:
                 self.missing.add(resource.group)
             else:
-                self.mark_cut(name)
+                self.mark_incomplete(name)
         except DeadlineExceeded:
-            self.mark_cut(name)
+            self.mark_incomplete(name)
         except Unauthorized:
             self.error = "unauthorized"
         except ApiError as exc:
@@ -720,7 +725,7 @@ class _Run:
             if exc.kind in ("refused", "tls") or not self.reached:
                 self.error = exc.kind
             else:
-                self.mark_cut(name)
+                self.mark_incomplete(name)
         return None
 
 
@@ -739,8 +744,10 @@ def _token_days(exp: Any, now: datetime) -> int | None:
 def collect_cluster_view(client: Any, now: datetime) -> dict:
     """The "cluster" part of the report. Problems come first when a list has to be cut.
 
-    `truncated` is true when a list was cut or could not be read completely, and `cut`
-    names those lists. It never raises for API trouble: that shows up in api.error.
+    `truncated` is true when a list was read but cut to its cap (problems are kept first),
+    and `cut` names those lists. `incomplete` names the lists that could not be read in
+    full (a page too large, the deadline, an error), so problems may be missing from
+    them. It never raises for API trouble: that shows up in api.error.
     """
     run = _Run(client)
     sub, exp = None, None
@@ -812,6 +819,7 @@ def collect_cluster_view(client: Any, now: datetime) -> dict:
     }
     view["truncated"] = bool(run.cut)
     view["cut"] = run.cut
+    view["incomplete"] = run.incomplete
     return view
 
 
@@ -826,15 +834,21 @@ def shrink_cluster_view(view: dict, step: int) -> dict | None:
 
     1 healthy pods, 2 healthy workloads, 3 events, 4 workloads/Helm/Argo/PVCs entirely,
     5 nodes and problem pods (only identity, errors and counts remain).
+
+    Steps 1-3 only drop healthy items and old warnings (`cut`). Steps 4 and 5 drop whole
+    lists, problems included, so those lists are also named in `incomplete`.
     """
     shrunk = dict(view)
     cut = list(view.get("cut") or [])
+    incomplete = list(view.get("incomplete") or [])
 
-    def drop(key: str, empty: Any) -> None:
+    def drop(key: str, empty: Any, hides_problems: str | None = None) -> None:
         if view.get(key):
             shrunk[key] = empty
             if key not in cut:
                 cut.append(key)
+            if hides_problems and hides_problems not in incomplete:
+                incomplete.append(hides_problems)
 
     if step == 1:
         drop("ok_pods", {})
@@ -849,12 +863,13 @@ def shrink_cluster_view(view: dict, step: int) -> dict | None:
         drop("events", [])
     elif step == 4:
         for key in ("workloads", "helm", "argo", "pvcs"):
-            drop(key, [])
+            drop(key, [], hides_problems=key)
     elif step == 5:
-        for key in ("nodes", "problem_pods"):
-            drop(key, [])
+        drop("nodes", [], hides_problems="nodes")
+        drop("problem_pods", [], hides_problems="pods")
     if len(cut) == len(view.get("cut") or []) and shrunk == view:
         return None
     shrunk["truncated"] = True
     shrunk["cut"] = cut
+    shrunk["incomplete"] = incomplete
     return shrunk
