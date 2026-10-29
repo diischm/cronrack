@@ -8,6 +8,7 @@ format agent/report.py builds and nothing else:
 - every key present (a check the agent couldn't run is null, not missing)
 - unknown keys rejected at every level
 - length limits on every string and list, and no control characters in strings
+- keys added after agent 0.1.0 (kubernetes) are optional, so older agents keep working
 
 If agent/report.py changes, change this file in the same pull request.
 """
@@ -47,6 +48,25 @@ class StrictCharField(serializers.CharField):
         if _CONTROL_CHARS.search(data):
             self.fail("control")
         return data
+
+
+class StrictPatternField(StrictCharField):
+    """A strict string that must match a regular expression completely."""
+
+    default_error_messages = {  # noqa: RUF012 - DRF reads this class attribute
+        **StrictCharField.default_error_messages,
+        "pattern": "Not in the expected format.",
+    }
+
+    def __init__(self, pattern: str, **kwargs):
+        self.pattern = re.compile(pattern)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        if not self.pattern.fullmatch(value):
+            self.fail("pattern")
+        return value
 
 
 class StrictIntegerField(serializers.IntegerField):
@@ -135,6 +155,270 @@ class ErrorSerializer(StrictSerializer):
     error = StrictCharField(max_length=100)
 
 
+# --- kubernetes (agent/collectors.py collect_node_role, agent/kube_cluster.py) -----------
+#
+# The limits below are the agent's own caps (kube_cluster.py MAX_*), so a report the
+# agent builds is never refused for being "too big", and a hostile one still is.
+
+K8S_NAME = 253  # a Kubernetes object name (DNS subdomain)
+K8S_MAX_NODES = 50
+K8S_MAX_PROBLEM_PODS = 100
+K8S_MAX_OK_PODS = 400
+K8S_MAX_OK_NAMESPACES = 100
+K8S_MAX_WORKLOADS = 200
+K8S_MAX_PVCS = 100
+K8S_MAX_HELM = 100
+K8S_MAX_ARGO = 100
+K8S_MAX_EVENTS = 20
+K8S_MAX_IMAGES = 10
+K8S_MAX_DENIED = 20
+K8S_MAX_CUT = 20
+
+K8S_COUNT = 1_000_000
+K8S_MAX_AGE = 315_360_000  # 10 years, in seconds
+
+_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+_VERSION = r"v\d+\.\d+\.\d+[0-9A-Za-z.+-]{0,40}"
+# An Argo CD image tag may come without the "v" and is cut only by the image's length.
+_TAG_VERSION = r"v?\d+\.\d+\.\d+[0-9A-Za-z.+-]{0,200}"
+_REASON = r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}"
+_SUBJECT = r"[A-Za-z0-9:_.@-]{1,253}"
+_IMAGE = r"[A-Za-z0-9][A-Za-z0-9._/:+-]{0,254}(?:@sha256:[0-9a-f]{64})?"
+_IMAGE_MAX = 255 + len("@sha256:") + 64
+_STORAGE = r"\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E|m)?"
+_CUT_NAME = r"[a-z_]{1,32}"
+_REVISION = r"[A-Za-z0-9._-]{1,7}"
+
+POD_PHASES = ["Pending", "Running", "Succeeded", "Failed", "Unknown"]
+PRESSURE_CONDITIONS = ["MemoryPressure", "DiskPressure", "PIDPressure", "NetworkUnavailable"]
+API_ERRORS = ["tls", "refused", "timeout", "unauthorized", "bad_response"]
+WORKLOAD_KINDS = ["Deployment", "StatefulSet", "DaemonSet"]
+SYNC_STATUSES = ["Synced", "OutOfSync", "Unknown"]
+HEALTH_STATUSES = ["Healthy", "Progressing", "Degraded", "Suspended", "Missing", "Unknown"]
+OPERATION_PHASES = ["Running", "Terminating", "Failed", "Error", "Succeeded"]
+PVC_PHASES = ["Pending", "Bound", "Lost", "Unknown"]
+
+
+def _k8s_count(**kwargs):
+    return StrictIntegerField(min_value=0, max_value=K8S_COUNT, **kwargs)
+
+
+def _k8s_age(**kwargs):
+    return StrictIntegerField(min_value=0, max_value=K8S_MAX_AGE, **kwargs)
+
+
+def _k8s_name(**kwargs):
+    return StrictCharField(max_length=K8S_NAME, **kwargs)
+
+
+def _k8s_version(**kwargs):
+    return StrictPatternField(_VERSION, max_length=64, **kwargs)
+
+
+class KubeNodeSerializer(StrictSerializer):
+    """What this host is in a cluster: collectors.collect_node_role()."""
+
+    role = StrictChoiceField(choices=["server", "agent", "node", "none"])
+    dist = StrictChoiceField(choices=["k3s", "kubernetes"], allow_null=True)
+    name = StrictCharField(max_length=63)
+    k3s = _k8s_version(allow_null=True)
+    kubelet = _k8s_version(allow_null=True)
+    helm = _k8s_version(allow_null=True)
+
+
+class KubeApiSerializer(StrictSerializer):
+    error = StrictChoiceField(choices=API_ERRORS, allow_null=True)
+    cert_days = StrictIntegerField(min_value=-100_000, max_value=1_000_000, allow_null=True)
+
+
+class KubeDeniedSerializer(StrictSerializer):
+    g = StrictCharField(max_length=63, allow_blank=True)
+    r = StrictCharField(max_length=63)
+    v = StrictCharField(max_length=16)
+
+
+class KubeClusterNodeSerializer(StrictSerializer):
+    name = _k8s_name()
+    roles = serializers.ListField(child=StrictCharField(max_length=63), max_length=5)
+    ready = StrictBooleanField()
+    pressure = serializers.ListField(
+        child=StrictChoiceField(choices=PRESSURE_CONDITIONS), max_length=len(PRESSURE_CONDITIONS)
+    )
+    kubelet = _k8s_version(allow_null=True)
+    os = StrictCharField(max_length=32, allow_null=True)
+    arch = StrictCharField(max_length=32, allow_null=True)
+    cpu_m = StrictIntegerField(min_value=0, max_value=10**12, allow_null=True)
+    mem_mi = StrictIntegerField(min_value=0, max_value=10**12, allow_null=True)
+    cpu_used_m = StrictIntegerField(min_value=0, max_value=10**12, allow_null=True)
+    mem_used_mi = StrictIntegerField(min_value=0, max_value=10**12, allow_null=True)
+
+
+class KubeProblemPodSerializer(StrictSerializer):
+    ns = _k8s_name()
+    name = _k8s_name()
+    node = _k8s_name(allow_null=True)
+    phase = StrictChoiceField(choices=POD_PHASES)
+    ready = serializers.ListField(child=_k8s_count(), min_length=2, max_length=2)
+    restarts = _k8s_count()
+    reason = StrictPatternField(_REASON, max_length=64, allow_null=True)
+    last = StrictPatternField(_REASON, max_length=64, allow_null=True)
+    last_age_s = _k8s_age(allow_null=True)
+    age_s = _k8s_age(allow_null=True)
+    owner = StrictCharField(max_length=400)
+
+
+class OkPodsField(serializers.Field):
+    """Healthy pods by namespace: {"apps": [[name, node, restarts, age_s], ...]}.
+
+    At most 100 namespaces and 400 pods in total (the agent's caps).
+    """
+
+    default_error_messages = {  # noqa: RUF012 - DRF reads this class attribute
+        "invalid": "Must be an object of lists of [name, node, restarts, age] lists.",
+        "too_many": "Too many healthy pods.",
+    }
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._ns = _k8s_name()
+        self._name = _k8s_name()
+        self._node = _k8s_name(allow_null=True)
+        self._restarts = _k8s_count()
+        self._age = _k8s_age(allow_null=True)
+
+    def to_internal_value(self, data):
+        if not isinstance(data, dict) or len(data) > K8S_MAX_OK_NAMESPACES:
+            self.fail("invalid")
+        result: dict[str, list] = {}
+        total = 0
+        for ns, pods in data.items():
+            if not isinstance(pods, list):
+                self.fail("invalid")
+            total += len(pods)
+            if total > K8S_MAX_OK_PODS:
+                self.fail("too_many")
+            rows = []
+            for pod in pods:
+                if not isinstance(pod, list) or len(pod) != 4:
+                    self.fail("invalid")
+                rows.append(
+                    [
+                        self._name.run_validation(pod[0]),
+                        self._node.run_validation(pod[1]),
+                        self._restarts.run_validation(pod[2]),
+                        self._age.run_validation(pod[3]),
+                    ]
+                )
+            result[self._ns.run_validation(ns)] = rows
+        return result
+
+    def to_representation(self, value):
+        return value
+
+
+class KubePodCountsSerializer(StrictSerializer):
+    total = _k8s_count()
+    running = _k8s_count()
+    pending = _k8s_count()
+    succeeded = _k8s_count()
+    failed = _k8s_count()
+    problem = _k8s_count()
+
+
+class KubeWorkloadSerializer(StrictSerializer):
+    kind = StrictChoiceField(choices=WORKLOAD_KINDS)
+    ns = _k8s_name()
+    name = _k8s_name()
+    desired = _k8s_count()
+    ready = _k8s_count()
+    available = _k8s_count()
+    updated = _k8s_count()
+    misscheduled = _k8s_count()
+    images = serializers.ListField(
+        child=StrictPatternField(_IMAGE, max_length=_IMAGE_MAX),
+        max_length=K8S_MAX_IMAGES,
+    )
+    helm = _k8s_name(allow_null=True)
+
+
+class KubeHelmSerializer(StrictSerializer):
+    name = _k8s_name()
+    ns = _k8s_name()
+    chart = StrictCharField(max_length=120, allow_null=True)
+    app_version = StrictCharField(max_length=120, allow_null=True)
+    source = StrictChoiceField(choices=["labels", "helmchart"])
+
+
+class KubeArgoSerializer(StrictSerializer):
+    name = _k8s_name()
+    ns = _k8s_name()
+    project = _k8s_name(allow_null=True)
+    sync = StrictChoiceField(choices=SYNC_STATUSES)
+    health = StrictChoiceField(choices=HEALTH_STATUSES)
+    rev = StrictPatternField(_REVISION, max_length=7, allow_null=True)
+    op = StrictChoiceField(choices=OPERATION_PHASES, allow_null=True)
+    synced_at = StrictPatternField(
+        r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", max_length=20, allow_null=True
+    )
+
+
+class KubePvcSerializer(StrictSerializer):
+    ns = _k8s_name()
+    name = _k8s_name()
+    phase = StrictChoiceField(choices=PVC_PHASES)
+    # "class" is a Python keyword, so it is declared as `class_` and renamed below.
+    class_ = _k8s_name(allow_null=True)
+    size = StrictPatternField(_STORAGE, max_length=32, allow_null=True)
+    age_s = _k8s_age(allow_null=True)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        fields["class"] = fields.pop("class_")
+        return fields
+
+
+class KubeEventSerializer(StrictSerializer):
+    ns = _k8s_name()
+    obj = StrictCharField(max_length=400)
+    reason = StrictPatternField(_REASON, max_length=64, allow_null=True)
+    msg = StrictCharField(max_length=256, allow_blank=True)
+    count = _k8s_count()
+    age_s = _k8s_age(allow_null=True)
+
+
+class ClusterViewSerializer(StrictSerializer):
+    """The cluster read through the Kubernetes API: kube_cluster.collect_cluster_view()."""
+
+    uid = StrictPatternField(_UUID, max_length=36, allow_null=True)
+    version = _k8s_version(allow_null=True)
+    api = KubeApiSerializer()
+    sa = StrictPatternField(_SUBJECT, max_length=253, allow_null=True)
+    token_days = StrictIntegerField(min_value=-100_000, max_value=1_000_000, allow_null=True)
+    denied = KubeDeniedSerializer(many=True, max_length=K8S_MAX_DENIED)
+    missing = serializers.ListField(child=StrictCharField(max_length=63), max_length=10)
+    nodes = KubeClusterNodeSerializer(many=True, max_length=K8S_MAX_NODES)
+    problem_pods = KubeProblemPodSerializer(many=True, max_length=K8S_MAX_PROBLEM_PODS)
+    ok_pods = OkPodsField()
+    pod_counts = KubePodCountsSerializer()
+    workloads = KubeWorkloadSerializer(many=True, max_length=K8S_MAX_WORKLOADS)
+    helm = KubeHelmSerializer(many=True, max_length=K8S_MAX_HELM)
+    argo = KubeArgoSerializer(many=True, max_length=K8S_MAX_ARGO)
+    argocd_version = StrictPatternField(_TAG_VERSION, max_length=255, allow_null=True)
+    pvcs = KubePvcSerializer(many=True, max_length=K8S_MAX_PVCS)
+    events = KubeEventSerializer(many=True, max_length=K8S_MAX_EVENTS)
+    truncated = StrictBooleanField()
+    cut = serializers.ListField(
+        child=StrictPatternField(_CUT_NAME, max_length=32), max_length=K8S_MAX_CUT
+    )
+
+
+class KubernetesSerializer(StrictSerializer):
+    """The report's `kubernetes` key: this host's node role and, on one node, the cluster."""
+
+    node = KubeNodeSerializer()
+    cluster = ClusterViewSerializer(allow_null=True)
+
+
 class ReportSerializer(StrictSerializer):
     """The report built by agent/report.py: build_report()."""
 
@@ -147,6 +431,9 @@ class ReportSerializer(StrictSerializer):
     failed_units = _list(StrictCharField(max_length=MAX_NAME), allow_null=True)
     timers = TimerSerializer(many=True, allow_null=True, max_length=MAX_ITEMS)
     disks = DiskSerializer(many=True, allow_null=True, max_length=MAX_ITEMS)
+    # Only agents with [kubernetes] enabled send it (agent 0.2.0 and later); null when
+    # its collector crashed.
+    kubernetes = KubernetesSerializer(required=False, allow_null=True)
     errors = ErrorSerializer(many=True, max_length=50)
 
     def validate_timestamp(self, value: str) -> str:

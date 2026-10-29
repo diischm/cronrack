@@ -29,6 +29,7 @@ from rest_framework.settings import api_settings
 
 from activity.events import record_status_change
 from agents.serializers import HelloSerializer, ReportMessageSerializer
+from clusters.services import save_cluster_snapshot, split_report
 from hosts.models import AgentToken, Host
 from hosts.services import (
     CLOSE_HELLO_TIMEOUT,
@@ -45,7 +46,8 @@ from rules.engine import top_issues
 logger = logging.getLogger(__name__)
 
 # Check names as in the agent's config (agent/report.py REPORT_KEYS).
-ENABLED_CHECKS = ["updates", "reboot", "containers", "units", "timers", "disks"]
+# "kubernetes" tells a 0.2.0 agent that it may send the key; an older server never lists it.
+ENABLED_CHECKS = ["updates", "reboot", "containers", "units", "timers", "disks", "kubernetes"]
 
 
 def bearer_token(headers) -> str | None:
@@ -151,14 +153,20 @@ def mark_disconnected(host_id: int, connection_id: str) -> None:
 
 @database_sync_to_async
 def ingest_report(host_id: int, report: dict, connection_id: str) -> None:
-    """Save the report and, if the status changed, record it. Raises Host.DoesNotExist."""
+    """Save the report and, if the status changed, record it. Raises Host.DoesNotExist.
+
+    The host keeps its own part of the report; the Kubernetes cluster view (if any) goes
+    to its Cluster, in the same transaction.
+    """
     with transaction.atomic():
         host = Host.objects.get(pk=host_id)
-        result = save_report(host, report)
+        host_report, cluster_view = split_report(report)
+        result = save_report(host, host_report)
         if result.old_status != result.new_status:
             record_status_change(
                 host, result.old_status, result.new_status, top_issues(result.findings)
             )
+        save_cluster_snapshot(host, cluster_view)
         # The scheduler clears `connected` when it marks a host offline. If this
         # (still active) socket reports again after all, it is connected after all.
         Host.objects.filter(pk=host_id, connection_id=connection_id, connected=False).update(

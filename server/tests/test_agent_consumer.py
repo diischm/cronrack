@@ -19,7 +19,7 @@ from cronrack.asgi import application
 from hosts.models import AgentToken, Host
 from hosts.services import close_agent, request_collect
 
-from .sample import make_report
+from .sample import make_kube_report, make_report
 from .ws import WebSocketClient
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
@@ -255,6 +255,35 @@ async def test_valid_report_updates_host_and_status(host, token):
     event = await database_sync_to_async(StatusEvent.objects.get)(host=host)
     assert (event.old_status, event.new_status) == ("waiting", "red")
     assert event.summary == "2 security updates, 1 update pending"
+    await comm.disconnect()
+
+
+async def test_welcome_announces_kubernetes():
+    assert "kubernetes" in ENABLED_CHECKS
+
+
+async def test_report_with_a_cluster_view_is_split_between_host_and_cluster(host, token):
+    from clusters.models import Cluster
+
+    comm = await connected_agent(token)
+    report = make_kube_report()
+
+    await comm.send_json_to({"type": "report", "report": report})
+
+    assert await comm.receive_nothing(timeout=0.2)  # a valid report gets no reply
+    fresh = await get_host(host.pk)
+    assert fresh.latest_report["kubernetes"]["node"] == report["kubernetes"]["node"]
+    assert set(fresh.latest_report["kubernetes"]["cluster"]) == {"uid", "truncated"}
+    cluster = await database_sync_to_async(Cluster.objects.get)(owner=host.owner)
+    assert cluster.latest_snapshot == report["kubernetes"]["cluster"]
+    await comm.disconnect()
+
+
+async def test_report_from_an_old_agent_without_kubernetes_is_still_accepted(host, token):
+    comm = await connected_agent(token)
+    await comm.send_json_to({"type": "report", "report": make_report()})
+    assert await comm.receive_nothing(timeout=0.2)
+    assert (await get_host(host.pk)).latest_report == make_report()
     await comm.disconnect()
 
 

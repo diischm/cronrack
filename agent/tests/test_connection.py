@@ -20,7 +20,7 @@ from websockets.sync.server import serve as sync_serve
 
 from agent import connection, report
 from agent.__main__ import main
-from agent.config import AgentConfig
+from agent.config import AgentConfig, KubernetesConfig
 from agent.connection import MAX_BACKOFF_SECONDS, backoff, build_ssl_context, run_forever
 
 from .test_report import fake_collectors
@@ -155,6 +155,128 @@ async def test_server_cannot_enable_checks_the_local_config_disabled(server) -> 
     assert message["report"]["disks"] is not None
     assert message["report"]["updates"] is None
     assert message["report"]["containers"] is None
+
+
+# --- Kubernetes ---------------------------------------------------------------------------------
+
+KUBE_NODE = {
+    "role": "agent",
+    "dist": "k3s",
+    "name": "worker-1",
+    "k3s": None,
+    "kubelet": None,
+    "helm": None,
+}
+
+
+def kube_config_for(server: FakeServer) -> AgentConfig:
+    config = config_for(server)
+    config.kubernetes = KubernetesConfig(enabled=True)
+    return config
+
+
+async def first_report(server: FakeServer, config: AgentConfig) -> dict:
+    task = asyncio.create_task(run_forever(config))
+    try:
+        await server.next()  # hello
+        _, message = await server.next()
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    return message
+
+
+@pytest.mark.asyncio
+async def test_kubernetes_is_sent_when_the_server_announces_it(server, monkeypatch) -> None:
+    monkeypatch.setattr(
+        report, "collect_kubernetes", lambda kube, now: {"node": KUBE_NODE, "cluster": None}
+    )
+    server.welcome = {**WELCOME, "enabled_checks": ["updates", "kubernetes"]}
+
+    message = await first_report(server, kube_config_for(server))
+
+    assert message["report"]["kubernetes"] == {"node": KUBE_NODE, "cluster": None}
+
+
+@pytest.mark.asyncio
+async def test_kubernetes_is_not_sent_to_a_server_that_does_not_announce_it(
+    server, monkeypatch
+) -> None:
+    # An old server's serializer rejects unknown keys, so it must never see this one.
+    monkeypatch.setattr(report, "collect_kubernetes", lambda kube, now: pytest.fail("must not run"))
+    assert "kubernetes" not in server.welcome["enabled_checks"]
+
+    message = await first_report(server, kube_config_for(server))
+
+    assert "kubernetes" not in message["report"]
+    assert message["report"]["updates"] == {"total": 3, "security": 1}
+
+
+@pytest.mark.asyncio
+async def test_kubernetes_stays_off_when_the_local_config_has_it_off(server, monkeypatch) -> None:
+    # The server can only narrow what the local config allows, never switch Kubernetes on.
+    monkeypatch.setattr(report, "collect_kubernetes", lambda kube, now: pytest.fail("must not run"))
+    server.welcome = {**WELCOME, "enabled_checks": ["updates", "kubernetes"]}
+
+    message = await first_report(server, config_for(server))
+
+    assert "kubernetes" not in message["report"]
+
+
+@pytest.mark.asyncio
+async def test_oversized_report_is_cut_to_fit_before_sending(server, monkeypatch) -> None:
+    big_view = {
+        "uid": "11111111-2222-3333-4444-555555555555",
+        "version": None,
+        "api": {"error": None, "cert_days": None},
+        "sa": None,
+        "token_days": None,
+        "denied": [],
+        "missing": [],
+        "nodes": [],
+        "problem_pods": [],
+        "ok_pods": {
+            f"ns{i}": [[f"pod-{i}-{j}", "worker-1", 0, 5] for j in range(4)] for i in range(100)
+        },
+        "pod_counts": {
+            "total": 400,
+            "running": 400,
+            "pending": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "problem": 0,
+        },
+        "workloads": [],
+        "helm": [],
+        "argo": [],
+        "argocd_version": None,
+        "pvcs": [],
+        "events": [
+            {
+                "ns": "n",
+                "obj": f"Pod/p{i}",
+                "reason": "BackOff",
+                "msg": "\U0001f600" * 256,
+                "count": 1,
+                "age_s": 5,
+            }
+            for i in range(20)
+        ],
+        "truncated": False,
+        "cut": [],
+    }
+    monkeypatch.setattr(connection, "MAX_REPORT_BYTES", 20_000)
+    monkeypatch.setattr(
+        report, "collect_kubernetes", lambda kube, now: {"node": KUBE_NODE, "cluster": big_view}
+    )
+    server.welcome = {**WELCOME, "enabled_checks": ["updates", "kubernetes"]}
+
+    message = await first_report(server, kube_config_for(server))
+
+    assert len(json.dumps(message)) <= 20_000
+    cluster = message["report"]["kubernetes"]["cluster"]
+    assert cluster["truncated"] is True
+    assert "ok_pods" in cluster["cut"]
 
 
 @pytest.mark.asyncio

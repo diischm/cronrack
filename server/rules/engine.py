@@ -21,9 +21,12 @@ from rules.base import (
     Finding,
     RuleContext,
 )
+from rules.k8s import CLUSTER_RULES
 from rules.registry import RULES, get_rule
 
 OFFLINE_RULE = "connectivity.offline"
+CLUSTER_OFFLINE_RULE = "k8s.cluster_offline"
+OFFLINE_RULES = frozenset({OFFLINE_RULE, CLUSTER_OFFLINE_RULE})
 
 WAITING = "waiting"
 MAINTENANCE = "maintenance"
@@ -44,7 +47,7 @@ def load_overrides(host) -> list:
 
     return list(
         RuleOverride.objects.filter(owner_id=host.owner_id).filter(
-            Q(host__isnull=True) | Q(host_id=host.pk)
+            Q(host__isnull=True, cluster__isnull=True) | Q(host_id=host.pk)
         )
     )
 
@@ -55,21 +58,44 @@ def load_suppressions(host) -> list:
     return list(Suppression.objects.filter(owner_id=host.owner_id, host_id=host.pk))
 
 
-def resolve_override(owner, rule_id: str, host, subject: str = "", overrides=None) -> EffectiveRule:
+def load_cluster_overrides(cluster) -> list:
+    """The cluster owner's overrides that can apply to this cluster (its own, and global ones)."""
+    from rules.models import RuleOverride
+
+    return list(
+        RuleOverride.objects.filter(owner_id=cluster.owner_id).filter(
+            Q(host__isnull=True, cluster__isnull=True) | Q(cluster_id=cluster.pk)
+        )
+    )
+
+
+def load_cluster_suppressions(cluster) -> list:
+    from rules.models import Suppression
+
+    return list(Suppression.objects.filter(owner_id=cluster.owner_id, cluster_id=cluster.pk))
+
+
+def resolve_override(
+    owner, rule_id: str, host, subject: str = "", overrides=None, scope: str = "host"
+) -> EffectiveRule:
     """The rule's settings for this host and subject, with the user's overrides applied.
 
     Most specific wins, field by field (an empty field means "keep the less specific
     value"):  host + subject -> host -> all hosts + subject -> all hosts -> code default.
     So a host-wide "severity: info" and a global "threshold: 90" both apply.
+
+    scope="cluster": `host` is a cluster (or its ID) and "host" in the chain above reads
+    "cluster". Overrides of the other kind (a host's, for a cluster) never apply.
     """
     rule = get_rule(rule_id)
     owner_id = _owner_id(owner)
     host_id = getattr(host, "pk", host)
+    own, other = ("cluster_id", "host_id") if scope == "cluster" else ("host_id", "cluster_id")
     if overrides is None:
         from rules.models import RuleOverride
 
         overrides = RuleOverride.objects.filter(owner_id=owner_id, rule_id=rule_id).filter(
-            Q(host__isnull=True) | Q(host_id=host_id)
+            Q(host__isnull=True, cluster__isnull=True) | Q(**{own: host_id})
         )
 
     # Lower number = more specific. Overrides for other users, rules, hosts or
@@ -79,10 +105,13 @@ def resolve_override(owner, rule_id: str, host, subject: str = "", overrides=Non
             return None
         if override.subject and override.subject != subject:
             return None
-        if override.host_id is not None and override.host_id != host_id:
+        # Fake overrides in tests may lack the cluster column; real ones always have it.
+        if getattr(override, other, None) is not None:
             return None
-        on_host = override.host_id is not None
-        if on_host:
+        scoped = getattr(override, own, None)
+        if scoped is not None and scoped != host_id:
+            return None
+        if scoped is not None:
             return 0 if override.subject else 1
         return 2 if override.subject else 3
 
@@ -120,34 +149,17 @@ def _has_privileged_data(report: Mapping[str, Any]) -> bool:
     return isinstance(security, Mapping) and security.get("privileged_data") is True
 
 
-def evaluate(
-    host, report: Mapping[str, Any] | None, now: datetime, overrides=None
-) -> list[Finding]:
-    """Run every rule against the report and return the findings, overrides applied.
-
-    Skips privileged rules without the root helper's data, and deviation rules while
-    the host is still learning. Disabled findings are dropped; an override severity
-    replaces the rule's own.
-    """
-    if overrides is None:
-        overrides = load_overrides(host)
-    report = report or {}
+def _run_rules(rules, ctx, report, subject_obj, overrides, scope, learning=False, privileged=True):
+    """Run `rules` with a context; disabled findings are dropped, severity overrides applied."""
 
     def settings(rule_id: str, subject: str) -> EffectiveRule:
-        return resolve_override(host.owner_id, rule_id, host, subject, overrides=overrides)
+        return resolve_override(
+            subject_obj.owner_id, rule_id, subject_obj, subject, overrides=overrides, scope=scope
+        )
 
-    ctx = RuleContext(
-        host_id=host.pk,
-        now=now,
-        connected=host.connected,
-        last_seen_at=host.last_seen_at,
-        settings=settings,
-    )
-    learning = host.learning_until is not None and host.learning_until > now
-    privileged = _has_privileged_data(report)
-
+    ctx = replace(ctx, settings=settings)
     findings: list[Finding] = []
-    for rule in RULES.values():
+    for rule in rules:
         if rule.deviation and learning:
             continue
         if rule.needs_privileged and not privileged:
@@ -162,6 +174,61 @@ def evaluate(
     return findings
 
 
+def _no_settings(rule_id: str, subject: str) -> EffectiveRule:  # replaced by _run_rules
+    raise RuntimeError("settings are filled in by _run_rules")
+
+
+def evaluate(
+    host, report: Mapping[str, Any] | None, now: datetime, overrides=None, latest=None
+) -> list[Finding]:
+    """Run every rule against the report and return the findings, overrides applied.
+
+    Skips privileged rules without the root helper's data, and deviation rules while
+    the host is still learning. Disabled findings are dropped; an override severity
+    replaces the rule's own. `latest` holds the newest released versions for the
+    version rules (omitted = those rules stay quiet).
+    """
+    if overrides is None:
+        overrides = load_overrides(host)
+    report = report or {}
+    ctx = RuleContext(
+        host_id=host.pk,
+        now=now,
+        connected=host.connected,
+        last_seen_at=host.last_seen_at,
+        settings=_no_settings,
+        latest=latest or {},
+    )
+    return _run_rules(
+        RULES.values(),
+        ctx,
+        report,
+        host,
+        overrides,
+        "host",
+        learning=host.learning_until is not None and host.learning_until > now,
+        privileged=_has_privileged_data(report),
+    )
+
+
+def evaluate_cluster(
+    cluster, snapshot: Mapping[str, Any] | None, now: datetime, overrides=None, latest=None
+) -> list[Finding]:
+    """The cluster rules against the cluster snapshot (the agent's cluster view)."""
+    if overrides is None:
+        overrides = load_cluster_overrides(cluster)
+    ctx = RuleContext(
+        host_id=cluster.pk,
+        now=now,
+        connected=False,
+        last_seen_at=cluster.last_seen_at,
+        settings=_no_settings,
+        scope_prefix="c",
+        latest=latest or {},
+    )
+    return _run_rules(CLUSTER_RULES.values(), ctx, snapshot or {}, cluster, overrides, "cluster")
+
+
 def _suppression_active(suppression, now: datetime) -> bool:
     if suppression.kind == "expected":
         return True
@@ -171,7 +238,7 @@ def _suppression_active(suppression, now: datetime) -> bool:
 
 
 def apply_suppressions(
-    findings: Iterable[Finding], host, now: datetime, suppressions=None
+    findings: Iterable[Finding], host, now: datetime, suppressions=None, scope: str = "host"
 ) -> tuple[list[Finding], list[Finding]]:
     """Split findings into (active, suppressed).
 
@@ -179,11 +246,16 @@ def apply_suppressions(
     hasn't expired yet. An expired snooze no longer hides anything.
     """
     if suppressions is None:
-        suppressions = load_suppressions(host)
+        suppressions = (
+            load_cluster_suppressions(host) if scope == "cluster" else load_suppressions(host)
+        )
+    column = "cluster_id" if scope == "cluster" else "host_id"
     hidden = {
         s.fingerprint
         for s in suppressions
-        if s.host_id == host.pk and s.owner_id == host.owner_id and _suppression_active(s, now)
+        if getattr(s, column, None) == host.pk
+        and s.owner_id == host.owner_id
+        and _suppression_active(s, now)
     }
     active, suppressed = [], []
     for finding in findings:
@@ -199,10 +271,11 @@ def compute_status(active_findings: Iterable[Finding], host, now: datetime) -> s
     """
     if host.latest_report is None:
         return WAITING
-    if host.maintenance_until is not None and host.maintenance_until > now:
+    maintenance_until = getattr(host, "maintenance_until", None)  # clusters have none
+    if maintenance_until is not None and maintenance_until > now:
         return MAINTENANCE
     colours = [f for f in active_findings if f.severity in COLOUR_SEVERITIES]
-    if any(f.rule_id == OFFLINE_RULE for f in colours):
+    if any(f.rule_id in OFFLINE_RULES for f in colours):
         return OFFLINE
     if not colours:
         return GREEN

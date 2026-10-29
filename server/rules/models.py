@@ -4,6 +4,7 @@ from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
+from clusters.models import Cluster
 from hosts.models import Host
 from prefs.models import Route
 from rules.base import fingerprint
@@ -23,14 +24,24 @@ class Severity(models.TextChoices):
     IGNORE = "ignore", "Ignore"
 
 
-def fingerprint_for(rule_id: str, host_id: int, subject: str) -> str:
-    """Stable ID of one finding: SHA-256 of 'rule_id|host_id|subject'."""
-    return fingerprint(rule_id, host_id, subject)
+def fingerprint_for(rule_id: str, scope_id: int | str, subject: str) -> str:
+    """Stable ID of one finding: SHA-256 of 'rule_id|scope|subject'.
+
+    The scope is the host's ID, or "c<ID>" for a cluster (see rules.base.fingerprint).
+    """
+    return fingerprint(rule_id, scope_id, subject)
 
 
-def _check_host_owner(obj) -> None:
+def scope_id_of(obj) -> int | str:
+    """The fingerprint scope of an override or suppression: its host ID or "c<cluster ID>"."""
+    return f"c{obj.cluster_id}" if obj.cluster_id is not None else obj.host_id
+
+
+def _check_scope_owner(obj) -> None:
     if obj.host_id is not None and obj.host.owner_id != obj.owner_id:
         raise ValidationError({"host": "You can only use your own hosts."})
+    if obj.cluster_id is not None and obj.cluster.owner_id != obj.owner_id:
+        raise ValidationError({"cluster": "You can only use your own clusters."})
 
 
 class RuleOverride(models.Model):
@@ -47,6 +58,14 @@ class RuleOverride(models.Model):
         blank=True,
         related_name="rule_overrides",
         help_text="Empty = applies to all hosts.",
+    )
+    cluster = models.ForeignKey(
+        Cluster,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="rule_overrides",
+        help_text="Only for Kubernetes rules. Set either a host or a cluster, not both.",
     )
     subject = models.CharField(
         max_length=200, blank=True, help_text="e.g. container:nginx. Empty = whole rule."
@@ -67,17 +86,27 @@ class RuleOverride(models.Model):
             ),
             models.UniqueConstraint(
                 fields=["owner", "rule_id", "subject"],
-                condition=models.Q(host__isnull=True),
+                condition=models.Q(host__isnull=True, cluster__isnull=True),
                 name="unique_override_global",
+            ),
+            models.UniqueConstraint(
+                fields=["owner", "rule_id", "cluster", "subject"],
+                condition=models.Q(cluster__isnull=False),
+                name="unique_override_per_cluster",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(host__isnull=False, cluster__isnull=False),
+                name="override_host_or_cluster",
+                violation_error_message="An override belongs to a host or a cluster, not both.",
             ),
         )
 
     def __str__(self) -> str:
-        scope = self.host or "all hosts"
+        scope = self.host or self.cluster or "all hosts"
         return f"{self.rule_id} ({scope}{' / ' + self.subject if self.subject else ''})"
 
     def clean(self) -> None:
-        _check_host_owner(self)
+        _check_scope_owner(self)
 
 
 class Suppression(models.Model):
@@ -92,7 +121,13 @@ class Suppression(models.Model):
     )
     # Derived from rule_id + host + subject on save; never typed by hand.
     fingerprint = models.CharField(max_length=64, db_index=True, blank=True, editable=False)
-    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="suppressions")
+    # Exactly one of host and cluster is set (suppression_one_scope).
+    host = models.ForeignKey(
+        Host, on_delete=models.CASCADE, null=True, blank=True, related_name="suppressions"
+    )
+    cluster = models.ForeignKey(
+        Cluster, on_delete=models.CASCADE, null=True, blank=True, related_name="suppressions"
+    )
     rule_id = models.CharField(max_length=80, validators=[rule_id_validator])
     subject = models.CharField(max_length=200, blank=True)
     kind = models.CharField(max_length=16, choices=Kind.choices)
@@ -112,16 +147,24 @@ class Suppression(models.Model):
                     "A snooze needs an expiry time; 'This is expected' must not have one."
                 ),
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(host__isnull=False, cluster__isnull=True)
+                    | models.Q(host__isnull=True, cluster__isnull=False)
+                ),
+                name="suppression_one_scope",
+                violation_error_message="A suppression belongs to a host or a cluster.",
+            ),
         )
 
     def __str__(self) -> str:
-        return f"{self.get_kind_display()}: {self.rule_id} on {self.host}"
+        return f"{self.get_kind_display()}: {self.rule_id} on {self.host or self.cluster}"
 
     def clean(self) -> None:
-        _check_host_owner(self)
-        if self.host_id is not None:
-            self.fingerprint = fingerprint_for(self.rule_id, self.host_id, self.subject)
+        _check_scope_owner(self)
+        if self.host_id is not None or self.cluster_id is not None:
+            self.fingerprint = fingerprint_for(self.rule_id, scope_id_of(self), self.subject)
 
     def save(self, *args, **kwargs):
-        self.fingerprint = fingerprint_for(self.rule_id, self.host_id, self.subject)
+        self.fingerprint = fingerprint_for(self.rule_id, scope_id_of(self), self.subject)
         super().save(*args, **kwargs)

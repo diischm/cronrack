@@ -93,8 +93,9 @@ def container(**changes):
 # --- registry ------------------------------------------------------------------
 
 
-def test_only_the_mvp_rules_are_registered():
-    assert set(RULES) == MVP_RULES
+def test_only_the_mvp_rules_and_the_helm_host_rule_are_registered():
+    # Cluster rules live in rules.k8s (CLUSTER_RULES); the Helm command is a host rule.
+    assert set(RULES) == MVP_RULES | {"k8s.helm_cli_outdated"}
 
 
 @pytest.mark.parametrize("rule", RULES.values(), ids=lambda r: r.id)

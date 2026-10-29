@@ -1,0 +1,844 @@
+{
+ "apiVersion": "v1",
+ "items": [
+  {
+   "metadata": {
+    "annotations": {
+     "checksum/cmd-params": "ee75d8098e875bbb3cddc042e13f91c30b90ddceb1db6379723cebb774c173cd"
+    },
+    "creationTimestamp": "2026-10-27T09:55:37Z",
+    "generateName": "argocd-dex-server-67bd9c95b8-",
+    "generation": 1,
+    "labels": {
+     "app.kubernetes.io/component": "dex-server",
+     "app.kubernetes.io/instance": "argocd",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "argocd-dex-server",
+     "app.kubernetes.io/part-of": "argocd",
+     "app.kubernetes.io/version": "v3.5.6",
+     "helm.sh/chart": "argo-cd-10.11.6",
+     "pod-template-hash": "67bd9c95b8"
+    },
+    "name": "argocd-dex-server-67bd9c95b8-x89q7",
+    "namespace": "argocd",
+    "ownerReferences": [
+     {
+      "apiVersion": "apps/v1",
+      "blockOwnerDeletion": true,
+      "controller": true,
+      "kind": "ReplicaSet",
+      "name": "argocd-dex-server-67bd9c95b8",
+      "uid": "6be2223e-a7a1-5451-8872-0215452a6cc5"
+     }
+    ],
+    "resourceVersion": "38594",
+    "uid": "4d26af19-ce53-580d-bfca-aaab1b30851c"
+   },
+   "spec": {
+    "affinity": {
+     "podAntiAffinity": {
+      "preferredDuringSchedulingIgnoredDuringExecution": [
+       {
+        "podAffinityTerm": {
+         "labelSelector": {
+          "matchLabels": {
+           "app.kubernetes.io/name": "argocd-dex-server"
+          }
+         },
+         "topologyKey": "kubernetes.io/hostname"
+        },
+        "weight": 100
+       }
+      ]
+     }
+    },
+    "automountServiceAccountToken": true,
+    "containers": [
+     {
+      "args": [
+       "rundex"
+      ],
+      "command": [
+       "/shared/argocd-dex"
+      ],
+      "env": [
+       {
+        "name": "ARGOCD_DEX_SERVER_LOGFORMAT",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "dexserver.log.format",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       },
+       {
+        "name": "ARGOCD_DEX_SERVER_LOGLEVEL",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "dexserver.log.level",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       },
+       {
+        "name": "ARGOCD_LOG_FORMAT_TIMESTAMP",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "log.format.timestamp",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       },
+       {
+        "name": "ARGOCD_DEX_SERVER_DISABLE_TLS",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "dexserver.disable.tls",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       }
+      ],
+      "image": "ghcr.io/dexidp/dex:v2.46.1",
+      "imagePullPolicy": "IfNotPresent",
+      "name": "dex-server",
+      "ports": [
+       {
+        "containerPort": 5556,
+        "name": "http",
+        "protocol": "TCP"
+       },
+       {
+        "containerPort": 5557,
+        "name": "grpc",
+        "protocol": "TCP"
+       },
+       {
+        "containerPort": 5558,
+        "name": "metrics",
+        "protocol": "TCP"
+       }
+      ],
+      "resources": {},
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       },
+       "readOnlyRootFilesystem": true,
+       "runAsNonRoot": true,
+       "runAsUser": 1001,
+       "seccompProfile": {
+        "type": "RuntimeDefault"
+       }
+      },
+      "terminationMessagePath": "/dev/termination-log",
+      "terminationMessagePolicy": "File",
+      "volumeMounts": [
+       {
+        "mountPath": "/shared",
+        "name": "static-files"
+       },
+       {
+        "mountPath": "/tmp",
+        "name": "dexconfig"
+       },
+       {
+        "mountPath": "/tls",
+        "name": "argocd-dex-server-tls"
+       },
+       {
+        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+        "name": "kube-api-access-r26jp",
+        "readOnly": true
+       }
+      ]
+     }
+    ],
+    "dnsPolicy": "ClusterFirst",
+    "enableServiceLinks": true,
+    "initContainers": [
+     {
+      "command": [
+       "/bin/cp",
+       "-f",
+       "/usr/local/bin/argocd",
+       "/shared/argocd-dex"
+      ],
+      "image": "quay.io/argoproj/argocd:v3.5.6",
+      "imagePullPolicy": "IfNotPresent",
+      "name": "copyutil",
+      "resources": {},
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       },
+       "readOnlyRootFilesystem": true,
+       "runAsNonRoot": true,
+       "runAsUser": 1001,
+       "seccompProfile": {
+        "type": "RuntimeDefault"
+       }
+      },
+      "terminationMessagePath": "/dev/termination-log",
+      "terminationMessagePolicy": "File",
+      "volumeMounts": [
+       {
+        "mountPath": "/shared",
+        "name": "static-files"
+       },
+       {
+        "mountPath": "/tmp",
+        "name": "dexconfig"
+       },
+       {
+        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+        "name": "kube-api-access-r26jp",
+        "readOnly": true
+       }
+      ]
+     }
+    ],
+    "nodeName": "worker-1",
+    "nodeSelector": {
+     "kubernetes.io/os": "linux"
+    },
+    "preemptionPolicy": "PreemptLowerPriority",
+    "priority": 0,
+    "restartPolicy": "Always",
+    "schedulerName": "default-scheduler",
+    "securityContext": {},
+    "serviceAccount": "argocd-dex-server",
+    "serviceAccountName": "argocd-dex-server",
+    "terminationGracePeriodSeconds": 30,
+    "tolerations": [
+     {
+      "effect": "NoExecute",
+      "key": "node.kubernetes.io/not-ready",
+      "operator": "Exists",
+      "tolerationSeconds": 300
+     },
+     {
+      "effect": "NoExecute",
+      "key": "node.kubernetes.io/unreachable",
+      "operator": "Exists",
+      "tolerationSeconds": 300
+     }
+    ],
+    "volumes": [
+     {
+      "emptyDir": {},
+      "name": "static-files"
+     },
+     {
+      "emptyDir": {},
+      "name": "dexconfig"
+     },
+     {
+      "name": "argocd-dex-server-tls",
+      "secret": {
+       "defaultMode": 420,
+       "items": [
+        {
+         "key": "tls.crt",
+         "path": "tls.crt"
+        },
+        {
+         "key": "tls.key",
+         "path": "tls.key"
+        },
+        {
+         "key": "ca.crt",
+         "path": "ca.crt"
+        }
+       ],
+       "optional": true,
+       "secretName": "argocd-dex-server-tls"
+      }
+     },
+     {
+      "name": "kube-api-access-r26jp",
+      "projected": {
+       "defaultMode": 420,
+       "sources": [
+        {
+         "serviceAccountToken": {
+          "expirationSeconds": 3607,
+          "path": "token"
+         }
+        },
+        {
+         "configMap": {
+          "items": [
+           {
+            "key": "ca.crt",
+            "path": "ca.crt"
+           }
+          ],
+          "name": "kube-root-ca.crt"
+         }
+        },
+        {
+         "downwardAPI": {
+          "items": [
+           {
+            "fieldRef": {
+             "apiVersion": "v1",
+             "fieldPath": "metadata.namespace"
+            },
+            "path": "namespace"
+           }
+          ]
+         }
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-28T23:22:54Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "PodReadyToStartContainers"
+     },
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-27T09:56:17Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "Initialized"
+     },
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-28T23:22:57Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "Ready"
+     },
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-28T23:22:57Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "ContainersReady"
+     },
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-27T09:55:37Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "PodScheduled"
+     }
+    ],
+    "containerStatuses": [
+     {
+      "containerID": "containerd://f7f0980c145f1183fc10a30958537efc9bee57aa41e415d4284d91f61e4aad1c",
+      "image": "ghcr.io/dexidp/dex:v2.46.1",
+      "imageID": "ghcr.io/dexidp/dex@sha256:65b72ca0f4b0bf6d4ada84ec21da8851782563404ac7b8f926923d27ceced9ab",
+      "lastState": {
+       "terminated": {
+        "containerID": "containerd://4d94510890757096ccfa14f04eed77e6489ac79a0773b6daa359fd259396462e",
+        "exitCode": 255,
+        "finishedAt": "2026-10-28T23:22:31Z",
+        "reason": "Unknown",
+        "startedAt": "2026-10-27T14:30:05Z"
+       }
+      },
+      "name": "dex-server",
+      "ready": true,
+      "resources": {},
+      "restartCount": 2,
+      "started": true,
+      "state": {
+       "running": {
+        "startedAt": "2026-10-28T23:22:56Z"
+       }
+      },
+      "user": {
+       "linux": {
+        "gid": 1001,
+        "supplementalGroups": [
+         1001
+        ],
+        "uid": 1001
+       }
+      },
+      "volumeMounts": [
+       {
+        "mountPath": "/shared",
+        "name": "static-files"
+       },
+       {
+        "mountPath": "/tmp",
+        "name": "dexconfig"
+       },
+       {
+        "mountPath": "/tls",
+        "name": "argocd-dex-server-tls"
+       },
+       {
+        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+        "name": "kube-api-access-r26jp",
+        "readOnly": true,
+        "recursiveReadOnly": "Disabled"
+       }
+      ]
+     }
+    ],
+    "hostIP": "192.0.2.10",
+    "hostIPs": [
+     {
+      "ip": "192.0.2.10"
+     }
+    ],
+    "initContainerStatuses": [
+     {
+      "containerID": "containerd://aa94f0c36fef62ad72e293f26bef2604b6c7c8ea9a54df92b29e9b3580f04c69",
+      "image": "quay.io/argoproj/argocd:v3.5.6",
+      "imageID": "quay.io/argoproj/argocd@sha256:8e5cc5bb008df8a09dba439462e58c94c55b7735888d3ebde0c25fc05e4e5335",
+      "lastState": {},
+      "name": "copyutil",
+      "ready": true,
+      "resources": {},
+      "restartCount": 3,
+      "started": false,
+      "state": {
+       "terminated": {
+        "containerID": "containerd://aa94f0c36fef62ad72e293f26bef2604b6c7c8ea9a54df92b29e9b3580f04c69",
+        "exitCode": 0,
+        "finishedAt": "2026-10-28T23:22:55Z",
+        "reason": "Completed",
+        "startedAt": "2026-10-28T23:22:54Z"
+       }
+      },
+      "user": {
+       "linux": {
+        "gid": 0,
+        "supplementalGroups": [
+         0
+        ],
+        "uid": 1001
+       }
+      },
+      "volumeMounts": [
+       {
+        "mountPath": "/shared",
+        "name": "static-files"
+       },
+       {
+        "mountPath": "/tmp",
+        "name": "dexconfig"
+       },
+       {
+        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+        "name": "kube-api-access-r26jp",
+        "readOnly": true,
+        "recursiveReadOnly": "Disabled"
+       }
+      ]
+     }
+    ],
+    "observedGeneration": 1,
+    "phase": "Running",
+    "podIP": "192.0.2.20",
+    "podIPs": [
+     {
+      "ip": "192.0.2.20"
+     }
+    ],
+    "qosClass": "BestEffort",
+    "startTime": "2026-10-27T09:55:37Z"
+   }
+  },
+  {
+   "metadata": {
+    "annotations": {
+     "checksum/cmd-params": "ee75d8098e875bbb3cddc042e13f91c30b90ddceb1db6379723cebb774c173cd"
+    },
+    "creationTimestamp": "2026-10-27T09:55:37Z",
+    "generateName": "argocd-notifications-controller-749b9cb698-",
+    "generation": 1,
+    "labels": {
+     "app.kubernetes.io/component": "notifications-controller",
+     "app.kubernetes.io/instance": "argocd",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "argocd-notifications-controller",
+     "app.kubernetes.io/part-of": "argocd",
+     "app.kubernetes.io/version": "v3.5.6",
+     "helm.sh/chart": "argo-cd-10.11.6",
+     "pod-template-hash": "749b9cb698"
+    },
+    "name": "argocd-notifications-controller-749b9cb698-7kdth",
+    "namespace": "argocd",
+    "ownerReferences": [
+     {
+      "apiVersion": "apps/v1",
+      "blockOwnerDeletion": true,
+      "controller": true,
+      "kind": "ReplicaSet",
+      "name": "argocd-notifications-controller-749b9cb698",
+      "uid": "ee86ad6d-d2d5-5109-9bab-2a9635145a37"
+     }
+    ],
+    "resourceVersion": "38576",
+    "uid": "cebde447-186a-506c-a996-30770ba5ad65"
+   },
+   "spec": {
+    "affinity": {
+     "podAntiAffinity": {
+      "preferredDuringSchedulingIgnoredDuringExecution": [
+       {
+        "podAffinityTerm": {
+         "labelSelector": {
+          "matchLabels": {
+           "app.kubernetes.io/name": "argocd-notifications-controller"
+          }
+         },
+         "topologyKey": "kubernetes.io/hostname"
+        },
+        "weight": 100
+       }
+      ]
+     }
+    },
+    "automountServiceAccountToken": true,
+    "containers": [
+     {
+      "args": [
+       "/usr/local/bin/argocd-notifications",
+       "--metrics-port=9001",
+       "--namespace=argocd",
+       "--argocd-repo-server=argocd-repo-server:8081",
+       "--secret-name=argocd-notifications-secret"
+      ],
+      "env": [
+       {
+        "name": "ARGOCD_NOTIFICATIONS_CONTROLLER_LOGLEVEL",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "notificationscontroller.log.level",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       },
+       {
+        "name": "ARGOCD_NOTIFICATIONS_CONTROLLER_LOGFORMAT",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "notificationscontroller.log.format",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       },
+       {
+        "name": "ARGOCD_LOG_FORMAT_TIMESTAMP",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "log.format.timestamp",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       },
+       {
+        "name": "ARGOCD_APPLICATION_NAMESPACES",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "application.namespaces",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       },
+       {
+        "name": "ARGOCD_NOTIFICATION_CONTROLLER_SELF_SERVICE_NOTIFICATION_ENABLED",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "notificationscontroller.selfservice.enabled",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       },
+       {
+        "name": "ARGOCD_NOTIFICATION_CONTROLLER_REPO_SERVER_PLAINTEXT",
+        "valueFrom": {
+         "configMapKeyRef": {
+          "key": "notificationscontroller.repo.server.plaintext",
+          "name": "argocd-cmd-params-cm",
+          "optional": true
+         }
+        }
+       }
+      ],
+      "image": "quay.io/argoproj/argocd:v3.5.6",
+      "imagePullPolicy": "IfNotPresent",
+      "name": "notifications-controller",
+      "ports": [
+       {
+        "containerPort": 9001,
+        "name": "metrics",
+        "protocol": "TCP"
+       }
+      ],
+      "resources": {},
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       },
+       "readOnlyRootFilesystem": true,
+       "runAsNonRoot": true,
+       "seccompProfile": {
+        "type": "RuntimeDefault"
+       }
+      },
+      "terminationMessagePath": "/dev/termination-log",
+      "terminationMessagePolicy": "File",
+      "volumeMounts": [
+       {
+        "mountPath": "/app/config/tls",
+        "name": "tls-certs"
+       },
+       {
+        "mountPath": "/app/config/reposerver/tls",
+        "name": "argocd-repo-server-tls"
+       },
+       {
+        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+        "name": "kube-api-access-s9f2r",
+        "readOnly": true
+       }
+      ],
+      "workingDir": "/app"
+     }
+    ],
+    "dnsPolicy": "ClusterFirst",
+    "enableServiceLinks": true,
+    "nodeName": "worker-1",
+    "nodeSelector": {
+     "kubernetes.io/os": "linux"
+    },
+    "preemptionPolicy": "PreemptLowerPriority",
+    "priority": 0,
+    "restartPolicy": "Always",
+    "schedulerName": "default-scheduler",
+    "securityContext": {},
+    "serviceAccount": "argocd-notifications-controller",
+    "serviceAccountName": "argocd-notifications-controller",
+    "terminationGracePeriodSeconds": 30,
+    "tolerations": [
+     {
+      "effect": "NoExecute",
+      "key": "node.kubernetes.io/not-ready",
+      "operator": "Exists",
+      "tolerationSeconds": 300
+     },
+     {
+      "effect": "NoExecute",
+      "key": "node.kubernetes.io/unreachable",
+      "operator": "Exists",
+      "tolerationSeconds": 300
+     }
+    ],
+    "volumes": [
+     {
+      "configMap": {
+       "defaultMode": 420,
+       "name": "argocd-tls-certs-cm",
+       "optional": true
+      },
+      "name": "tls-certs"
+     },
+     {
+      "name": "argocd-repo-server-tls",
+      "secret": {
+       "defaultMode": 420,
+       "items": [
+        {
+         "key": "tls.crt",
+         "path": "tls.crt"
+        },
+        {
+         "key": "tls.key",
+         "path": "tls.key"
+        },
+        {
+         "key": "ca.crt",
+         "path": "ca.crt"
+        }
+       ],
+       "optional": true,
+       "secretName": "argocd-repo-server-tls"
+      }
+     },
+     {
+      "name": "kube-api-access-s9f2r",
+      "projected": {
+       "defaultMode": 420,
+       "sources": [
+        {
+         "serviceAccountToken": {
+          "expirationSeconds": 3607,
+          "path": "token"
+         }
+        },
+        {
+         "configMap": {
+          "items": [
+           {
+            "key": "ca.crt",
+            "path": "ca.crt"
+           }
+          ],
+          "name": "kube-root-ca.crt"
+         }
+        },
+        {
+         "downwardAPI": {
+          "items": [
+           {
+            "fieldRef": {
+             "apiVersion": "v1",
+             "fieldPath": "metadata.namespace"
+            },
+            "path": "namespace"
+           }
+          ]
+         }
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-28T23:22:56Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "PodReadyToStartContainers"
+     },
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-27T09:55:37Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "Initialized"
+     },
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-28T23:22:56Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "Ready"
+     },
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-28T23:22:56Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "ContainersReady"
+     },
+     {
+      "lastProbeTime": null,
+      "lastTransitionTime": "2026-10-27T09:55:37Z",
+      "observedGeneration": 1,
+      "status": "True",
+      "type": "PodScheduled"
+     }
+    ],
+    "containerStatuses": [
+     {
+      "containerID": "containerd://a23222502ea7fab833c28bda4de8468bc42ea003a139e736f6e045cfea81a6e1",
+      "image": "quay.io/argoproj/argocd:v3.5.6",
+      "imageID": "quay.io/argoproj/argocd@sha256:8e5cc5bb008df8a09dba439462e58c94c55b7735888d3ebde0c25fc05e4e5335",
+      "lastState": {
+       "terminated": {
+        "containerID": "containerd://50a19067294fc6871c3d7d9526449875626ef8da4461b66c66e6eaced8e4d97a",
+        "exitCode": 255,
+        "finishedAt": "2026-10-28T23:22:31Z",
+        "reason": "Unknown",
+        "startedAt": "2026-10-27T14:30:04Z"
+       }
+      },
+      "name": "notifications-controller",
+      "ready": true,
+      "resources": {},
+      "restartCount": 3,
+      "started": true,
+      "state": {
+       "running": {
+        "startedAt": "2026-10-28T23:22:55Z"
+       }
+      },
+      "user": {
+       "linux": {
+        "gid": 999,
+        "supplementalGroups": [
+         999
+        ],
+        "uid": 999
+       }
+      },
+      "volumeMounts": [
+       {
+        "mountPath": "/app/config/tls",
+        "name": "tls-certs"
+       },
+       {
+        "mountPath": "/app/config/reposerver/tls",
+        "name": "argocd-repo-server-tls"
+       },
+       {
+        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+        "name": "kube-api-access-s9f2r",
+        "readOnly": true,
+        "recursiveReadOnly": "Disabled"
+       }
+      ]
+     }
+    ],
+    "hostIP": "192.0.2.10",
+    "hostIPs": [
+     {
+      "ip": "192.0.2.10"
+     }
+    ],
+    "observedGeneration": 1,
+    "phase": "Running",
+    "podIP": "192.0.2.21",
+    "podIPs": [
+     {
+      "ip": "192.0.2.21"
+     }
+    ],
+    "qosClass": "BestEffort",
+    "startTime": "2026-10-27T09:55:37Z"
+   }
+  }
+ ],
+ "kind": "PodList",
+ "metadata": {
+  "resourceVersion": "100"
+ }
+}

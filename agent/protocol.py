@@ -25,6 +25,9 @@ from agent.config import MAX_INTERVAL_SECONDS, MIN_INTERVAL_SECONDS, AgentConfig
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_BYTES = 64 * 1024
+# The server closes the socket on a message over 262,144 bytes (uvicorn --ws-max-size).
+# Reports are kept below this, leaving room for the {"type": "report", ...} wrapper.
+MAX_REPORT_BYTES = 250_000
 MAX_CHECKS = 32
 
 # Shape of a type or check name we're willing to even mention in a log line.

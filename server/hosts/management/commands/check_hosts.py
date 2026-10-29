@@ -1,8 +1,10 @@
 """The scheduler: `python manage.py check_hosts --loop --every 30`.
 
-Each pass marks hosts that stopped checking in as offline (the dead-man's switch),
-which records a status event and sends the alert. It then sends alerts that the
-per-host cooldown held back, with each host's current status (alerts.discord). Runs as its own small process
+Each pass marks hosts and clusters that stopped checking in as offline (the dead-man's
+switch), which records a status event and sends the alert. It then sends alerts that the
+cooldown held back, with the current status (alerts.discord), and, only for users who
+turned it on, looks up the newest k3s, Argo CD and Helm versions (clusters.updates, at
+most once a day). Runs as its own small process
 next to the web server. `--once` (the default without --loop) runs a single pass.
 
 `--heartbeat-file` (used in docker compose) touches a file after every successful
@@ -26,6 +28,8 @@ from django.db import close_old_connections
 from django.utils import timezone
 
 from alerts.discord import send_pending_alerts
+from clusters.services import mark_silent_clusters_offline
+from clusters.updates import maybe_check_updates
 from hosts.services import mark_silent_hosts_offline
 
 logger = logging.getLogger(__name__)
@@ -116,5 +120,13 @@ class Command(BaseCommand):
         now = timezone.now()
         for host in mark_silent_hosts_offline(now):
             self.stdout.write(f"{host.name}: offline")
-        for host in send_pending_alerts(now):
-            self.stdout.write(f"{host.name}: held-back alert sent ({host.status})")
+        for cluster in mark_silent_clusters_offline(now):
+            self.stdout.write(f"{cluster.name}: cluster offline")
+        for subject in send_pending_alerts(now):
+            self.stdout.write(f"{subject.name}: held-back alert sent ({subject.status})")
+        # Its own try/except: looking up versions must never fail the dead-man's switch.
+        try:
+            for source in maybe_check_updates(now):
+                self.stdout.write(f"{source}: newest version updated")
+        except Exception:
+            logger.exception("update check failed")

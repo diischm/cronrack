@@ -1,0 +1,12 @@
+{
+ "apiVersion": "v1",
+ "code": 403,
+ "details": {
+  "kind": "pods"
+ },
+ "kind": "Status",
+ "message": "pods is forbidden: User \"system:serviceaccount:monitoring:cronrack-agent\" cannot list resource \"pods\" in API group \"\" at the cluster scope",
+ "metadata": {},
+ "reason": "Forbidden",
+ "status": "Failure"
+}

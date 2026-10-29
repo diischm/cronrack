@@ -21,6 +21,15 @@ HOST_URLS = [
     ("post", "/hosts/{id}/delete/"),
 ]
 
+# The same for URLs that take a cluster ID.
+CLUSTER_URLS = [
+    ("get", "/clusters/{id}/"),
+    ("get", "/clusters/{id}/settings/"),
+    ("post", "/clusters/{id}/settings/"),
+    ("post", "/clusters/{id}/delete/"),
+    ("get", "/api/v1/clusters/{id}/detail.json"),
+]
+
 # Every page that needs a login (host URLs are filled in with a real host).
 LOGIN_URLS = [
     ("get", "/"),
@@ -32,6 +41,7 @@ LOGIN_URLS = [
     ("get", "/api/v1/activity.json"),
     ("get", "/settings/"),
     ("post", "/settings/test-alert/"),
+    ("get", "/clusters/"),
     *HOST_URLS,
 ]
 
@@ -45,6 +55,8 @@ POST_URLS = [
     "/hosts/{id}/rotate/",
     "/hosts/{id}/revoke/",
     "/hosts/{id}/delete/",
+    "/clusters/{id}/settings/",
+    "/clusters/{id}/delete/",
     "/logout/",
 ]
 
@@ -66,6 +78,40 @@ def test_other_users_host_is_404(client: Client, bob, host, method, url):
     token = AgentToken.objects.get(host=host)
     assert token.token_hash == token_hash  # not rotated
     assert token.revoked is False
+
+
+@pytest.mark.parametrize(("method", "url"), CLUSTER_URLS)
+def test_other_users_cluster_is_404(client: Client, bob, cluster, method, url):
+    """IDOR: bob is logged in, but the cluster belongs to alice."""
+    client.force_login(bob)
+    data = {"name": "stolen", "confirm_name": cluster.name}
+
+    response = getattr(client, method)(
+        url.format(id=cluster.pk), data if method == "post" else None
+    )
+
+    assert response.status_code == 404
+    cluster.refresh_from_db()  # not renamed, not deleted
+    assert cluster.name == "lab"
+
+
+@pytest.mark.parametrize(("method", "url"), CLUSTER_URLS)
+def test_missing_cluster_is_404(alice_client: Client, method, url):
+    assert getattr(alice_client, method)(url.format(id=999_999)).status_code == 404
+
+
+@pytest.mark.parametrize(("method", "url"), CLUSTER_URLS)
+def test_cluster_urls_need_a_login(client: Client, cluster, method, url):
+    response = getattr(client, method)(url.format(id=cluster.pk))
+    assert response.status_code == 302
+    assert response["Location"].startswith("/login/")
+
+
+@pytest.mark.parametrize(("method", "url"), CLUSTER_URLS)
+def test_cluster_urls_carry_the_csp_header(alice_client: Client, cluster, method, url):
+    if method == "post":
+        pytest.skip("covered by the GET of the same page")
+    assert alice_client.get(url.format(id=cluster.pk))["Content-Security-Policy"] == EXPECTED_CSP
 
 
 @pytest.mark.parametrize(("method", "url"), HOST_URLS)
@@ -110,7 +156,9 @@ EXPECTED_CSP = (
 )
 
 
-@pytest.mark.parametrize("url", ["/", "/login/", "/api/v1/overview.json", "/settings/"])
+@pytest.mark.parametrize(
+    "url", ["/", "/login/", "/api/v1/overview.json", "/settings/", "/clusters/"]
+)
 def test_csp_header_present(alice_client: Client, url):
     assert alice_client.get(url)["Content-Security-Policy"] == EXPECTED_CSP
 

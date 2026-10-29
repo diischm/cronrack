@@ -25,11 +25,12 @@ from agent import AGENT_VERSION
 from agent.config import AgentConfig, websocket_url
 from agent.protocol import (
     MAX_MESSAGE_BYTES,
+    MAX_REPORT_BYTES,
     hello_message,
     parse_server_message,
     report_message,
 )
-from agent.report import build_report
+from agent.report import build_report, fit_report
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,8 @@ async def report_loop(
         # build_report runs commands (apt, docker, df …) that block for seconds.
         # In a thread, the event loop keeps answering heartbeats meanwhile.
         report = await asyncio.to_thread(build_report, config)
+        # One oversized message would make the server drop us, again and again.
+        report = fit_report(report, MAX_REPORT_BYTES)
         await _send(ws, report_message(report))
         logger.debug("Report sent")
         try:
@@ -138,12 +141,20 @@ async def session(ws: ClientConnection, config: AgentConfig) -> None:
         raise SessionError("no welcome from the server within 10s") from None
 
     # The local config decides what may run. The server can only narrow it down.
+    # An old server doesn't announce "kubernetes" and would reject that part of a report,
+    # so it only goes to a server that does.
     allowed = set(welcome["enabled_checks"])
-    effective = replace(config, enabled_checks=[c for c in config.enabled_checks if c in allowed])
-    interval = welcome["interval_seconds"]
-    logger.info(
-        "Connected; reporting every %ss (%s)", interval, ", ".join(effective.enabled_checks)
+    kubernetes = replace(
+        config.kubernetes, enabled=config.kubernetes.enabled and "kubernetes" in allowed
     )
+    effective = replace(
+        config,
+        enabled_checks=[c for c in config.enabled_checks if c in allowed],
+        kubernetes=kubernetes,
+    )
+    interval = welcome["interval_seconds"]
+    checks = effective.enabled_checks + (["kubernetes"] if kubernetes.enabled else [])
+    logger.info("Connected; reporting every %ss (%s)", interval, ", ".join(checks))
 
     collect = asyncio.Event()
     tasks = {

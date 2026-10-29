@@ -183,6 +183,88 @@ def test_parse_df_mount_point_with_spaces():
     assert collectors.parse_df(text) == [{"mount": "/mnt/my disk", "percent": 50}]
 
 
+# --- Kubernetes node role ---------------------------------------------------------
+
+
+def test_parse_unit_active():
+    assert collectors.parse_unit_active("active\n") is True
+    assert collectors.parse_unit_active("inactive\n") is False
+    assert collectors.parse_unit_active("activating\n") is False
+    assert collectors.parse_unit_active("") is False
+
+
+def test_parse_k3s_version():
+    text = "k3s version v1.31.2+k3s1 (6f4217a7)\ngo version go1.22.8\n"
+    assert collectors.parse_k3s_version(text) == "v1.31.2+k3s1"
+
+
+def test_parse_kubelet_version():
+    assert collectors.parse_kubelet_version("Kubernetes v1.31.2\n") == "v1.31.2"
+    assert collectors.parse_kubelet_version("Kubernetes v1.31.2-rc.1\n") == "v1.31.2-rc.1"
+
+
+def test_parse_helm_version_drops_the_git_sha():
+    assert collectors.parse_helm_version("v3.16.2+g13654a5\n") == "v3.16.2"
+    assert collectors.parse_helm_version("v3.16.2\n") == "v3.16.2"
+
+
+def fake_node_tools(monkeypatch, *, active=(), k3s="k3s version v1.31.2+k3s1 (abc)\n"):
+    """Pretend these systemd units are active and the version commands print this."""
+    monkeypatch.setattr(
+        collectors, "run_unit_active", lambda unit: "active\n" if unit in active else None
+    )
+    monkeypatch.setattr(collectors, "run_k3s_version", lambda: k3s)
+    monkeypatch.setattr(collectors, "run_kubelet_version", lambda: "Kubernetes v1.30.1\n")
+    monkeypatch.setattr(collectors, "run_helm_version", lambda: "v3.16.2+g13654a5\n")
+    monkeypatch.setattr(collectors.socket, "gethostname", lambda: "Server-1.home.lan")
+
+
+def test_node_role_k3s_server(monkeypatch):
+    fake_node_tools(monkeypatch, active={"k3s"})
+    assert collectors.collect_node_role() == {
+        "role": "server",
+        "dist": "k3s",
+        "name": "server-1",
+        "k3s": "v1.31.2+k3s1",
+        "kubelet": None,
+        "helm": "v3.16.2",
+    }
+
+
+def test_node_role_k3s_agent(monkeypatch):
+    fake_node_tools(monkeypatch, active={"k3s-agent"})
+    node = collectors.collect_node_role()
+    assert (node["role"], node["dist"], node["k3s"]) == ("agent", "k3s", "v1.31.2+k3s1")
+
+
+def test_node_role_plain_kubelet(monkeypatch):
+    fake_node_tools(monkeypatch, active={"kubelet"})
+    node = collectors.collect_node_role()
+    assert (node["role"], node["dist"]) == ("node", "kubernetes")
+    assert node["kubelet"] == "v1.30.1"
+    assert node["k3s"] is None
+
+
+def test_node_role_none(monkeypatch):
+    fake_node_tools(monkeypatch, active=set())
+    node = collectors.collect_node_role()
+    assert (node["role"], node["dist"], node["k3s"], node["kubelet"]) == ("none", None, None, None)
+
+
+def test_node_role_server_wins_when_both_units_are_active(monkeypatch):
+    fake_node_tools(monkeypatch, active={"k3s", "k3s-agent", "kubelet"})
+    assert collectors.collect_node_role()["role"] == "server"
+
+
+def test_node_role_missing_version_tools_give_none(monkeypatch):
+    fake_node_tools(monkeypatch, active={"k3s"}, k3s=None)
+    monkeypatch.setattr(collectors, "run_helm_version", lambda: None)
+    node = collectors.collect_node_role()
+    assert node["role"] == "server"
+    assert node["k3s"] is None
+    assert node["helm"] is None
+
+
 # --- check_reboot_required ------------------------------------------------------
 
 
@@ -204,6 +286,10 @@ PARSERS_AND_EMPTY_RESULTS = [
     (collectors.parse_systemctl_failed, []),
     (collectors.parse_systemctl_timers, []),
     (collectors.parse_df, []),
+    (collectors.parse_unit_active, False),
+    (collectors.parse_k3s_version, None),
+    (collectors.parse_kubelet_version, None),
+    (collectors.parse_helm_version, None),
 ]
 
 GARBAGE_INPUTS = [
@@ -240,6 +326,12 @@ RUNNERS_AND_COMMANDS = [
         ["systemctl", "list-timers", "--all", "--no-legend", "--plain"],
     ),
     (collectors.run_df, ["df", "-P", "-T"]),
+    (lambda: collectors.run_unit_active("k3s"), ["systemctl", "is-active", "k3s"]),
+    (lambda: collectors.run_unit_active("k3s-agent"), ["systemctl", "is-active", "k3s-agent"]),
+    (lambda: collectors.run_unit_active("kubelet"), ["systemctl", "is-active", "kubelet"]),
+    (collectors.run_k3s_version, ["k3s", "--version"]),
+    (collectors.run_kubelet_version, ["kubelet", "--version"]),
+    (collectors.run_helm_version, ["helm", "version", "--short"]),
 ]
 
 

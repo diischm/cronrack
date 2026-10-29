@@ -1,0 +1,186 @@
+{
+ "apiVersion": "apps/v1",
+ "items": [
+  {
+   "metadata": {
+    "annotations": {
+     "deprecated.daemonset.template.generation": "1",
+     "objectset.rio.cattle.io/id": "",
+     "objectset.rio.cattle.io/owner-gvk": "/v1, Kind=Service",
+     "objectset.rio.cattle.io/owner-name": "traefik",
+     "objectset.rio.cattle.io/owner-namespace": "kube-system"
+    },
+    "creationTimestamp": "2026-10-25T18:27:29Z",
+    "generation": 1,
+    "labels": {
+     "objectset.rio.cattle.io/hash": "836fcbce022d5dae5b36694fe1eaf389c93af7dc",
+     "svccontroller.k3s.cattle.io/nodeselector": "false",
+     "svccontroller.k3s.cattle.io/svcname": "traefik",
+     "svccontroller.k3s.cattle.io/svcnamespace": "kube-system"
+    },
+    "name": "svclb-traefik-36fe05f0",
+    "namespace": "kube-system",
+    "resourceVersion": "38430",
+    "uid": "6cf66b3d-f07a-5fcb-854e-404521b78604"
+   },
+   "spec": {
+    "revisionHistoryLimit": 10,
+    "selector": {
+     "matchLabels": {
+      "app": "svclb-traefik-36fe05f0"
+     }
+    },
+    "template": {
+     "metadata": {
+      "labels": {
+       "app": "svclb-traefik-36fe05f0",
+       "svccontroller.k3s.cattle.io/svcname": "traefik",
+       "svccontroller.k3s.cattle.io/svcnamespace": "kube-system"
+      }
+     },
+     "spec": {
+      "automountServiceAccountToken": false,
+      "containers": [
+       {
+        "env": [
+         {
+          "name": "SRC_PORT",
+          "value": "example-value"
+         },
+         {
+          "name": "SRC_RANGES",
+          "value": "example-value"
+         },
+         {
+          "name": "DEST_PROTO",
+          "value": "example-value"
+         },
+         {
+          "name": "DEST_PORT",
+          "value": "example-value"
+         },
+         {
+          "name": "DEST_IPS",
+          "value": "example-value"
+         }
+        ],
+        "image": "rancher/klipper-lb:v0.4.17",
+        "imagePullPolicy": "IfNotPresent",
+        "name": "lb-tcp-80",
+        "ports": [
+         {
+          "containerPort": 80,
+          "hostPort": 80,
+          "name": "lb-tcp-80",
+          "protocol": "TCP"
+         }
+        ],
+        "resources": {},
+        "securityContext": {
+         "capabilities": {
+          "add": [
+           "NET_ADMIN"
+          ]
+         }
+        },
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "File"
+       },
+       {
+        "env": [
+         {
+          "name": "SRC_PORT",
+          "value": "example-value"
+         },
+         {
+          "name": "SRC_RANGES",
+          "value": "example-value"
+         },
+         {
+          "name": "DEST_PROTO",
+          "value": "example-value"
+         },
+         {
+          "name": "DEST_PORT",
+          "value": "example-value"
+         },
+         {
+          "name": "DEST_IPS",
+          "value": "example-value"
+         }
+        ],
+        "image": "rancher/klipper-lb:v0.4.17",
+        "imagePullPolicy": "IfNotPresent",
+        "name": "lb-tcp-443",
+        "ports": [
+         {
+          "containerPort": 443,
+          "hostPort": 443,
+          "name": "lb-tcp-443",
+          "protocol": "TCP"
+         }
+        ],
+        "resources": {},
+        "securityContext": {
+         "capabilities": {
+          "add": [
+           "NET_ADMIN"
+          ]
+         }
+        },
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "File"
+       }
+      ],
+      "dnsPolicy": "ClusterFirst",
+      "priorityClassName": "system-node-critical",
+      "restartPolicy": "Always",
+      "schedulerName": "default-scheduler",
+      "securityContext": {
+       "sysctls": [
+        {
+         "name": "net.ipv4.ip_forward",
+         "value": "1"
+        }
+       ]
+      },
+      "serviceAccount": "svclb",
+      "serviceAccountName": "svclb",
+      "terminationGracePeriodSeconds": 30,
+      "tolerations": [
+       {
+        "effect": "NoSchedule",
+        "key": "node-role.kubernetes.io/control-plane",
+        "operator": "Exists"
+       },
+       {
+        "key": "CriticalAddonsOnly",
+        "operator": "Exists"
+       }
+      ]
+     }
+    },
+    "updateStrategy": {
+     "rollingUpdate": {
+      "maxSurge": 0,
+      "maxUnavailable": 1
+     },
+     "type": "RollingUpdate"
+    }
+   },
+   "status": {
+    "currentNumberScheduled": 3,
+    "desiredNumberScheduled": 3,
+    "numberAvailable": 3,
+    "numberMisscheduled": 0,
+    "numberReady": 3,
+    "observedGeneration": 1,
+    "updatedNumberScheduled": 3
+   }
+  }
+ ],
+ "kind": "DaemonSetList",
+ "metadata": {
+  "resourceVersion": "38668"
+ }
+}

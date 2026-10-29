@@ -13,12 +13,15 @@ from typing import Any
 from django.urls import reverse
 
 from activity.models import StatusEvent
+from clusters.services import node_key
+from clusters.updates import latest_versions
 from hosts.humanize import ago, clock, day, user_zone
 from hosts.models import Host
 from prefs.models import Prefs
 from rules.base import Finding
 from rules.engine import (
     OFFLINE_RULE,
+    STATUS_ORDER,
     apply_suppressions,
     effective_status,
     evaluate,
@@ -48,6 +51,16 @@ class OwnerData:
         self.tz = user_zone(self.prefs.timezone)
         self.overrides = list(RuleOverride.objects.filter(owner=owner))
         self.suppressions = list(Suppression.objects.filter(owner=owner))
+        self._owner = owner
+        self._latest = None
+
+    @property
+    def latest(self) -> dict:
+        """The newest released versions for the version rules; empty unless the owner
+        turned online update checks on. Loaded once, and only if somebody asks."""
+        if self._latest is None:
+            self._latest = latest_versions(self._owner.pk)
+        return self._latest
 
     def status(self, host: Host, now: datetime) -> str:
         """What the UI shows: offline is worked out now, not only by the scheduler."""
@@ -63,7 +76,7 @@ def active_findings(host: Host, now: datetime, data: OwnerData) -> list[Finding]
     """
     if host.latest_report is None:
         return []
-    findings = evaluate(host, host.latest_report, now, overrides=data.overrides)
+    findings = evaluate(host, host.latest_report, now, overrides=data.overrides, latest=data.latest)
     active, _ = apply_suppressions(findings, host, now, suppressions=data.suppressions)
     return [f for f in active if f.rule_id != OFFLINE_RULE]
 
@@ -122,6 +135,20 @@ def _card_numbers(report: dict | None, findings: list[Finding]) -> dict[str, Any
     return numbers
 
 
+def _kube_node(report: dict | None) -> dict | None:
+    """The Kubernetes node part of a host's report, or None (agents before 0.2.0, or off)."""
+    kube = report.get("kubernetes") if report else None
+    node = kube.get("node") if isinstance(kube, dict) else None
+    return node if isinstance(node, dict) else None
+
+
+def k8s_role(report: dict | None) -> str | None:
+    """server | agent | node, or None when the host isn't part of a cluster."""
+    node = _kube_node(report)
+    role = node.get("role") if node else None
+    return role if role in ("server", "agent", "node") else None
+
+
 def host_summary(host: Host, now: datetime, data: OwnerData) -> dict[str, Any]:
     """One host card on the overview."""
     status = data.status(host, now)
@@ -135,6 +162,7 @@ def host_summary(host: Host, now: datetime, data: OwnerData) -> dict[str, Any]:
         "issues": [{"text": f.text, "severity": f.severity} for f in issues],
         "last_seen_human": ago(host.last_seen_at, now),
         "url": reverse("host-detail", args=[host.pk]),
+        "k8s_role": k8s_role(host.latest_report),
         **_card_numbers(host.latest_report, findings),
     }
 
@@ -151,15 +179,24 @@ def activity_entry(event: StatusEvent, now: datetime, data: OwnerData, with_day=
 
 
 def overview_context(user, now: datetime) -> dict[str, Any]:
+    # Imported here: clusters.presenters imports this module.
+    from clusters.models import Cluster
+    from clusters.presenters import cluster_summary
+
     data = OwnerData(user)
     owned = list(Host.objects.filter(owner=user))
+    clusters = sorted(
+        (cluster_summary(c, now, data) for c in Cluster.objects.filter(owner=user)),
+        key=lambda c: (STATUS_ORDER.get(c["status"], 99), c["name"].lower(), c["id"]),
+    )
     status_of = {h.pk: data.status(h, now) for h in owned}
     hosts = sort_hosts(owned, status_of=lambda h: status_of[h.pk])
     newest = max((h.last_seen_at for h in hosts if h.last_seen_at), default=None)
-    events = StatusEvent.objects.filter(host__owner=user).select_related("host")
+    events = StatusEvent.objects.owned_by(user).select_related("host", "cluster")
     statuses = list(status_of.values())
     return {
-        "attention_count": sum(1 for s in statuses if s in NEEDS_ATTENTION),
+        "attention_count": sum(1 for s in statuses if s in NEEDS_ATTENTION)
+        + sum(1 for c in clusters if c["status"] in NEEDS_ATTENTION),
         "updated_human": ago(newest, now),
         # The desktop summary tiles. An offline host has an unlit lamp, so it isn't
         # counted as red; the "Hosts online" tile shows it instead.
@@ -171,6 +208,7 @@ def overview_context(user, now: datetime) -> dict[str, Any]:
         },
         "hosts_online": sum(1 for h in hosts if h.connected),
         "hosts": [host_summary(h, now, data) for h in hosts],
+        "clusters": clusters,
         "activity": [activity_entry(e, now, data) for e in events[:OVERVIEW_ACTIVITY]],
     }
 
@@ -211,6 +249,57 @@ def host_status(host: Host, now: datetime, data: OwnerData | None = None) -> dic
     return {"status": status, "status_label": STATUS_LABELS.get(status, status)}
 
 
+def _kubernetes_panel(host: Host, report: dict, data: OwnerData) -> dict[str, Any] | None:
+    """What the host page shows about Kubernetes: this node's role and versions, and, when
+    the host is linked to a cluster, that cluster and this node's pods.
+
+    None if the host isn't a Kubernetes node or reports no Kubernetes data.
+    """
+    node = _kube_node(report)
+    if node is None or (node.get("role") == "none" and not node.get("helm")):
+        return None
+    online = data.prefs.check_updates_online
+    latest = data.latest
+    panel: dict[str, Any] = {
+        "role": k8s_role(report),
+        "dist": node.get("dist"),
+        "node_name": node.get("name"),
+        "k3s": node.get("k3s"),
+        "kubelet": node.get("kubelet"),
+        "helm": node.get("helm"),
+        "k3s_stable": (latest.get("k3s") or {}).get("stable") if online else None,
+        "helm_latest": (latest.get("helm") or {}).get("latest") if online else None,
+        "updates_online": online,
+        "hint": None
+        if online
+        else "Turn on update checks in Settings to compare with the latest releases",
+        "cluster": None,
+        "conditions": None,
+        "pods": [],
+    }
+    cluster = host.cluster if host.cluster_id is not None else None
+    # The link is set by the server from the owner's own hosts, but check the owner anyway.
+    if cluster is not None and cluster.owner_id == host.owner_id:
+        panel["cluster"] = {
+            "id": cluster.pk,
+            "name": cluster.name,
+            "url": reverse("cluster-detail", args=[cluster.pk]),
+        }
+        snapshot = cluster.latest_snapshot if isinstance(cluster.latest_snapshot, dict) else {}
+        name = node_key(node.get("name"))
+        for entry in snapshot.get("nodes") or []:
+            if node_key(entry["name"]) == name:
+                panel["conditions"] = {
+                    "ready": entry["ready"],
+                    "pressure": entry["pressure"],
+                    "kubelet": entry["kubelet"],
+                }
+        panel["pods"] = [
+            p for p in snapshot.get("problem_pods") or [] if node_key(p["node"]) == name
+        ]
+    return panel
+
+
 def detail_context(host: Host, now: datetime) -> dict[str, Any]:
     data = OwnerData(host.owner)
     findings = active_findings(host, now, data)
@@ -232,9 +321,11 @@ def detail_context(host: Host, now: datetime) -> dict[str, Any]:
         "failed_units": None,
         "timers": None,
         "disks": None,
+        "kubernetes": None,
     }
     if report is None:
         return context
+    context["kubernetes"] = _kubernetes_panel(host, report, data)
     if report.get("updates") is not None:
         context["updates"] = {
             "total": report["updates"]["total"],

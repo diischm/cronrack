@@ -1,0 +1,447 @@
+{
+ "apiVersion": "v1",
+ "items": [
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:54Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "argocd-notifications-controller-749b9cb698-7kdth",
+    "namespace": "argocd",
+    "resourceVersion": "33381",
+    "uid": "cebde447-186a-506c-a996-30770ba5ad65"
+   },
+   "lastTimestamp": "2026-10-28T23:22:54Z",
+   "message": "MountVolume.SetUp failed for volume \"tls-certs\" : failed to sync configmap cache: timed out waiting for the condition",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:54Z",
+    "name": "argocd-notifications-controller-749b9cb698-7kdth.18e2d4fa8f12dd71",
+    "namespace": "argocd",
+    "resourceVersion": "38454",
+    "uid": "28cd2a03-c395-5629-8cb8-9d70e32c1668"
+   },
+   "reason": "FailedMount",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-1",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:54Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "argocd-notifications-controller-749b9cb698-7kdth",
+    "namespace": "argocd",
+    "resourceVersion": "33381",
+    "uid": "cebde447-186a-506c-a996-30770ba5ad65"
+   },
+   "lastTimestamp": "2026-10-28T23:22:54Z",
+   "message": "MountVolume.SetUp failed for volume \"argocd-repo-server-tls\" : failed to sync secret cache: timed out waiting for the condition",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:54Z",
+    "name": "argocd-notifications-controller-749b9cb698-7kdth.18e2d4fa8f2b5965",
+    "namespace": "argocd",
+    "resourceVersion": "38466",
+    "uid": "b3b354f8-aa9b-51d6-9b24-e803bf38b330"
+   },
+   "reason": "FailedMount",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-1",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:54Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "argocd-redis-5f4645998-f67bc",
+    "namespace": "argocd",
+    "resourceVersion": "33443",
+    "uid": "d3e05d4f-217c-598a-afee-7fc06732808f"
+   },
+   "lastTimestamp": "2026-10-28T23:22:54Z",
+   "message": "MountVolume.SetUp failed for volume \"health\" : failed to sync configmap cache: timed out waiting for the condition",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:54Z",
+    "name": "argocd-redis-5f4645998-f67bc.18e2d4fa8f122e49",
+    "namespace": "argocd",
+    "resourceVersion": "38450",
+    "uid": "66440553-6f5e-5a24-9fc2-107120d2d9b2"
+   },
+   "reason": "FailedMount",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-1",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:54Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "argocd-repo-server-5f5cd8dfff-v2qhv",
+    "namespace": "argocd",
+    "resourceVersion": "33455",
+    "uid": "1669a92b-42fe-534f-a49d-59980ee4a7f4"
+   },
+   "lastTimestamp": "2026-10-28T23:22:54Z",
+   "message": "MountVolume.SetUp failed for volume \"ssh-known-hosts\" : failed to sync configmap cache: timed out waiting for the condition",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:54Z",
+    "name": "argocd-repo-server-5f5cd8dfff-v2qhv.18e2d4fa8f0fb20d",
+    "namespace": "argocd",
+    "resourceVersion": "38443",
+    "uid": "e669fe94-211f-5671-bc80-95fc1a3c3b1a"
+   },
+   "reason": "FailedMount",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-1",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:54Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "argocd-repo-server-5f5cd8dfff-v2qhv",
+    "namespace": "argocd",
+    "resourceVersion": "33455",
+    "uid": "1669a92b-42fe-534f-a49d-59980ee4a7f4"
+   },
+   "lastTimestamp": "2026-10-28T23:22:54Z",
+   "message": "MountVolume.SetUp failed for volume \"gpg-keys\" : failed to sync configmap cache: timed out waiting for the condition",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:54Z",
+    "name": "argocd-repo-server-5f5cd8dfff-v2qhv.18e2d4fa8f113303",
+    "namespace": "argocd",
+    "resourceVersion": "38447",
+    "uid": "97af3f9d-7b25-54af-9ca3-e34014c6b618"
+   },
+   "reason": "FailedMount",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-1",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:54Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "argocd-repo-server-5f5cd8dfff-v2qhv",
+    "namespace": "argocd",
+    "resourceVersion": "33455",
+    "uid": "1669a92b-42fe-534f-a49d-59980ee4a7f4"
+   },
+   "lastTimestamp": "2026-10-28T23:22:54Z",
+   "message": "MountVolume.SetUp failed for volume \"tls-certs\" : failed to sync configmap cache: timed out waiting for the condition",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:54Z",
+    "name": "argocd-repo-server-5f5cd8dfff-v2qhv.18e2d4fa8f162e7c",
+    "namespace": "argocd",
+    "resourceVersion": "38457",
+    "uid": "086280f2-dddf-52b2-a84e-c2ec808d9db9"
+   },
+   "reason": "FailedMount",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-1",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:54Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "argocd-repo-server-5f5cd8dfff-v2qhv",
+    "namespace": "argocd",
+    "resourceVersion": "33455",
+    "uid": "1669a92b-42fe-534f-a49d-59980ee4a7f4"
+   },
+   "lastTimestamp": "2026-10-28T23:22:54Z",
+   "message": "MountVolume.SetUp failed for volume \"argocd-repo-server-tls\" : failed to sync secret cache: timed out waiting for the condition",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:54Z",
+    "name": "argocd-repo-server-5f5cd8dfff-v2qhv.18e2d4fa8f18a843",
+    "namespace": "argocd",
+    "resourceVersion": "38462",
+    "uid": "24960539-c84a-5f95-8b09-b4de270775bb"
+   },
+   "reason": "FailedMount",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-1",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "action": "Scheduling",
+   "eventTime": "2026-10-27T16:49:55.339445Z",
+   "firstTimestamp": null,
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "example-app-767c5d9b7f-tld98",
+    "namespace": "apps",
+    "resourceVersion": "38149",
+    "uid": "a1d1bf7a-fa3f-5015-a212-baac0bda6628"
+   },
+   "lastTimestamp": null,
+   "message": "0/3 nodes are available: 1 node(s) were unschedulable, 2 node(s) didn't match PersistentVolume's node affinity. no new claims to deallocate, preemption: 0/3 nodes are available: 3 Preemption is not helpful for scheduling.",
+   "metadata": {
+    "creationTimestamp": "2026-10-27T16:49:55Z",
+    "name": "example-app-767c5d9b7f-tld98.18e270f418edd358",
+    "namespace": "apps",
+    "resourceVersion": "38152",
+    "uid": "aaf0c42e-735c-5aa8-ac68-b8da86f682cd"
+   },
+   "reason": "FailedScheduling",
+   "reportingComponent": "default-scheduler",
+   "reportingInstance": "default-scheduler-server-1",
+   "source": {},
+   "type": "Warning"
+  },
+  {
+   "action": "Scheduling",
+   "eventTime": "2026-10-28T23:22:29.911394Z",
+   "firstTimestamp": null,
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "example-app-767c5d9b7f-tld98",
+    "namespace": "apps",
+    "resourceVersion": "38154",
+    "uid": "a1d1bf7a-fa3f-5015-a212-baac0bda6628"
+   },
+   "lastTimestamp": null,
+   "message": "0/3 nodes are available: 1 node(s) had untolerated taint(s), 2 node(s) didn't match PersistentVolume's node affinity. no new claims to deallocate, preemption: 0/3 nodes are available: 3 Preemption is not helpful for scheduling.",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:29Z",
+    "name": "example-app-767c5d9b7f-tld98.18e2d4f4e421d428",
+    "namespace": "apps",
+    "resourceVersion": "38184",
+    "uid": "6990f960-f3f0-5cea-a678-ade91043f415"
+   },
+   "reason": "FailedScheduling",
+   "reportingComponent": "default-scheduler",
+   "reportingInstance": "default-scheduler-server-1",
+   "source": {},
+   "type": "Warning"
+  },
+  {
+   "count": 2,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:34Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "fieldPath": "spec.containers{web}",
+    "kind": "Pod",
+    "name": "example-app-767c5d9b7f-tld98",
+    "namespace": "apps",
+    "resourceVersion": "38199",
+    "uid": "a1d1bf7a-fa3f-5015-a212-baac0bda6628"
+   },
+   "lastTimestamp": "2026-10-28T23:22:35Z",
+   "message": "Readiness probe failed: Get \"http://192.0.2.16:8000/readyz\": dial tcp 192.0.2.16:8000: connect: connection refused",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:34Z",
+    "name": "example-app-767c5d9b7f-tld98.18e2d4f602fb8ece",
+    "namespace": "apps",
+    "resourceVersion": "38281",
+    "uid": "a39ac06a-fdd5-5d63-9a98-8adfd1859f04"
+   },
+   "reason": "Unhealthy",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "server-1",
+   "source": {
+    "component": "kubelet",
+    "host": "server-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:32Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Node",
+    "name": "worker-1"
+   },
+   "lastTimestamp": "2026-10-28T23:22:32Z",
+   "message": "Node worker-1 has been rebooted, boot id: 946eb349-36db-5326-9f9c-399d306353e8",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:32Z",
+    "name": "worker-1.18e2d4f58a863c41",
+    "namespace": "default",
+    "resourceVersion": "38246",
+    "uid": "b42bf22c-e44e-5556-9e03-845946183522"
+   },
+   "reason": "Rebooted",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-1",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:32Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Node",
+    "name": "worker-2"
+   },
+   "lastTimestamp": "2026-10-28T23:22:32Z",
+   "message": "Node worker-2 has been rebooted, boot id: 946eb349-36db-5326-9f9c-399d306353e8",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:32Z",
+    "name": "worker-2.18e2d4f586c3a49c",
+    "namespace": "default",
+    "resourceVersion": "38238",
+    "uid": "7d896656-4c2e-5f12-ba34-e9b5f7ca6f6a"
+   },
+   "reason": "Rebooted",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-2",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-2"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:29Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "kind": "Node",
+    "name": "server-1"
+   },
+   "lastTimestamp": "2026-10-28T23:22:29Z",
+   "message": "Node server-1 has been rebooted, boot id: 946eb349-36db-5326-9f9c-399d306353e8",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:29Z",
+    "name": "server-1.18e2d4f4dc75b26d",
+    "namespace": "default",
+    "resourceVersion": "38182",
+    "uid": "ed89cf0e-2dce-5ac6-97d9-22f82c569b05"
+   },
+   "reason": "Rebooted",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "server-1",
+   "source": {
+    "component": "kubelet",
+    "host": "server-1"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:54Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "fieldPath": "spec.containers{coredns}",
+    "kind": "Pod",
+    "name": "coredns-8db54c48d-rpzmg",
+    "namespace": "kube-system",
+    "resourceVersion": "33529",
+    "uid": "61f48b9b-070f-5273-a4e1-4fef638c8b42"
+   },
+   "lastTimestamp": "2026-10-28T23:22:54Z",
+   "message": "Readiness probe failed: Get \"http://192.0.2.17:8181/ready\": dial tcp 192.0.2.17:8181: connect: connection refused",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:54Z",
+    "name": "coredns-8db54c48d-rpzmg.18e2d4fababe1f2a",
+    "namespace": "kube-system",
+    "resourceVersion": "38526",
+    "uid": "5cc939c3-0830-5090-bf6a-6c534f1aca0c"
+   },
+   "reason": "Unhealthy",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-2",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-2"
+   },
+   "type": "Warning"
+  },
+  {
+   "count": 1,
+   "eventTime": null,
+   "firstTimestamp": "2026-10-28T23:22:55Z",
+   "involvedObject": {
+    "apiVersion": "v1",
+    "fieldPath": "spec.containers{metrics-server}",
+    "kind": "Pod",
+    "name": "metrics-server-786d997795-6sx6g",
+    "namespace": "kube-system",
+    "resourceVersion": "33461",
+    "uid": "340cf260-152f-5d40-944a-811f7093a652"
+   },
+   "lastTimestamp": "2026-10-28T23:22:55Z",
+   "message": "Readiness probe failed: HTTP probe failed with statuscode: 500",
+   "metadata": {
+    "creationTimestamp": "2026-10-28T23:22:55Z",
+    "name": "metrics-server-786d997795-6sx6g.18e2d4fad8d30cd4",
+    "namespace": "kube-system",
+    "resourceVersion": "38564",
+    "uid": "53dc0093-4c9d-55b2-87bc-d722c97e0659"
+   },
+   "reason": "Unhealthy",
+   "reportingComponent": "kubelet",
+   "reportingInstance": "worker-1",
+   "source": {
+    "component": "kubelet",
+    "host": "worker-1"
+   },
+   "type": "Warning"
+  }
+ ],
+ "kind": "EventList",
+ "metadata": {
+  "resourceVersion": "38668"
+ }
+}

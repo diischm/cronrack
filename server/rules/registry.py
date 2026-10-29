@@ -1,4 +1,6 @@
-"""Every rule CronRack knows, with its defaults. Users override them in the database.
+"""Every host rule CronRack knows, with its defaults. Users override them in the database.
+
+Cluster rules live in rules.k8s; get_rule() finds both.
 
 Only the MVP rules are registered for now. Later phases add rules here without
 touching the engine or the models.
@@ -11,18 +13,10 @@ from collections.abc import Mapping
 from typing import Any
 
 from rules.base import RED, YELLOW, Finding, Rule, RuleContext
+from rules.base import ago as _ago
+from rules.k8s import CLUSTER_RULES, HELM_CLI_RULE
 
 # --- connectivity --------------------------------------------------------------
-
-
-def _ago(seconds: float) -> str:
-    minutes = int(seconds // 60)
-    if minutes < 120:
-        return f"{minutes} min"
-    hours = minutes // 60
-    if hours < 48:
-        return f"{hours} h"
-    return f"{hours // 24} days"
 
 
 def check_offline(rule: Rule, report: Mapping[str, Any], ctx: RuleContext) -> list[Finding]:
@@ -242,9 +236,11 @@ _ALL_RULES = (
     ),
 )
 
-RULES: dict[str, Rule] = {rule.id: rule for rule in _ALL_RULES}
+RULES: dict[str, Rule] = {rule.id: rule for rule in (*_ALL_RULES, HELM_CLI_RULE)}
 
 
 def get_rule(rule_id: str) -> Rule:
-    """Return the rule, or raise KeyError for an unknown ID."""
-    return RULES[rule_id]
+    """Return the rule (host or cluster), or raise KeyError for an unknown ID."""
+    if rule_id in RULES:
+        return RULES[rule_id]
+    return CLUSTER_RULES[rule_id]

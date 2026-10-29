@@ -1,0 +1,28 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}Clusters · CronRack{% endblock %}
+{% block nav_clusters %}aria-current="page"{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">Clusters</h1>
+  </div>
+  {% if clusters %}
+    <ul class="surface rows">
+      {% for c in clusters %}
+        <li>
+          <a href="{{ c.url }}">{{ c.name }}</a>
+          {% include "components/status_icon.html" with status=c.status label=c.status_label %}
+          {% if c.status == "offline" %}<strong>Offline</strong> · last data {{ c.last_seen_human }}{% else %}{{ c.status_label }}{% endif %}
+          · Nodes {{ c.nodes.ready }}/{{ c.nodes.total }} ready · {{ c.problem_pods }} problem pod{{ c.problem_pods|pluralize }}
+          {% for issue in c.issues %}<span>{{ issue.text }}</span>{% endfor %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <section class="surface empty">
+      <p class="empty__text">No clusters yet. A cluster appears here once an agent with the cluster view turned on reports it.</p>
+    </section>
+  {% endif %}
+{% endblock %}
