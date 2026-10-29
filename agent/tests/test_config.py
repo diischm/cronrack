@@ -9,6 +9,7 @@ from agent.config import (
     MVP_CHECKS,
     AgentConfig,
     ConfigError,
+    KubernetesConfig,
     _check_stat,
     check_permissions,
     load_config,
@@ -278,3 +279,205 @@ def test_bad_server_urls_rejected(tmp_path: Path, server_url: str) -> None:
 
     with pytest.raises(ConfigError, match="server_url"):
         load_config(path)
+
+
+# --- [kubernetes] -----------------------------------------------------------------------
+
+K8S_TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.signature-part-of-the-jwt"
+CA_PEM = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+
+
+def k8s_files(tmp_path: Path) -> tuple[str, str]:
+    token = tmp_path / "k8s-token"
+    token.write_text(K8S_TOKEN, encoding="utf-8")
+    os.chmod(token, 0o600)
+    ca = tmp_path / "k8s-ca.crt"
+    ca.write_text(CA_PEM, encoding="utf-8")
+    return str(token), str(ca)
+
+
+def k8s_config(tmp_path: Path, body: str) -> str:
+    return write_config(tmp_path, f"[kubernetes]\n{body}")
+
+
+def test_kubernetes_is_off_by_default(tmp_path: Path) -> None:
+    config = load_config(str(tmp_path / "missing.toml"))
+
+    assert config.kubernetes == KubernetesConfig()
+    assert config.kubernetes.enabled is False
+    assert config.kubernetes.cluster_view is False
+    assert config.kubernetes.api_server == "https://127.0.0.1:6443"
+    assert config.kubernetes.token_file is None
+    assert config.kubernetes.ca_file is None
+
+
+def test_kubernetes_enabled_only(tmp_path: Path) -> None:
+    config = load_config(k8s_config(tmp_path, "enabled = true\n"))
+
+    assert config.kubernetes.enabled is True
+    assert config.kubernetes.cluster_view is False
+
+
+def test_kubernetes_is_not_an_enabled_check(tmp_path: Path) -> None:
+    # [kubernetes] enabled is the only switch; MVP_CHECKS stays as it was.
+    assert "kubernetes" not in MVP_CHECKS
+
+
+def test_kubernetes_cluster_view_full(tmp_path: Path) -> None:
+    token, ca = k8s_files(tmp_path)
+    path = k8s_config(
+        tmp_path,
+        f'enabled = true\ncluster_view = true\napi_server = "https://10.0.0.5:6443"\n'
+        f'token_file = "{token}"\nca_file = "{ca}"\n',
+    )
+
+    config = load_config(path)
+
+    assert config.kubernetes == KubernetesConfig(
+        enabled=True,
+        cluster_view=True,
+        api_server="https://10.0.0.5:6443",
+        token_file=token,
+        ca_file=ca,
+    )
+
+
+def test_kubernetes_unknown_key(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="verify_tls"):
+        load_config(k8s_config(tmp_path, "verify_tls = false\n"))
+
+
+def test_kubernetes_must_be_a_table(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="kubernetes"):
+        load_config(write_config(tmp_path, 'kubernetes = "yes"\n'))
+
+
+@pytest.mark.parametrize("key", ["enabled", "cluster_view"])
+@pytest.mark.parametrize("value", ['"true"', "1", "[]"])
+def test_kubernetes_flags_must_be_booleans(tmp_path: Path, key: str, value: str) -> None:
+    with pytest.raises(ConfigError, match=key):
+        load_config(k8s_config(tmp_path, f"{key} = {value}\n"))
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1:6443",  # plain http is refused even for localhost
+        "http://localhost:6443",
+        "ws://127.0.0.1:6443",
+        "127.0.0.1:6443",
+        "https://",
+        "https://user:pw@127.0.0.1:6443",
+        "https://127.0.0.1:6443/api",
+        "https://127.0.0.1:6443?x=1",
+        "https://127.0.0.1:6443#frag",
+        "https://127.0.0.1:99999",
+        "https://[::1",
+    ],
+)
+def test_kubernetes_api_server_must_be_plain_https(tmp_path: Path, url: str) -> None:
+    with pytest.raises(ConfigError, match="api_server") as excinfo:
+        load_config(k8s_config(tmp_path, f'api_server = "{url}"\n'))
+    assert "pw" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "url", ["https://127.0.0.1:6443", "https://k3s.home.lan:6443/", "https://[::1]:6443"]
+)
+def test_kubernetes_api_server_accepts_https(tmp_path: Path, url: str) -> None:
+    config = load_config(k8s_config(tmp_path, f'api_server = "{url}"\n'))
+    assert config.kubernetes.api_server == url.rstrip("/")
+
+
+def test_kubernetes_cluster_view_needs_token_and_ca(tmp_path: Path) -> None:
+    token, ca = k8s_files(tmp_path)
+
+    with pytest.raises(ConfigError, match="token_file"):
+        load_config(k8s_config(tmp_path, f'cluster_view = true\nca_file = "{ca}"\n'))
+    with pytest.raises(ConfigError, match="ca_file"):
+        load_config(k8s_config(tmp_path, f'cluster_view = true\ntoken_file = "{token}"\n'))
+
+
+def test_kubernetes_token_file_must_be_absolute(tmp_path: Path) -> None:
+    _, ca = k8s_files(tmp_path)
+    body = f'cluster_view = true\ntoken_file = "k8s-token"\nca_file = "{ca}"\n'
+    with pytest.raises(ConfigError, match="token_file"):
+        load_config(k8s_config(tmp_path, body))
+
+
+def test_kubernetes_token_file_permissions_are_checked(tmp_path: Path) -> None:
+    token, ca = k8s_files(tmp_path)
+    os.chmod(token, 0o644)
+    body = f'cluster_view = true\ntoken_file = "{token}"\nca_file = "{ca}"\n'
+
+    with pytest.raises(ConfigError, match="accessible by others") as excinfo:
+        load_config(k8s_config(tmp_path, body))
+
+    assert K8S_TOKEN not in str(excinfo.value)
+
+
+def test_kubernetes_missing_token_file(tmp_path: Path) -> None:
+    _, ca = k8s_files(tmp_path)
+    body = f'cluster_view = true\ntoken_file = "{tmp_path}/nope"\nca_file = "{ca}"\n'
+    with pytest.raises(ConfigError, match="token_file"):
+        load_config(k8s_config(tmp_path, body))
+
+
+@pytest.mark.parametrize(
+    "path", ["/etc/rancher/k3s/k3s.yaml", "/etc/rancher/anything", "/etc/rancher/../rancher/x"]
+)
+def test_kubernetes_token_file_refuses_etc_rancher(tmp_path: Path, path: str) -> None:
+    _, ca = k8s_files(tmp_path)
+    body = f'cluster_view = true\ntoken_file = "{path}"\nca_file = "{ca}"\n'
+    with pytest.raises(ConfigError, match="rancher"):
+        load_config(k8s_config(tmp_path, body))
+
+
+def test_kubernetes_token_file_refuses_symlink_into_etc_rancher(tmp_path: Path) -> None:
+    _, ca = k8s_files(tmp_path)
+    link = tmp_path / "link"
+    link.symlink_to("/etc/rancher/k3s/k3s.yaml")
+    body = f'cluster_view = true\ntoken_file = "{link}"\nca_file = "{ca}"\n'
+    with pytest.raises(ConfigError, match="rancher"):
+        load_config(k8s_config(tmp_path, body))
+
+
+def test_kubernetes_ca_file_refuses_a_private_key(tmp_path: Path) -> None:
+    token, _ = k8s_files(tmp_path)
+    key = tmp_path / "server-ca.pem"
+    key.write_text("-----BEGIN EC PRIVATE KEY-----\nabc\n-----END EC PRIVATE KEY-----\n")
+    body = f'cluster_view = true\ntoken_file = "{token}"\nca_file = "{key}"\n'
+
+    with pytest.raises(ConfigError, match="private key"):
+        load_config(k8s_config(tmp_path, body))
+
+
+def test_kubernetes_ca_file_refuses_dot_key(tmp_path: Path) -> None:
+    token, ca = k8s_files(tmp_path)
+    body = f'cluster_view = true\ntoken_file = "{token}"\nca_file = "{ca[:-4]}.key"\n'
+    with pytest.raises(ConfigError, match=r"\.key"):
+        load_config(k8s_config(tmp_path, body))
+
+
+def test_kubernetes_ca_file_must_exist(tmp_path: Path) -> None:
+    token, _ = k8s_files(tmp_path)
+    body = f'cluster_view = true\ntoken_file = "{token}"\nca_file = "{tmp_path}/missing.crt"\n'
+    with pytest.raises(ConfigError, match="ca_file"):
+        load_config(k8s_config(tmp_path, body))
+
+
+def test_kubernetes_repr_shows_paths_only(tmp_path: Path) -> None:
+    token, ca = k8s_files(tmp_path)
+    body = f'enabled = true\ncluster_view = true\ntoken_file = "{token}"\nca_file = "{ca}"\n'
+
+    text = repr(load_config(k8s_config(tmp_path, body)))
+
+    assert "kubernetes=KubernetesConfig(" in text
+    assert token in text
+    assert K8S_TOKEN not in text
+
+
+def test_kubernetes_values_never_in_errors(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(k8s_config(tmp_path, f'token_file = 42\napi_server = "{SECRET}"\n'))
+    assert SECRET not in str(excinfo.value)

@@ -1,0 +1,81 @@
+{
+ "apiVersion": "v1",
+ "groupVersion": "argoproj.io/v1alpha1",
+ "kind": "APIResourceList",
+ "resources": [
+  {
+   "kind": "AppProject",
+   "name": "appprojects",
+   "namespaced": true,
+   "shortNames": [
+    "appproj",
+    "appprojs"
+   ],
+   "singularName": "appproject",
+   "storageVersionHash": "aI45W0YuhVE=",
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ]
+  },
+  {
+   "kind": "ApplicationSet",
+   "name": "applicationsets",
+   "namespaced": true,
+   "shortNames": [
+    "appset",
+    "appsets"
+   ],
+   "singularName": "applicationset",
+   "storageVersionHash": "aaUQCD/yGd0=",
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ]
+  },
+  {
+   "kind": "ApplicationSet",
+   "name": "applicationsets/status",
+   "namespaced": true,
+   "singularName": "",
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ]
+  },
+  {
+   "kind": "Application",
+   "name": "applications",
+   "namespaced": true,
+   "shortNames": [
+    "app",
+    "apps"
+   ],
+   "singularName": "application",
+   "storageVersionHash": "PVzHEyjMffI=",
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,111 @@
+{
+ "apiVersion": "apps/v1",
+ "items": [
+  {
+   "metadata": {
+    "name": "web",
+    "namespace": "apps",
+    "uid": "54ed16cf-cff9-5141-92fd-b14b1686758a"
+   },
+   "spec": {
+    "replicas": 2,
+    "template": {
+     "spec": {
+      "containers": [
+       {
+        "image": "ghcr.io/example/web:1.4.2",
+        "name": "c0"
+       }
+      ]
+     }
+    }
+   },
+   "status": {
+    "availableReplicas": 1,
+    "readyReplicas": 1,
+    "replicas": 2,
+    "updatedReplicas": 2
+   }
+  },
+  {
+   "metadata": {
+    "name": "latest-app",
+    "namespace": "apps",
+    "uid": "1d18a1b7-a4b8-5b21-8555-524c34563653"
+   },
+   "spec": {
+    "replicas": 2,
+    "template": {
+     "spec": {
+      "containers": [
+       {
+        "image": "docker.io/library/nginx:latest",
+        "name": "c0"
+       }
+      ]
+     }
+    }
+   },
+   "status": {
+    "availableReplicas": 2,
+    "readyReplicas": 2,
+    "replicas": 2,
+    "updatedReplicas": 2
+   }
+  },
+  {
+   "metadata": {
+    "name": "untagged-app",
+    "namespace": "apps",
+    "uid": "91b3f584-d894-56fd-b13e-3623df4cead9"
+   },
+   "spec": {
+    "replicas": 2,
+    "template": {
+     "spec": {
+      "containers": [
+       {
+        "image": "docker.io/library/busybox",
+        "name": "c0"
+       }
+      ]
+     }
+    }
+   },
+   "status": {
+    "availableReplicas": 2,
+    "readyReplicas": 2,
+    "replicas": 2,
+    "updatedReplicas": 2
+   }
+  },
+  {
+   "metadata": {
+    "name": "pinned-app",
+    "namespace": "apps",
+    "uid": "28d1ba38-5dc1-585e-a16e-d61087f448f2"
+   },
+   "spec": {
+    "replicas": 2,
+    "template": {
+     "spec": {
+      "containers": [
+       {
+        "image": "ghcr.io/example/pinned@sha256:abababababababababababababababababababababababababababababababab",
+        "name": "c0"
+       }
+      ]
+     }
+    }
+   },
+   "status": {
+    "availableReplicas": 0,
+    "readyReplicas": 0,
+    "replicas": 2,
+    "updatedReplicas": 2
+   }
+  }
+ ],
+ "kind": "DeploymentList",
+ "metadata": {}
+}

@@ -26,6 +26,8 @@ EXPECTED_FILES = {
     "agent/collectors.py",
     "agent/config.py",
     "agent/connection.py",
+    "agent/kube_api.py",
+    "agent/kube_cluster.py",
     "agent/protocol.py",
     "agent/report.py",
     "agent/requirements.txt",

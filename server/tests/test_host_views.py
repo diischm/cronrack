@@ -181,11 +181,15 @@ HOST_KEYS = {
     "id", "name", "status", "status_label", "issues", "last_seen_human", "url",
     # Phase 6b: the desktop card's detail strip.
     "updates", "containers", "disk_max_percent",
+    # Kubernetes: server | agent | node, or None.
+    "k8s_role",
 }  # fmt: skip
 OVERVIEW_KEYS = {
     "attention_count", "updated_human", "hosts", "activity",
     # Phase 6b: the desktop summary tiles.
     "status_counts", "hosts_online",
+    # Kubernetes clusters (own list: overview.js replaces the host rack).
+    "clusters",
 }  # fmt: skip
 
 

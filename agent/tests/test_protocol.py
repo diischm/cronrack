@@ -10,6 +10,7 @@ from agent import AGENT_VERSION
 from agent.config import AgentConfig
 from agent.protocol import (
     MAX_MESSAGE_BYTES,
+    MAX_REPORT_BYTES,
     hello_message,
     os_name,
     parse_server_message,
@@ -162,3 +163,9 @@ def test_os_name_fallback(tmp_path: Path):
 
 def test_report_message():
     assert report_message({"a": 1}) == {"type": "report", "report": {"a": 1}}
+
+
+def test_report_budget_leaves_room_below_the_servers_websocket_limit():
+    # The server closes the socket on a message over 262,144 bytes (--ws-max-size).
+    assert MAX_REPORT_BYTES == 250_000
+    assert MAX_REPORT_BYTES < 262_144

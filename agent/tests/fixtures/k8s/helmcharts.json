@@ -1,0 +1,106 @@
+{
+ "apiVersion": "helm.cattle.io/v1",
+ "items": [
+  {
+   "apiVersion": "helm.cattle.io/v1",
+   "kind": "HelmChart",
+   "metadata": {
+    "annotations": {
+     "helmcharts.cattle.io/managed-by": "helm-controller",
+     "objectset.rio.cattle.io/id": "",
+     "objectset.rio.cattle.io/owner-gvk": "k3s.cattle.io/v1, Kind=Addon",
+     "objectset.rio.cattle.io/owner-name": "traefik",
+     "objectset.rio.cattle.io/owner-namespace": "kube-system"
+    },
+    "creationTimestamp": "2026-10-25T18:26:51Z",
+    "finalizers": [
+     "wrangler.cattle.io/on-helm-chart-remove"
+    ],
+    "generation": 1,
+    "labels": {
+     "objectset.rio.cattle.io/hash": "d54a3cde895c2fa53d0b51458a7ae1923737ef63"
+    },
+    "name": "traefik",
+    "namespace": "kube-system",
+    "resourceVersion": "505",
+    "uid": "ef11e46b-c1f4-5267-9b24-fe826575b233"
+   },
+   "spec": {
+    "chart": "https://%{KUBERNETES_API}%/static/charts/traefik-39.0.701+up39.0.7.tgz",
+    "driver": "secret",
+    "failurePolicy": "reinstall",
+    "repo": "https://charts.example.invalid/stable?key=SENTINEL-SECRET-5",
+    "set": {
+     "auth.token": "SENTINEL-SECRET-4",
+     "global.systemDefaultRegistry": ""
+    },
+    "valuesContent": "deployment:\n  podAnnotations:\n    prometheus.io/port: \"8082\"\n    prometheus.io/scrape: \"true\"\nproviders:\n  kubernetesIngress:\n    publishedService:\n      enabled: true\npriorityClassName: \"system-cluster-critical\"\nimage:\n  repository: \"rancher/mirrored-library-traefik\"\n  tag: \"3.6.13\"\ntolerations:\n- key: \"CriticalAddonsOnly\"\n  operator: \"Exists\"\n- key: \"node-role.kubernetes.io/control-plane\"\n  operator: \"Exists\"\n  effect: \"NoSchedule\"\nservice:\n  ipFamilyPolicy: \"PreferDualStack\"\nadminPassword: SENTINEL-SECRET-3\n"
+   },
+   "status": {
+    "conditions": [
+     {
+      "message": "Applying HelmChart using Job kube-system/helm-install-traefik",
+      "reason": "Job created",
+      "status": "True",
+      "type": "JobCreated"
+     },
+     {
+      "status": "False",
+      "type": "Failed"
+     }
+    ],
+    "jobName": "helm-install-traefik"
+   }
+  },
+  {
+   "apiVersion": "helm.cattle.io/v1",
+   "kind": "HelmChart",
+   "metadata": {
+    "annotations": {
+     "helmcharts.cattle.io/managed-by": "helm-controller",
+     "objectset.rio.cattle.io/id": "",
+     "objectset.rio.cattle.io/owner-gvk": "k3s.cattle.io/v1, Kind=Addon",
+     "objectset.rio.cattle.io/owner-name": "traefik",
+     "objectset.rio.cattle.io/owner-namespace": "kube-system"
+    },
+    "creationTimestamp": "2026-10-25T18:26:51Z",
+    "finalizers": [
+     "wrangler.cattle.io/on-helm-chart-remove"
+    ],
+    "generation": 1,
+    "labels": {
+     "objectset.rio.cattle.io/hash": "d54a3cde895c2fa53d0b51458a7ae1923737ef63"
+    },
+    "name": "traefik-crd",
+    "namespace": "kube-system",
+    "resourceVersion": "504",
+    "uid": "6535819b-b557-5ec8-a1b1-526ca55767e9"
+   },
+   "spec": {
+    "chart": "https://%{KUBERNETES_API}%/static/charts/traefik-crd-39.0.701+up39.0.7.tgz",
+    "driver": "secret",
+    "failurePolicy": "reinstall"
+   },
+   "status": {
+    "conditions": [
+     {
+      "message": "Applying HelmChart using Job kube-system/helm-install-traefik-crd",
+      "reason": "Job created",
+      "status": "True",
+      "type": "JobCreated"
+     },
+     {
+      "status": "False",
+      "type": "Failed"
+     }
+    ],
+    "jobName": "helm-install-traefik-crd"
+   }
+  }
+ ],
+ "kind": "HelmChartList",
+ "metadata": {
+  "continue": "",
+  "resourceVersion": "38668"
+ }
+}

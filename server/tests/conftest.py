@@ -1,6 +1,7 @@
 import pytest
 from django.core.cache import cache
 
+from clusters.models import Cluster
 from hosts.models import Host
 
 
@@ -31,3 +32,11 @@ def host(alice):
 def alice_client(client, alice):
     client.force_login(alice)
     return client
+
+
+CLUSTER_UID = "08528ee9-428d-5167-8a8e-df19e635932f"
+
+
+@pytest.fixture
+def cluster(alice):
+    return Cluster.objects.create(owner=alice, uid=CLUSTER_UID, name="lab")

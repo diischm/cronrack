@@ -1,0 +1,259 @@
+{
+ "apiVersion": "argoproj.io/v1alpha1",
+ "items": [
+  {
+   "apiVersion": "argoproj.io/v1alpha1",
+   "kind": "Application",
+   "metadata": {
+    "annotations": {},
+    "creationTimestamp": "2026-10-27T10:16:00Z",
+    "generation": 161,
+    "name": "example-app",
+    "namespace": "argocd",
+    "resourceVersion": "38099",
+    "uid": "d0a43c3f-dfc3-573e-acad-1267ced72929"
+   },
+   "spec": {
+    "destination": {
+     "namespace": "apps",
+     "server": "https://kubernetes.default.svc"
+    },
+    "project": "default",
+    "source": {
+     "helm": {
+      "parameters": [
+       {
+        "name": "db.password",
+        "value": "SENTINEL-SECRET-7"
+       }
+      ],
+      "values": "password: SENTINEL-SECRET-6\n"
+     },
+     "path": "charts/example-app",
+     "repoURL": "https://github.com/example/gitops-lab.git?ref=SENTINEL-SECRET-8",
+     "targetRevision": "main"
+    },
+    "syncPolicy": {
+     "automated": {
+      "prune": true,
+      "selfHeal": true
+     }
+    }
+   },
+   "status": {
+    "controllerNamespace": "argocd",
+    "health": {
+     "lastTransitionTime": "2026-10-27T11:36:29Z",
+     "status": "Healthy"
+    },
+    "history": [
+     {
+      "deployStartedAt": "2026-10-27T11:12:53Z",
+      "deployedAt": "2026-10-27T11:12:54Z",
+      "id": 0,
+      "initiatedBy": {
+       "automated": true
+      },
+      "revision": "3ce158c55e68de6aa79008e51e28519bbff59031",
+      "source": {
+       "path": "charts/example-app",
+       "repoURL": "https://github.com/example/gitops-lab.git?ref=SENTINEL-SECRET-8",
+       "targetRevision": "main"
+      }
+     },
+     {
+      "deployStartedAt": "2026-10-27T11:19:34Z",
+      "deployedAt": "2026-10-27T11:19:35Z",
+      "id": 1,
+      "initiatedBy": {
+       "automated": true
+      },
+      "revision": "79e5e8edb13119490879eac401dcbc9b8cae9705",
+      "source": {
+       "path": "charts/example-app",
+       "repoURL": "https://github.com/example/gitops-lab.git?ref=SENTINEL-SECRET-8",
+       "targetRevision": "main"
+      }
+     },
+     {
+      "deployStartedAt": "2026-10-27T12:53:51Z",
+      "deployedAt": "2026-10-27T12:53:52Z",
+      "id": 2,
+      "initiatedBy": {
+       "username": "admin"
+      },
+      "revision": "842ebc5a22f95bf1a9c804ef0638d09765086ea7",
+      "source": {
+       "path": "charts/example-app",
+       "repoURL": "https://github.com/example/gitops-lab.git?ref=SENTINEL-SECRET-8",
+       "targetRevision": "main"
+      }
+     }
+    ],
+    "operationState": {
+     "finishedAt": "2026-10-27T12:53:52Z",
+     "message": "successfully synced (all tasks run)",
+     "operation": {
+      "initiatedBy": {
+       "username": "admin"
+      },
+      "retry": {},
+      "sync": {
+       "revision": "842ebc5a22f95bf1a9c804ef0638d09765086ea7",
+       "source": {
+        "path": "charts/example-app",
+        "repoURL": "https://github.com/example/gitops-lab.git?ref=SENTINEL-SECRET-8",
+        "targetRevision": "main"
+       },
+       "syncStrategy": {
+        "hook": {}
+       }
+      }
+     },
+     "phase": "Succeeded",
+     "startedAt": "2026-10-27T12:53:51Z",
+     "syncResult": {
+      "resources": [
+       {
+        "group": "",
+        "hookPhase": "Running",
+        "kind": "ConfigMap",
+        "message": "configmap/example-app-config unchanged",
+        "name": "example-app-config",
+        "namespace": "apps",
+        "status": "Synced",
+        "syncPhase": "Sync",
+        "version": "v1"
+       },
+       {
+        "group": "",
+        "hookPhase": "Running",
+        "kind": "PersistentVolumeClaim",
+        "message": "persistentvolumeclaim/example-app-data unchanged",
+        "name": "example-app-data",
+        "namespace": "apps",
+        "status": "Synced",
+        "syncPhase": "Sync",
+        "version": "v1"
+       },
+       {
+        "group": "",
+        "hookPhase": "Running",
+        "kind": "Service",
+        "message": "service/example-app-web unchanged",
+        "name": "example-app-web",
+        "namespace": "apps",
+        "status": "Synced",
+        "syncPhase": "Sync",
+        "version": "v1"
+       },
+       {
+        "group": "apps",
+        "hookPhase": "Running",
+        "images": [
+         "ghcr.io/example/example-app:sha-079b616",
+         "ghcr.io/example/example-app:sha-079b616"
+        ],
+        "kind": "Deployment",
+        "message": "deployment.apps/example-app unchanged",
+        "name": "example-app",
+        "namespace": "apps",
+        "status": "Synced",
+        "syncPhase": "Sync",
+        "version": "v1"
+       },
+       {
+        "group": "networking.k8s.io",
+        "hookPhase": "Running",
+        "kind": "Ingress",
+        "message": "ingress.networking.k8s.io/example-app unchanged",
+        "name": "example-app",
+        "namespace": "apps",
+        "status": "Synced",
+        "syncPhase": "Sync",
+        "version": "v1"
+       }
+      ],
+      "revision": "842ebc5a22f95bf1a9c804ef0638d09765086ea7",
+      "source": {
+       "path": "charts/example-app",
+       "repoURL": "https://github.com/example/gitops-lab.git?ref=SENTINEL-SECRET-8",
+       "targetRevision": "main"
+      }
+     }
+    },
+    "reconciledAt": "2026-10-27T16:48:35Z",
+    "resourceHealthSource": "appTree",
+    "resources": [
+     {
+      "kind": "ConfigMap",
+      "name": "example-app-config",
+      "namespace": "apps",
+      "status": "Synced",
+      "version": "v1"
+     },
+     {
+      "kind": "PersistentVolumeClaim",
+      "name": "example-app-data",
+      "namespace": "apps",
+      "status": "Synced",
+      "version": "v1"
+     },
+     {
+      "kind": "Service",
+      "name": "example-app-web",
+      "namespace": "apps",
+      "status": "Synced",
+      "version": "v1"
+     },
+     {
+      "group": "apps",
+      "kind": "Deployment",
+      "name": "example-app",
+      "namespace": "apps",
+      "status": "Synced",
+      "version": "v1"
+     },
+     {
+      "group": "networking.k8s.io",
+      "kind": "Ingress",
+      "name": "example-app",
+      "namespace": "apps",
+      "status": "Synced",
+      "version": "v1"
+     }
+    ],
+    "sourceHydrator": {},
+    "sourceType": "Helm",
+    "summary": {
+     "externalURLs": [
+      "http://example-app.localhost/"
+     ],
+     "images": [
+      "ghcr.io/example/example-app:sha-079b616"
+     ]
+    },
+    "sync": {
+     "comparedTo": {
+      "destination": {
+       "namespace": "apps",
+       "server": "https://kubernetes.default.svc"
+      },
+      "source": {
+       "path": "charts/example-app",
+       "repoURL": "https://github.com/example/gitops-lab.git?ref=SENTINEL-SECRET-8",
+       "targetRevision": "main"
+      }
+     },
+     "revision": "842ebc5a22f95bf1a9c804ef0638d09765086ea7",
+     "status": "Synced"
+    }
+   }
+  }
+ ],
+ "kind": "ApplicationList",
+ "metadata": {
+  "continue": "",
+  "resourceVersion": "38668"
+ }
+}

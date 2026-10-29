@@ -1,0 +1,10 @@
+{
+ "url": "https://api.github.com/repos/argoproj/argo-cd/releases/418783775",
+ "tag_name": "v3.5.6",
+ "name": "v3.5.6",
+ "draft": false,
+ "prerelease": false,
+ "created_at": "2026-10-20T18:26:57Z",
+ "published_at": "2026-10-20T19:26:34Z",
+ "body": "Release notes (a distractor the parser must ignore)."
+}

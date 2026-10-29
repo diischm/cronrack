@@ -181,12 +181,12 @@ def test_install_command_has_a_ca_file_variant(domain_client):
 # --- versions ---------------------------------------------------------------------------
 
 
-def test_server_version_is_0_1_0():
+def test_server_and_agent_versions():
     from agent import AGENT_VERSION
     from cronrack import SERVER_VERSION
 
     assert SERVER_VERSION == "0.1.0"
-    assert AGENT_VERSION == "0.1.0"
+    assert AGENT_VERSION == "0.2.0"
 
 
 def test_sidebar_footer_shows_server_version(alice_client):
