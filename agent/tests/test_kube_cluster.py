@@ -845,6 +845,7 @@ def test_collect_cluster_view_lab():
         "events",
         "truncated",
         "cut",
+        "incomplete",
     }
     assert view["uid"] == KUBE_SYSTEM_UID
     assert view["version"] == "v1.35.5+k3s1"
@@ -865,6 +866,7 @@ def test_collect_cluster_view_lab():
     assert 0 < len(view["events"]) <= 20
     assert view["truncated"] is False
     assert view["cut"] == []
+    assert view["incomplete"] == []
     json.dumps(view)
 
 
@@ -983,18 +985,19 @@ def test_a_bad_response_for_one_list_does_not_hide_the_others():
 
     assert view["api"]["error"] is None
     assert view["pvcs"] == []
-    assert view["truncated"] is True
-    assert "pvcs" in view["cut"]
+    assert view["incomplete"] == ["pvcs"]  # couldn't be read: not a harmless trim
+    assert view["cut"] == []
+    assert view["truncated"] is False
     assert len(view["nodes"]) == 3
 
 
-def test_deadline_marks_the_rest_as_cut():
+def test_deadline_marks_the_rest_as_incomplete():
     client = lab_client(**{API.PODS.path: kube_api.DeadlineExceeded()})
 
     view = kube_cluster.collect_cluster_view(client, LAB_NOW)
 
-    assert view["truncated"] is True
-    assert "pods" in view["cut"]
+    assert "pods" in view["incomplete"]
+    assert "pods" not in view["cut"]
     assert view["api"]["error"] is None
     assert len(view["nodes"]) == 3
 
@@ -1010,14 +1013,34 @@ def test_token_problem_is_unauthorized():
     assert view["nodes"] == []
 
 
-def test_client_truncation_is_reported():
+def test_a_list_the_client_could_not_read_in_full_is_incomplete():
+    # list_all says truncated: a page was too large even when asked in small bites, or
+    # the pages ran out. Problem pods may be among the ones never read.
     client = lab_client()
-    client.truncated_paths = {API.PODS.path}
+    client.truncated_paths = {API.PODS.path, API.DEPLOYMENTS.path, API.STATEFULSETS.path}
 
     view = kube_cluster.collect_cluster_view(client, LAB_NOW)
 
-    assert view["truncated"] is True
-    assert "pods" in view["cut"]
+    assert view["incomplete"] == ["pods", "workloads"]  # each name once
+    assert view["cut"] == []
+    assert view["truncated"] is False
+
+
+def test_a_required_list_that_answers_404_is_incomplete():
+    client = lab_client(**{API.PVCS.path: NotInstalled()})
+
+    view = kube_cluster.collect_cluster_view(client, LAB_NOW)
+
+    assert view["incomplete"] == ["pvcs"]
+    assert view["missing"] == []
+
+
+def test_caps_are_cut_not_incomplete():
+    client = lab_client(**{API.PODS.path: many_pods(1000, broken=150)})
+
+    view = kube_cluster.collect_cluster_view(client, LAB_NOW)
+
+    assert view["incomplete"] == []  # everything was read; some of it just isn't listed
 
 
 def many_pods(total, broken):

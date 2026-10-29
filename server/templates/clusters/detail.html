@@ -33,7 +33,8 @@
     <h2 class="section-title">Summary</h2>
     <p>Nodes {{ tiles.nodes_ready }}/{{ tiles.nodes_total }} ready · Pods {{ tiles.pods.running }}/{{ tiles.pods.total }} running, {{ tiles.pods.problem }} with problems · Apps {{ tiles.workloads_ok }}/{{ tiles.workloads_total }} healthy</p>
 
-    {% if truncated %}<p>Some healthy items are not listed (cut: {{ cut|join:", " }}).</p>{% endif %}
+    {% if incomplete %}<p><strong>Not read in full:</strong> {{ incomplete|join:", " }}. Problems may be hidden there.</p>{% endif %}
+    {% if truncated %}<p>Not everything is listed (cut: {{ cut|join:", " }}). Problems are listed first.</p>{% endif %}
 
     <h2 class="section-title">Nodes</h2>
     <ul class="surface item-list">

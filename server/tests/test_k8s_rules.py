@@ -519,6 +519,69 @@ def test_snapshot_truncated_is_info_and_does_not_change_the_colour():
     assert only(run(make_cluster(truncated=False)), "k8s.snapshot_truncated") == []
 
 
+INCOMPLETE_FIXES = {
+    "pods": "kubectl get pods -A",
+    "workloads": "kubectl get deployments,statefulsets,daemonsets -A",
+    "nodes": "kubectl get nodes",
+    "argo": "kubectl get applications -A",
+    "pvcs": "kubectl get pvc -A",
+}
+
+
+@pytest.mark.parametrize(("name", "fix"), INCOMPLETE_FIXES.items())
+def test_a_list_that_could_not_be_read_in_full_is_yellow(name, fix):
+    cluster = fake_cluster(make_cluster(incomplete=[name]))
+    findings = run(cluster=cluster)
+
+    [finding] = only(findings, "k8s.snapshot_incomplete")
+    assert finding.severity == "yellow"
+    assert finding.subject == f"incomplete:{name}"
+    assert finding.fix == fix
+    assert compute_status(findings, cluster, NOW) == "yellow"
+    assert only(findings, "k8s.snapshot_truncated") == []
+
+
+def test_incomplete_pods_say_problems_may_be_hidden():
+    [finding] = only(run(make_cluster(incomplete=["pods"])), "k8s.snapshot_incomplete")
+    assert "couldn't read all pods" in finding.text
+    why = finding.why.lower()
+    assert "problems may be hidden" in why
+    # It must never sound like the harmless trim.
+    for claim in ("healthy", "nothing is missing", "only", "harmless"):
+        assert claim not in why, claim
+
+
+def test_each_incomplete_list_is_its_own_finding():
+    findings = only(run(make_cluster(incomplete=["pods", "workloads"])), "k8s.snapshot_incomplete")
+    assert [f.subject for f in findings] == ["incomplete:pods", "incomplete:workloads"]
+    assert len({f.fingerprint for f in findings}) == 2
+
+
+@pytest.mark.parametrize("name", ["events", "helm", "node_metrics", "version", "namespace"])
+def test_lists_that_hide_no_problem_stay_info(name):
+    findings = run(make_cluster(incomplete=[name]))
+    assert only(findings, "k8s.snapshot_incomplete") == []
+    [finding] = only(findings, "k8s.snapshot_truncated")
+    assert finding.severity == "info"
+    assert name in finding.text
+
+
+def test_the_harmless_trim_why_does_not_claim_everything_was_read_and_shown():
+    rule = CLUSTER_RULES["k8s.snapshot_truncated"]
+    assert rule.default_severity == "info"
+    why = rule.why.lower()
+    assert "problems are listed first" in why
+    # It also covers lists that couldn't be read, so it must not promise everything was.
+    for claim in ("everything was read", "nothing is missing", "all items"):
+        assert claim not in why, claim
+
+
+def test_incomplete_and_cut_together_give_both_findings():
+    findings = run(make_cluster(truncated=True, cut=["ok_pods"], incomplete=["pods"]))
+    assert len(only(findings, "k8s.snapshot_truncated")) == 1
+    assert len(only(findings, "k8s.snapshot_incomplete")) == 1
+
+
 # --- versions (only with "latest" data, i.e. when online checks are on) ---------------------------------
 
 

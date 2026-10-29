@@ -153,13 +153,57 @@ def check_api_cert_expiring(
     return [rule.finding(ctx, text, severity=severity)]
 
 
+# Lists the agent couldn't read in full where a problem may be hiding, and how to look
+# yourself. The other lists (events, Helm, metrics, version) hide no problem: info only.
+INCOMPLETE_FIXES = {
+    "pods": "kubectl get pods -A",
+    "workloads": "kubectl get deployments,statefulsets,daemonsets -A",
+    "nodes": "kubectl get nodes",
+    "argo": "kubectl get applications -A",
+    "pvcs": "kubectl get pvc -A",
+}
+INCOMPLETE_WORDS = {
+    "pods": "pods",
+    "workloads": "apps",
+    "nodes": "nodes",
+    "argo": "Argo CD apps",
+    "pvcs": "volume claims",
+}
+
+
+def _incomplete(snapshot: Mapping[str, Any]) -> list[str]:
+    return [name for name in _items(snapshot, "incomplete") if isinstance(name, str)]
+
+
 def check_snapshot_truncated(
     rule: Rule, snapshot: Mapping[str, Any], ctx: RuleContext
 ) -> list[Finding]:
-    if snapshot.get("truncated") is not True:
+    cut = list(snapshot.get("cut") or []) if snapshot.get("truncated") is True else []
+    harmless = [name for name in _incomplete(snapshot) if name not in INCOMPLETE_FIXES]
+    if not cut and not harmless:
         return []
-    cut = ", ".join(snapshot.get("cut") or []) or "some lists"
-    return [rule.finding(ctx, f"Not everything fits in one report (cut: {cut})")]
+    parts = []
+    if cut:
+        parts.append(f"cut: {', '.join(cut)}")
+    if harmless:
+        parts.append(f"not read in full: {', '.join(harmless)}")
+    return [rule.finding(ctx, f"Not everything fits in one report ({'; '.join(parts)})")]
+
+
+def check_snapshot_incomplete(
+    rule: Rule, snapshot: Mapping[str, Any], ctx: RuleContext
+) -> list[Finding]:
+    findings = []
+    for name in _incomplete(snapshot):
+        if name not in INCOMPLETE_FIXES:
+            continue
+        finding = rule.finding(
+            ctx,
+            f"CronRack couldn't read all {INCOMPLETE_WORDS[name]}",
+            subject=f"incomplete:{name}",
+        )
+        findings.append(replace(finding, fix=INCOMPLETE_FIXES[name]))
+    return findings
 
 
 # --- nodes -------------------------------------------------------------------------------------
@@ -676,8 +720,22 @@ _CLUSTER_RULES = (
         default_severity=INFO,
         check=check_snapshot_truncated,
         why=(
-            "The cluster is larger than one report can carry, so some healthy items are not listed."
+            "The cluster is larger than one report can carry, so some items are not listed "
+            "(problems are listed first), or a list that holds no problems (events, Helm, "
+            "metrics, version) couldn't be read."
         ),
+    ),
+    _k8s(
+        id="k8s.snapshot_incomplete",
+        title="Cluster view incomplete",
+        default_severity=YELLOW,
+        check=check_snapshot_incomplete,
+        why=(
+            "CronRack couldn't read this list in full (an answer was too large, too slow or "
+            "failed), so problems may be hidden. What is shown can look fine while something "
+            "in the unread part is broken. Check it yourself with the command below."
+        ),
+        fix_template="kubectl get pods -A",  # replaced per list (INCOMPLETE_FIXES)
     ),
 )
 
