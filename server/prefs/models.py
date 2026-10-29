@@ -37,6 +37,12 @@ class Prefs(models.Model):
     route_red = models.CharField(max_length=16, choices=Route.choices, default=Route.INSTANT)
     route_yellow = models.CharField(max_length=16, choices=Route.choices, default=Route.DIGEST)
     route_info = models.CharField(max_length=16, choices=Route.choices, default=Route.DASHBOARD)
+    # Off by default: CronRack contacts the internet only if the user asks for it.
+    check_updates_online = models.BooleanField(
+        default=False,
+        help_text="Once a day, ask update.k3s.io and api.github.com for the newest "
+        "k3s, Argo CD and Helm versions.",
+    )
 
     class Meta:
         verbose_name_plural = "prefs"

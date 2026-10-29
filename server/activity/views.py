@@ -20,13 +20,13 @@ def _page_number(request: HttpRequest) -> int:
 
 
 def activity_page(user, page: int) -> dict:
-    """One page of the user's status changes, newest first: {items, next_page}."""
+    """One page of the user's host and cluster status changes, newest first: {items, next_page}."""
     now = timezone.now()
     data = OwnerData(user)
     start = (page - 1) * PAGE_SIZE
     # One extra row tells us whether a next page exists, without a COUNT query.
     events = list(
-        StatusEvent.objects.filter(host__owner=user).select_related("host")[
+        StatusEvent.objects.owned_by(user).select_related("host", "cluster")[
             start : start + PAGE_SIZE + 1
         ]
     )

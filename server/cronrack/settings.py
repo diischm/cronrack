@@ -138,6 +138,7 @@ INSTALLED_APPS = [
     "agents",
     "activity",
     "alerts",
+    "clusters",
     "prefs",
     "rules",
 ]

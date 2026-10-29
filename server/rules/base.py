@@ -7,7 +7,7 @@ with a dict that looks like an agent report.
 import hashlib
 import shlex
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -23,8 +23,22 @@ SEVERITY_RANK = {RED: 3, YELLOW: 2, INFO: 1, IGNORE: 0}
 COLOUR_SEVERITIES = frozenset({RED, YELLOW})
 
 
-def fingerprint(rule_id: str, host_id: int, subject: str) -> str:
+def ago(seconds: float) -> str:
+    """'45 min', '3 h', '2 days': how long something has been quiet."""
+    minutes = int(seconds // 60)
+    if minutes < 120:
+        return f"{minutes} min"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours} h"
+    return f"{hours // 24} days"
+
+
+def fingerprint(rule_id: str, host_id: int | str, subject: str) -> str:
     """Stable ID of one problem on one host: SHA-256 hex of 'rule_id|host_id|subject'.
+
+    For a cluster, host_id is "c<cluster ID>" (RuleContext.scope_prefix), so a cluster
+    and a host with the same number never share a fingerprint.
 
     Exceptions and snoozes attach to this, so it must never change for the same problem.
     """
@@ -65,6 +79,12 @@ class RuleContext:
     last_seen_at: datetime | None
     # (rule_id, subject) -> that rule's effective settings for that subject.
     settings: Callable[[str, str], EffectiveRule]
+    # "" for a host; "c" for a cluster, where host_id is the cluster's ID. Part of the
+    # fingerprint, so host fingerprints are exactly what they always were.
+    scope_prefix: str = ""
+    # Newest released versions from clusters.updates ("k3s", "argocd", "helm"); empty
+    # unless the owner turned online update checks on.
+    latest: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
 
 Check = Callable[["Rule", Mapping[str, Any], RuleContext], list[Finding]]
@@ -74,7 +94,8 @@ Check = Callable[["Rule", Mapping[str, Any], RuleContext], list[Finding]]
 class Rule:
     id: str
     title: str
-    category: str  # updates | docker | systemd | disk | security | changes | backups | connectivity
+    # updates | docker | systemd | disk | security | changes | backups | connectivity | kubernetes
+    category: str
     default_severity: str
     check: Check
     why: str
@@ -114,5 +135,5 @@ class Rule:
             text=text,
             why=self.why,
             fix=fix,
-            fingerprint=fingerprint(self.id, ctx.host_id, subject),
+            fingerprint=fingerprint(self.id, f"{ctx.scope_prefix}{ctx.host_id}", subject),
         )

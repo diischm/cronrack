@@ -49,6 +49,12 @@ class Host(models.Model):
     report_received_at = models.DateTimeField(null=True, blank=True)
     maintenance_until = models.DateTimeField(null=True, blank=True)
     learning_until = models.DateTimeField(null=True, blank=True)
+    # The Kubernetes cluster this host is a node of, found by matching the host name
+    # with the cluster's node names (clusters.services). The node role is not stored:
+    # it is read from latest_report["kubernetes"]["node"].
+    cluster = models.ForeignKey(
+        "clusters.Cluster", on_delete=models.SET_NULL, null=True, blank=True, related_name="nodes"
+    )
 
     class Meta:
         ordering = ("name",)

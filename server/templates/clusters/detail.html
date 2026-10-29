@@ -1,0 +1,94 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+
+{% block title %}{{ cluster.name }} · CronRack{% endblock %}
+{% block nav_clusters %}aria-current="page"{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <a class="btn btn--icon" href="{% url 'clusters' %}" aria-label="Back">&lsaquo;</a>
+    <h1 class="page-title">{{ cluster.name }}</h1>
+    {% if cluster.status == "offline" %}<p class="offline-note"><strong>Offline</strong> · last data {{ cluster.last_seen_human }}</p>{% else %}{% include "components/status_icon.html" with status=cluster.status label=cluster.status_label %}{% endif %}
+    <a class="btn" href="{{ cluster.settings_url }}">Settings</a>
+  </div>
+
+  {% if not cluster.has_snapshot %}
+    <section class="surface empty"><p class="empty__text">Waiting for the first report from this cluster.</p></section>
+  {% else %}
+    <p class="page-sub">Updated {{ cluster.last_seen_human }}{% if cluster.reporter %} · via {{ cluster.reporter }}{% endif %}{% if cluster.version %} · {{ cluster.version }}{% endif %}</p>
+
+    <h2 class="section-title">Needs your attention</h2>
+    {% if issues %}
+      <ul class="surface item-list">
+        {% for issue in issues %}
+          {% include "components/issue_line.html" with issue=issue %}
+          {% if issue.why %}<li>{{ issue.why }}</li>{% endif %}
+          {% if issue.fix %}<li><pre class="code well">{{ issue.fix }}</pre></li>{% endif %}
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Nothing needs you.</p>
+    {% endif %}
+
+    <h2 class="section-title">Summary</h2>
+    <p>Nodes {{ tiles.nodes_ready }}/{{ tiles.nodes_total }} ready · Pods {{ tiles.pods.running }}/{{ tiles.pods.total }} running, {{ tiles.pods.problem }} with problems · Apps {{ tiles.workloads_ok }}/{{ tiles.workloads_total }} healthy</p>
+
+    {% if truncated %}<p>Some healthy items are not listed (cut: {{ cut|join:", " }}).</p>{% endif %}
+
+    <h2 class="section-title">Nodes</h2>
+    <ul class="surface item-list">
+      {% for node in nodes %}
+        <li>{{ node.name }} · {% if node.ready %}Ready{% else %}Not ready{% endif %}{% if node.pressure %} · {{ node.pressure|join:", " }}{% endif %}{% if node.kubelet %} · {{ node.kubelet }}{% endif %}{% if node.host %} · <a href="{{ node.host.url }}">{{ node.host.name }}</a>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% if unlinked_nodes %}<p>Nodes without a CronRack host: {{ unlinked_nodes|join:", " }}</p>{% endif %}
+
+    {% if problem_pods %}
+      <h2 class="section-title">Problem pods</h2>
+      <ul class="surface item-list">
+        {% for pod in problem_pods %}
+          <li>{{ pod.ns }}/{{ pod.name }} · {{ pod.phase }}{% if pod.reason %} · {{ pod.reason }}{% endif %} · {{ pod.restarts }} restart{{ pod.restarts|pluralize }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if ok_pods %}
+      <h2 class="section-title">Healthy pods</h2>
+      {% for group in ok_pods %}
+        <h3>{{ group.ns }}</h3>
+        <ul class="surface item-list">{% for pod in group.pods %}<li>{{ pod.name }}{% if pod.node %} · {{ pod.node }}{% endif %}</li>{% endfor %}</ul>
+      {% endfor %}
+    {% endif %}
+
+    {% if workloads %}
+      <h2 class="section-title">Apps</h2>
+      <ul class="surface item-list">
+        {% for w in workloads %}<li>{{ w.ns }}/{{ w.name }} ({{ w.kind }}) · {{ w.available }}/{{ w.desired }} available</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if helm %}
+      <h2 class="section-title">Helm releases</h2>
+      <ul class="surface item-list">{% for h in helm %}<li>{{ h.ns }}/{{ h.name }}{% if h.chart %} · {{ h.chart }}{% endif %}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if argo %}
+      <h2 class="section-title">Argo CD apps</h2>
+      <ul class="surface item-list">{% for a in argo %}<li>{{ a.ns }}/{{ a.name }} · {{ a.sync }} · {{ a.health }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if pvcs %}
+      <h2 class="section-title">Volume claims</h2>
+      <ul class="surface item-list">{% for p in pvcs %}<li>{{ p.ns }}/{{ p.name }} · {{ p.phase }}{% if p.size %} · {{ p.size }}{% endif %}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if events %}
+      <h2 class="section-title">Recent warnings</h2>
+      <ul class="surface item-list">{% for e in events %}<li>{{ e.ns }} · {{ e.obj }} · {{ e.reason }} · {{ e.msg }} ({{ e.count }}×, {{ e.age_human }} ago)</li>{% endfor %}</ul>
+    {% endif %}
+
+    <h2 class="section-title">Versions</h2>
+    <p>Kubernetes {{ versions.kubernetes|default:"unknown" }}{% if versions.k3s_stable %} · k3s stable is {{ versions.k3s_stable }}{% endif %}{% if versions.argocd %} · Argo CD {{ versions.argocd }}{% endif %}{% if versions.argocd_latest %} (latest {{ versions.argocd_latest }}){% endif %}</p>
+    {% if versions.hint %}<p>{{ versions.hint }}</p>{% endif %}
+  {% endif %}
+{% endblock %}

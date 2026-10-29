@@ -7,9 +7,9 @@ Three rules keep this safe:
   AND again right before sending (the database could hold an old or edited value).
 - Never raise: an alert that fails is logged and dropped. A Discord outage must
   never break report ingestion or the scheduler.
-- Cooldown: at most one alert per host per ALERT_COOLDOWN_SECONDS. A host flapping
-  between green and red (or a misbehaving agent) can't flood the channel. Changes
-  during the cooldown are coalesced, not lost: Host.last_alert_status remembers what
+- Cooldown: at most one alert per host (or cluster) per ALERT_COOLDOWN_SECONDS. A host
+  flapping between green and red (or a misbehaving agent) can't flood the channel. Changes
+  during the cooldown are coalesced, not lost: last_alert_status remembers what
   the last alert said, and when the cooldown is over the scheduler sends one alert
   with the CURRENT status if it differs (send_pending_alerts). So the last alert
   always matches reality. Every change is also in the activity list.
@@ -28,6 +28,8 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from activity.models import StatusEvent
+from clusters.models import Cluster
+from cronrack.outbound import opener as _opener
 from hosts.models import Host
 from prefs.models import Prefs
 
@@ -52,16 +54,6 @@ STATUS_EMOJI = {"red": "🔴", "offline": "🔴", "yellow": "🟡", "green": "�
 def is_allowed_webhook(url) -> bool:
     """True only for a Discord webhook URL (the SSRF allowlist)."""
     return isinstance(url, str) and WEBHOOK_URL_RE.match(url) is not None
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Refuse redirects, so a reply can't send the request on to another address."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-_opener = urllib.request.build_opener(_NoRedirect)
 
 
 def send_discord(url: str, text: str) -> bool:
@@ -111,16 +103,16 @@ def _cooldown_cutoff(now):
     return now - timedelta(seconds=ALERT_COOLDOWN_SECONDS)
 
 
-def _claim_alert(host_id: int, status: str, now) -> bool:
+def _claim_alert(model, pk: int, status: str, now) -> bool:
     """True if an alert saying `status` may go out now; then it starts the cooldown.
 
-    False while the host cools down (the change stays pending: last_alert_status
-    differs from the host's status), or if the last alert already said `status`.
-    One UPDATE that only matches when allowed, so the web app and the scheduler
-    (separate processes) can't both send within the cooldown.
+    `model` is Host or Cluster. False while it cools down (the change stays pending:
+    last_alert_status differs from the current status), or if the last alert already
+    said `status`. One UPDATE that only matches when allowed, so the web app and the
+    scheduler (separate processes) can't both send within the cooldown.
     """
     return (
-        Host.objects.filter(pk=host_id)
+        model.objects.filter(pk=pk)
         .filter(Q(last_alert_at__isnull=True) | Q(last_alert_at__lte=_cooldown_cutoff(now)))
         .exclude(last_alert_status=status)
         .update(last_alert_at=now, last_alert_status=status)
@@ -138,55 +130,59 @@ def notify(event: StatusEvent) -> bool:
     """
     if event.old_status == event.new_status:
         return False
-    prefs = Prefs.objects.filter(owner_id=event.host.owner_id).first()
+    prefs = Prefs.objects.filter(owner_id=event.owner_id).first()
     if prefs is None or not prefs.discord_webhook_url:
         return False
-    if not _claim_alert(event.host_id, event.new_status, timezone.now()):
-        logger.info("Discord alert for host %s held back: cooldown", event.host_id)
+    subject = event.subject
+    if not _claim_alert(type(subject), subject.pk, event.new_status, timezone.now()):
+        logger.info(
+            "Discord alert for %s %s held back: cooldown", type(subject).__name__, subject.pk
+        )
         return False
     return send_discord(prefs.discord_webhook_url, format_alert(event))
 
 
-def format_current(host: Host) -> str:
-    """'🟢 pi-01 is green now (after several quick changes)'"""
-    emoji = STATUS_EMOJI.get(host.status, "⚪")
-    return f"{emoji} {host.name} is {host.status} now (after several quick changes)"
+def format_current(subject: Host | Cluster) -> str:
+    """'🟢 pi-01 is green now (after several quick changes)' (a host or a cluster)"""
+    emoji = STATUS_EMOJI.get(subject.status, "⚪")
+    return f"{emoji} {subject.name} is {subject.status} now (after several quick changes)"
 
 
-def send_pending_alerts(now=None) -> list[Host]:
+def send_pending_alerts(now=None) -> list[Host | Cluster]:
     """Run by the scheduler: catch up on changes that happened during a cooldown.
 
-    For every host whose cooldown is over and whose status differs from what its last
-    alert said, send one alert with the current status. Hosts that never alerted are
-    left alone (nothing was held back for them). Returns the hosts alerted.
+    For every host and cluster whose cooldown is over and whose status differs from what
+    its last alert said, send one alert with the current status. Ones that never alerted
+    are left alone (nothing was held back for them). Returns what was alerted.
     """
     if now is None:
         now = timezone.now()
     webhooks = dict(
         Prefs.objects.exclude(discord_webhook_url="").values_list("owner_id", "discord_webhook_url")
     )
-    candidates = (
-        Host.objects.filter(owner_id__in=webhooks, last_alert_at__lte=_cooldown_cutoff(now))
-        .exclude(status=F("last_alert_status"))
-        .values_list("pk", flat=True)
-    )
     sent = []
-    for host_id in candidates:
-        # Re-read and claim under the write lock: a report or notify() may have
-        # changed the host since the query above.
-        with transaction.atomic():
-            host = Host.objects.select_for_update().filter(pk=host_id).first()
-            if (
-                host is None
-                or host.last_alert_at is None
-                or host.last_alert_at > _cooldown_cutoff(now)
-                or host.status == host.last_alert_status
-            ):
-                continue
-            host.last_alert_at = now
-            host.last_alert_status = host.status
-            host.save(update_fields=["last_alert_at", "last_alert_status"])
-        # The HTTP call happens after the transaction, never while holding the lock.
-        send_discord(webhooks[host.owner_id], format_current(host))
-        sent.append(host)
+    for model in (Host, Cluster):
+        candidates = (
+            model.objects.filter(owner_id__in=webhooks, last_alert_at__lte=_cooldown_cutoff(now))
+            .exclude(status=F("last_alert_status"))
+            .values_list("pk", flat=True)
+        )
+        for pk in candidates:
+            # Re-read and claim under the write lock: a report or notify() may have
+            # changed it since the query above.
+            with transaction.atomic():
+                subject = model.objects.select_for_update().filter(pk=pk).first()
+                if (
+                    subject is None
+                    or subject.last_alert_at is None
+                    or subject.last_alert_at > _cooldown_cutoff(now)
+                    or subject.status == subject.last_alert_status
+                ):
+                    continue
+                subject.last_alert_at = now
+                subject.last_alert_status = subject.status
+                subject.save(update_fields=["last_alert_at", "last_alert_status"])
+            # The HTTP call happens after the transaction, never while holding the lock.
+            send_discord(webhooks[subject.owner_id], format_current(subject))
+            sent.append(subject)
     return sent

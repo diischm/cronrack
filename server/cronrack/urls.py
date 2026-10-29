@@ -8,6 +8,7 @@ from cronrack import dev_views
 urlpatterns = [
     path("", include("accounts.urls")),
     path("", include("hosts.urls")),
+    path("", include("clusters.urls")),
     path("", include("activity.urls")),
     path("", include("prefs.urls")),
     # Public: install.sh and the agent package (no secrets inside).

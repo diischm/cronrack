@@ -67,6 +67,20 @@
         {% endwith %}
         <div class="form-keys"><button type="submit" class="btn">Save</button></div>
       </section>
+
+      <section class="surface panel form" aria-labelledby="updates-title">
+        <h2 class="section-title" id="updates-title">Update checks</h2>
+        {% with field=prefs_form.check_updates_online %}
+          <div class="field">
+            <label class="field__label" for="{{ field.auto_id }}">
+              <input type="checkbox" name="{{ field.html_name }}" id="{{ field.auto_id }}"{% if field.value %} checked{% endif %} aria-describedby="{{ field.auto_id }}_helptext">
+              {{ field.label }}
+            </label>
+            <p class="field__help" id="{{ field.auto_id }}_helptext">Off by default. When on, once a day the server asks update.k3s.io and api.github.com (argoproj/argo-cd, helm/helm) for the newest k3s, Argo CD and Helm versions. Nothing about your setup is sent.</p>
+          </div>
+        {% endwith %}
+        <div class="form-keys"><button type="submit" class="btn">Save</button></div>
+      </section>
     </form>
 
     <section class="surface panel form panel--fit" aria-labelledby="appearance-title">

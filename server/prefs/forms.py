@@ -18,8 +18,11 @@ class PrefsForm(forms.ModelForm):
 
     class Meta:
         model = Prefs
-        fields = ("discord_webhook_url", "silent_after_seconds")
-        labels: ClassVar[dict[str, str]] = {"discord_webhook_url": "Discord webhook URL"}
+        fields = ("discord_webhook_url", "silent_after_seconds", "check_updates_online")
+        labels: ClassVar[dict[str, str]] = {
+            "discord_webhook_url": "Discord webhook URL",
+            "check_updates_online": "Check for updates online",
+        }
         widgets: ClassVar[dict[str, forms.Widget]] = {
             "discord_webhook_url": forms.URLInput(attrs={"class": "well"})
         }
