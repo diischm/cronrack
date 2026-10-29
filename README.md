@@ -7,7 +7,7 @@ host collects checks (updates, containers, systemd, disks) and reports to a self
 server, which shows a red/yellow/green status page and alerts you only when something changes.
 You reach it through your own VPN. It is never a hosted service and never phones home.
 
-![Project Screenshot](https://i.imgur.com/wx8xHnq.png)
+![Project Screenshot](https://i.imgur.com/06hw8O2.gif)
 
 ## MVP
 
