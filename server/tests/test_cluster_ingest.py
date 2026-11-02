@@ -151,18 +151,67 @@ def test_node_only_report_creates_no_cluster(alice, host):
     assert host.latest_report["kubernetes"]["node"]["role"] == "agent"
 
 
-def test_ingest_rolls_back_together(alice, host, monkeypatch):
-    """A failure while saving the cluster must not leave a half-saved report."""
+def test_a_broken_cluster_part_never_costs_the_host_its_report(alice, host, monkeypatch, caplog):
+    """The cluster part runs in its own savepoint: if it fails, only it is rolled back. The
+    host's report is saved and the socket lives on (no exception reaches the consumer)."""
     from agents import consumers
 
-    def boom(*args, **kwargs):
-        raise RuntimeError("database trouble")
+    def boom(host, view):
+        Cluster.objects.create(owner=host.owner, uid=CLUSTER_UID, name="half-done")
+        raise RuntimeError("cluster trouble")
 
     monkeypatch.setattr(consumers, "save_cluster_snapshot", boom)
-    with pytest.raises(RuntimeError):
-        ingest(host, make_kube_report())
+
+    ingest(host, make_kube_report())  # does not raise
+
     host.refresh_from_db()
-    assert host.latest_report is None
+    assert host.latest_report is not None
+    assert host.latest_report["kubernetes"]["node"]["role"] == "server"
+    assert not Cluster.objects.exists()  # the half-done cluster part was rolled back
+    assert "RuntimeError" in caplog.text
+    assert "cluster trouble" not in caplog.text  # class name only, never data
+
+
+def test_a_name_taken_in_a_race_gets_the_next_free_name(alice, host, monkeypatch):
+    """Another report took the default name between choosing it and saving: try again."""
+    from clusters import services
+
+    Cluster.objects.create(owner=alice, uid="1" * 8 + "-1111-1111-1111-" + "1" * 12, name="taken")
+    real = services._default_name
+    picks = iter(["taken"])  # the first pick is already gone
+
+    def racing(owner_id, host):
+        return next(picks, None) or real(owner_id, host)
+
+    monkeypatch.setattr(services, "_default_name", racing)
+
+    ingest(host, make_kube_report())
+
+    cluster = Cluster.objects.get(uid=CLUSTER_UID)
+    assert cluster.name == "nas-cluster"
+    host.refresh_from_db()
+    assert host.latest_report is not None
+
+
+def test_the_default_name_always_fits(alice):
+    from clusters.services import NAME_MAX, _default_name
+
+    long_host = Host.objects.create(owner=alice, name="h" * 64)
+    full = f"{long_host.name}-cluster"
+
+    def nth(n):  # the name _default_name picks for try n, shortened to fit
+        return full[:NAME_MAX] if n == 1 else full[: NAME_MAX - len(f"-{n}")] + f"-{n}"
+
+    Cluster.objects.bulk_create(
+        Cluster(owner=alice, uid=f"{n:08x}-2222-2222-2222-222222222222", name=nth(n))
+        for n in range(1, 1000)
+    )
+
+    name = _default_name(alice.pk, long_host)
+
+    assert len(name) <= NAME_MAX
+    assert name.endswith("-1000")
+    assert not Cluster.objects.filter(owner=alice, name=name).exists()
 
 
 def test_cluster_name_gets_a_suffix_when_taken(alice, host):

@@ -65,12 +65,15 @@ def node_key(name: Any) -> str:
 
 
 def _default_name(owner_id: int, host: Host) -> str:
-    base = f"{host.name}-cluster"[: NAME_MAX - 4]
+    """ "<host>-cluster", or "<host>-cluster-2", -3 ... when taken. Always fits NAME_MAX: the
+    base is shortened to make room for the suffix."""
+    base = f"{host.name}-cluster"
     taken = set(Cluster.objects.filter(owner_id=owner_id).values_list("name", flat=True))
-    name, number = base, 1
+    name, number = base[:NAME_MAX], 1
     while name in taken:
         number += 1
-        name = f"{base}-{number}"
+        suffix = f"-{number}"
+        name = base[: NAME_MAX - len(suffix)] + suffix
     return name
 
 
@@ -90,19 +93,25 @@ def _active_findings(cluster, snapshot, now, overrides, suppressions, latest):
     return active
 
 
+CREATE_ATTEMPTS = 3
+
+
 def _find_or_create(host: Host, uid: str) -> Cluster:
     owner_id = host.owner_id
-    cluster = Cluster.objects.select_for_update().filter(owner_id=owner_id, uid=uid).first()
-    if cluster is not None:
-        return cluster
-    try:
-        with transaction.atomic():
-            return Cluster.objects.create(
-                owner_id=owner_id, uid=uid, name=_default_name(owner_id, host)
-            )
-    except IntegrityError:
-        # A second report created it first (two agents): use theirs.
-        return Cluster.objects.select_for_update().get(owner_id=owner_id, uid=uid)
+    for _ in range(CREATE_ATTEMPTS):
+        cluster = Cluster.objects.select_for_update().filter(owner_id=owner_id, uid=uid).first()
+        if cluster is not None:
+            return cluster
+        try:
+            with transaction.atomic():
+                return Cluster.objects.create(
+                    owner_id=owner_id, uid=uid, name=_default_name(owner_id, host)
+                )
+        except IntegrityError:
+            # Another report won a race: it created this cluster (found on the next
+            # round), or took the name we picked (the next round picks another one).
+            continue
+    raise IntegrityError("could not create the cluster")
 
 
 def _may_report(cluster: Cluster, host: Host, now: datetime) -> bool:

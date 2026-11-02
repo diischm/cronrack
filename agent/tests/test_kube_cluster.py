@@ -1172,3 +1172,135 @@ def test_collect_never_raises_on_garbage_responses():
     assert view["uid"] is None
     assert view["version"] is None
     json.dumps(view)
+
+
+# --- one odd item never hides the rest ------------------------------------------------------------
+#
+# A value of the wrong JSON type deep inside one item (a list where a string belongs) must not
+# blank the whole list, and a list that lost items must say so ("incomplete").
+
+UNHASHABLE = ["not", "a", "string"]
+
+
+def good_and_bad(good: dict, bad: dict) -> dict:
+    return {"items": [bad, good]}
+
+
+@pytest.mark.parametrize(
+    ("parse", "good", "bad", "kept"),
+    [
+        (
+            lambda data: kube_cluster.parse_pods(data, LAB_NOW),
+            {"metadata": {"name": "good", "namespace": "apps"}, "status": {"phase": "Running"}},
+            {"metadata": {"name": "bad", "namespace": "apps"}, "status": {"phase": UNHASHABLE}},
+            "good",
+        ),
+        (
+            kube_cluster.parse_nodes,
+            {"metadata": {"name": "good"}},
+            {
+                "metadata": {"name": "bad"},
+                "status": {"conditions": [{"type": UNHASHABLE, "status": "True"}]},
+            },
+            "good",
+        ),
+        (
+            kube_cluster.parse_argo_apps,
+            {"metadata": {"name": "good", "namespace": "argocd"}},
+            {
+                "metadata": {"name": "bad", "namespace": "argocd"},
+                "status": {
+                    "sync": {"status": UNHASHABLE},
+                    "health": {"status": {"x": 1}},
+                    "operationState": {"phase": UNHASHABLE},
+                },
+            },
+            "good",
+        ),
+        (
+            lambda data: kube_cluster.parse_pvcs(data, LAB_NOW),
+            {"metadata": {"name": "good", "namespace": "apps"}, "status": {"phase": "Bound"}},
+            {"metadata": {"name": "bad", "namespace": "apps"}, "status": {"phase": {"x": 1}}},
+            "good",
+        ),
+    ],
+    ids=["pods", "nodes", "argo", "pvcs"],
+)
+def test_an_unhashable_value_keeps_both_items(parse, good, bad, kept):
+    parsed = parse(good_and_bad(good, bad))
+    names = [item["name"] for item in parsed]
+    assert kept in names
+    assert "bad" in names  # the odd field falls back to "Unknown"; the item stays
+
+
+def test_odd_states_become_unknown_not_errors():
+    [pod] = kube_cluster.parse_pods(
+        {"items": [{"metadata": {"name": "p"}, "status": {"phase": UNHASHABLE}}]}, LAB_NOW
+    )
+    assert pod["phase"] == "Unknown"
+    [app] = kube_cluster.parse_argo_apps(
+        {"items": [{"metadata": {"name": "a"}, "status": {"sync": {"status": UNHASHABLE}}}]}
+    )
+    assert app["sync"] == "Unknown"
+    assert app["op"] is None
+
+
+@pytest.mark.parametrize(
+    ("parse", "helper", "data"),
+    [
+        (
+            lambda data: kube_cluster.parse_pods(data, LAB_NOW),
+            "owner_of",
+            {"items": [{"metadata": {"name": "bad"}}, {"metadata": {"name": "good"}}]},
+        ),
+        (
+            kube_cluster.parse_nodes,
+            "_millicores",
+            {"items": [{"metadata": {"name": "bad"}}, {"metadata": {"name": "good"}}]},
+        ),
+        (
+            lambda data: kube_cluster.parse_pvcs(data, LAB_NOW),
+            "_age",
+            {
+                "items": [
+                    {"metadata": {"name": "bad", "namespace": "n"}},
+                    {"metadata": {"name": "good", "namespace": "n"}},
+                ]
+            },
+        ),
+    ],
+    ids=["pods", "nodes", "pvcs"],
+)
+def test_an_item_that_breaks_the_parser_is_skipped_alone(monkeypatch, parse, helper, data):
+    real = getattr(kube_cluster, helper)
+    calls = {"n": 0}
+
+    def breaks_on_the_first_item(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TypeError("odd data")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(kube_cluster, helper, breaks_on_the_first_item)
+
+    assert [item["name"] for item in parse(data)] == ["good"]
+
+
+def test_a_list_that_lost_items_while_parsing_is_incomplete(monkeypatch):
+    real = kube_cluster.owner_of
+
+    def breaks_for_one_pod(pod):
+        if pod["metadata"]["name"].startswith("coredns"):
+            raise TypeError("odd data")
+        return real(pod)
+
+    monkeypatch.setattr(kube_cluster, "owner_of", breaks_for_one_pod)
+
+    view = kube_cluster.collect_cluster_view(lab_client(), LAB_NOW)
+
+    assert view["pod_counts"]["total"] == 16  # the lab has 17 pods; one couldn't be read
+    assert "pods" in view["incomplete"]
+
+
+def test_a_clean_lab_read_is_not_incomplete():
+    assert kube_cluster.collect_cluster_view(lab_client(), LAB_NOW)["incomplete"] == []

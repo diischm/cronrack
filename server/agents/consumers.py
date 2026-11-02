@@ -156,7 +156,8 @@ def ingest_report(host_id: int, report: dict, connection_id: str) -> None:
     """Save the report and, if the status changed, record it. Raises Host.DoesNotExist.
 
     The host keeps its own part of the report; the Kubernetes cluster view (if any) goes
-    to its Cluster, in the same transaction.
+    to its Cluster in a savepoint of its own: if that part fails, only it is rolled back,
+    and the host's report is still saved (and the agent isn't disconnected for it).
     """
     with transaction.atomic():
         host = Host.objects.get(pk=host_id)
@@ -166,7 +167,12 @@ def ingest_report(host_id: int, report: dict, connection_id: str) -> None:
             record_status_change(
                 host, result.old_status, result.new_status, top_issues(result.findings)
             )
-        save_cluster_snapshot(host, cluster_view)
+        try:
+            with transaction.atomic():
+                save_cluster_snapshot(host, cluster_view)
+        except Exception as exc:  # noqa: BLE001 - the host's own report must still be saved
+            # The class name only: messages could contain agent data.
+            logger.warning("Host %s: cluster view not saved (%s)", host_id, type(exc).__name__)
         # The scheduler clears `connected` when it marks a host offline. If this
         # (still active) socket reports again after all, it is connected after all.
         Host.objects.filter(pk=host_id, connection_id=connection_id, connected=False).update(

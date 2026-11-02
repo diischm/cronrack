@@ -12,6 +12,7 @@ other than the Helm release name/namespace. fixtures/k8s has planted secrets and
 the tests prove none of them comes out.
 """
 
+import contextlib
 import functools
 import re
 from collections.abc import Callable
@@ -142,6 +143,21 @@ def _match(pattern: re.Pattern, value: Any) -> str | None:
     return value if isinstance(value, str) and pattern.fullmatch(value) else None
 
 
+def _choice(value: Any, allowed: Any, default: Any = None) -> Any:
+    """`value` if it is one of the allowed strings, else `default`. A list or dict here
+    would make a plain `in` check raise (unhashable), so the type is checked first."""
+    return value if isinstance(value, str) and value in allowed else default
+
+
+def _one_item() -> contextlib.AbstractContextManager:
+    """Wrap the body of a per-item loop: an item that breaks the parser is skipped alone.
+
+    Deliberately broad, like never_raises, but per item: one odd object must never blank
+    the whole list. collect_cluster_view notices the lost item and marks the list incomplete.
+    """
+    return contextlib.suppress(Exception)
+
+
 def _int(value: Any, maximum: int = MAX_COUNT) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         return 0
@@ -207,14 +223,15 @@ def parse_node_metrics(data: Any) -> dict[str, dict]:
     """node name -> current usage, from metrics.k8s.io (a snapshot, no history)."""
     usage = {}
     for item in _items(data):
-        name = _name(_dict(item.get("metadata")).get("name"))
-        if name is None:
-            continue
-        current = _dict(item.get("usage"))
-        usage[name] = {
-            "cpu_used_m": _millicores(current.get("cpu")),
-            "mem_used_mi": _mebibytes(current.get("memory")),
-        }
+        with _one_item():
+            name = _name(_dict(item.get("metadata")).get("name"))
+            if name is None:
+                continue
+            current = _dict(item.get("usage"))
+            usage[name] = {
+                "cpu_used_m": _millicores(current.get("cpu")),
+                "mem_used_mi": _mebibytes(current.get("memory")),
+            }
     return usage
 
 
@@ -224,42 +241,45 @@ def parse_nodes(data: Any, metrics: dict[str, dict] | None = None) -> list[dict]
     metrics = metrics if isinstance(metrics, dict) else {}
     nodes = []
     for item in _items(data):
-        meta = _dict(item.get("metadata"))
-        name = _name(meta.get("name"))
-        if name is None:
-            continue
-        status = _dict(item.get("status"))
-        conditions = {
-            c.get("type"): c.get("status") == "True" for c in _dicts(status.get("conditions"))
-        }
-        info = _dict(status.get("nodeInfo"))
-        capacity = _dict(status.get("capacity"))
-        used = _dict(metrics.get(name))
-        prefix = "node-role.kubernetes.io/"
-        roles = sorted(
-            {
-                role
-                for label in _dict(meta.get("labels"))
-                if isinstance(label, str)
-                and label.startswith(prefix)
-                and (role := _match(_ROLE, label[len(prefix) :]))
+        with _one_item():
+            meta = _dict(item.get("metadata"))
+            name = _name(meta.get("name"))
+            if name is None:
+                continue
+            status = _dict(item.get("status"))
+            conditions = {
+                c["type"]: c.get("status") == "True"
+                for c in _dicts(status.get("conditions"))
+                if isinstance(c.get("type"), str)
             }
-        )[:5]
-        nodes.append(
-            {
-                "name": name,
-                "roles": roles,
-                "ready": conditions.get("Ready") is True,
-                "pressure": [c for c in PRESSURE_CONDITIONS if conditions.get(c)],
-                "kubelet": _match(_VERSION, info.get("kubeletVersion")),
-                "os": _text(info.get("operatingSystem"), 32),
-                "arch": _text(info.get("architecture"), 32),
-                "cpu_m": _millicores(capacity.get("cpu")),
-                "mem_mi": _mebibytes(capacity.get("memory")),
-                "cpu_used_m": used.get("cpu_used_m"),
-                "mem_used_mi": used.get("mem_used_mi"),
-            }
-        )
+            info = _dict(status.get("nodeInfo"))
+            capacity = _dict(status.get("capacity"))
+            used = _dict(metrics.get(name))
+            prefix = "node-role.kubernetes.io/"
+            roles = sorted(
+                {
+                    role
+                    for label in _dict(meta.get("labels"))
+                    if isinstance(label, str)
+                    and label.startswith(prefix)
+                    and (role := _match(_ROLE, label[len(prefix) :]))
+                }
+            )[:5]
+            nodes.append(
+                {
+                    "name": name,
+                    "roles": roles,
+                    "ready": conditions.get("Ready") is True,
+                    "pressure": [c for c in PRESSURE_CONDITIONS if conditions.get(c)],
+                    "kubelet": _match(_VERSION, info.get("kubeletVersion")),
+                    "os": _text(info.get("operatingSystem"), 32),
+                    "arch": _text(info.get("architecture"), 32),
+                    "cpu_m": _millicores(capacity.get("cpu")),
+                    "mem_mi": _mebibytes(capacity.get("memory")),
+                    "cpu_used_m": used.get("cpu_used_m"),
+                    "mem_used_mi": used.get("mem_used_mi"),
+                }
+            )
     nodes.sort(key=lambda n: (n["ready"] and not n["pressure"], n["name"]))
     return nodes
 
@@ -332,32 +352,33 @@ def parse_pods(data: Any, now: datetime) -> list[dict]:
     """A compact dict per pod: where, state, readiness, restarts and why it is unhappy."""
     pods = []
     for item in _items(data):
-        meta = _dict(item.get("metadata"))
-        name = _name(meta.get("name"))
-        if name is None:
-            continue
-        spec, status = _dict(item.get("spec")), _dict(item.get("status"))
-        phase = status.get("phase") if status.get("phase") in POD_PHASES else "Unknown"
-        init, regular = _container_statuses(status)
-        total = len(_dicts(spec.get("containers"))) or len(regular)
-        last, last_age = _last_termination(status, now)
-        pods.append(
-            {
-                "ns": _name(meta.get("namespace")) or "unknown",
-                "name": name,
-                "node": _name(spec.get("nodeName")),
-                "phase": phase,
-                "ready": [sum(1 for c in regular if c.get("ready") is True), total],
-                "restarts": min(
-                    sum(_int(c.get("restartCount")) for c in init + regular), MAX_COUNT
-                ),
-                "reason": _pod_reason(status, phase),
-                "last": last,
-                "last_age_s": last_age,
-                "age_s": _age(meta.get("creationTimestamp"), now),
-                "owner": owner_of(item),
-            }
-        )
+        with _one_item():
+            meta = _dict(item.get("metadata"))
+            name = _name(meta.get("name"))
+            if name is None:
+                continue
+            spec, status = _dict(item.get("spec")), _dict(item.get("status"))
+            phase = _choice(status.get("phase"), POD_PHASES, "Unknown")
+            init, regular = _container_statuses(status)
+            total = len(_dicts(spec.get("containers"))) or len(regular)
+            last, last_age = _last_termination(status, now)
+            pods.append(
+                {
+                    "ns": _name(meta.get("namespace")) or "unknown",
+                    "name": name,
+                    "node": _name(spec.get("nodeName")),
+                    "phase": phase,
+                    "ready": [sum(1 for c in regular if c.get("ready") is True), total],
+                    "restarts": min(
+                        sum(_int(c.get("restartCount")) for c in init + regular), MAX_COUNT
+                    ),
+                    "reason": _pod_reason(status, phase),
+                    "last": last,
+                    "last_age_s": last_age,
+                    "age_s": _age(meta.get("creationTimestamp"), now),
+                    "owner": owner_of(item),
+                }
+            )
     return pods
 
 
@@ -456,28 +477,29 @@ def parse_workloads(kind: str, data: Any) -> list[dict]:
     (desired_from, desired_key), ready_key, available_key, updated_key = WORKLOAD_COUNTS[kind]
     workloads = []
     for item in _items(data):
-        meta = _dict(item.get("metadata"))
-        name = _name(meta.get("name"))
-        if name is None:
-            continue
-        spec, status = _dict(item.get("spec")), _dict(item.get("status"))
-        desired_source = spec if desired_from == "spec" else status
-        # An absent spec.replicas means 1; an absent status count means 0.
-        desired = _int(desired_source.get(desired_key, 1 if kind != "DaemonSet" else 0))
-        workloads.append(
-            {
-                "kind": kind,
-                "ns": _name(meta.get("namespace")) or "unknown",
-                "name": name,
-                "desired": desired,
-                "ready": _int(status.get(ready_key)),
-                "available": _int(status.get(available_key)),
-                "updated": _int(status.get(updated_key)),
-                "misscheduled": _int(status.get("numberMisscheduled")),
-                "images": _images(spec),
-                "helm": _helm_release(meta),
-            }
-        )
+        with _one_item():
+            meta = _dict(item.get("metadata"))
+            name = _name(meta.get("name"))
+            if name is None:
+                continue
+            spec, status = _dict(item.get("spec")), _dict(item.get("status"))
+            desired_source = spec if desired_from == "spec" else status
+            # An absent spec.replicas means 1; an absent status count means 0.
+            desired = _int(desired_source.get(desired_key, 1 if kind != "DaemonSet" else 0))
+            workloads.append(
+                {
+                    "kind": kind,
+                    "ns": _name(meta.get("namespace")) or "unknown",
+                    "name": name,
+                    "desired": desired,
+                    "ready": _int(status.get(ready_key)),
+                    "available": _int(status.get(available_key)),
+                    "updated": _int(status.get(updated_key)),
+                    "misscheduled": _int(status.get("numberMisscheduled")),
+                    "images": _images(spec),
+                    "helm": _helm_release(meta),
+                }
+            )
     return workloads
 
 
@@ -490,24 +512,25 @@ def helm_from_workloads(items: Any) -> list[dict]:
     """Helm releases seen in workload metadata (labels and annotations, no cluster secrets)."""
     releases: dict[tuple[str, str], dict] = {}
     for item in _dicts(items):
-        meta = _dict(item.get("metadata"))
-        name = _helm_release(meta)
-        if name is None:
-            continue
-        annotations, labels = _dict(meta.get("annotations")), _dict(meta.get("labels"))
-        ns = (
-            _name(annotations.get("meta.helm.sh/release-namespace"))
-            or _name(meta.get("namespace"))
-            or "unknown"
-        )
-        entry = releases.setdefault(
-            (ns, name),
-            {"name": name, "ns": ns, "chart": None, "app_version": None, "source": "labels"},
-        )
-        entry["chart"] = entry["chart"] or _match(_WORD, labels.get("helm.sh/chart"))
-        entry["app_version"] = entry["app_version"] or _match(
-            _WORD, labels.get("app.kubernetes.io/version")
-        )
+        with _one_item():
+            meta = _dict(item.get("metadata"))
+            name = _helm_release(meta)
+            if name is None:
+                continue
+            annotations, labels = _dict(meta.get("annotations")), _dict(meta.get("labels"))
+            ns = (
+                _name(annotations.get("meta.helm.sh/release-namespace"))
+                or _name(meta.get("namespace"))
+                or "unknown"
+            )
+            entry = releases.setdefault(
+                (ns, name),
+                {"name": name, "ns": ns, "chart": None, "app_version": None, "source": "labels"},
+            )
+            entry["chart"] = entry["chart"] or _match(_WORD, labels.get("helm.sh/chart"))
+            entry["app_version"] = entry["app_version"] or _match(
+                _WORD, labels.get("app.kubernetes.io/version")
+            )
     return [releases[key] for key in sorted(releases)]
 
 
@@ -529,20 +552,21 @@ def parse_helmcharts(data: Any) -> list[dict]:
     """k3s HelmChart resources: name, namespace and chart only (never values, set or repo)."""
     charts = []
     for item in _items(data):
-        meta, spec = _dict(item.get("metadata")), _dict(item.get("spec"))
-        name = _name(meta.get("name"))
-        if name is None:
-            continue
-        ns = _name(spec.get("targetNamespace")) or _name(meta.get("namespace")) or "unknown"
-        charts.append(
-            {
-                "name": name,
-                "ns": ns,
-                "chart": _chart_name(spec),
-                "app_version": None,
-                "source": "helmchart",
-            }
-        )
+        with _one_item():
+            meta, spec = _dict(item.get("metadata")), _dict(item.get("spec"))
+            name = _name(meta.get("name"))
+            if name is None:
+                continue
+            ns = _name(spec.get("targetNamespace")) or _name(meta.get("namespace")) or "unknown"
+            charts.append(
+                {
+                    "name": name,
+                    "ns": ns,
+                    "chart": _chart_name(spec),
+                    "app_version": None,
+                    "source": "helmchart",
+                }
+            )
     return charts
 
 
@@ -551,29 +575,30 @@ def parse_argo_apps(data: Any) -> list[dict]:
     """Argo CD Applications: sync and health state. Never spec.source (repo, Helm values)."""
     apps = []
     for item in _items(data):
-        meta = _dict(item.get("metadata"))
-        name = _name(meta.get("name"))
-        if name is None:
-            continue
-        status = _dict(item.get("status"))
-        sync = _dict(status.get("sync"))
-        operation = _dict(status.get("operationState"))
-        sync_status = _dict(sync).get("status")
-        health = _dict(status.get("health")).get("status")
-        phase = operation.get("phase")
-        revision = sync.get("revision")
-        apps.append(
-            {
-                "name": name,
-                "ns": _name(meta.get("namespace")) or "unknown",
-                "project": _name(_dict(item.get("spec")).get("project")),
-                "sync": sync_status if sync_status in SYNC_STATUSES else "Unknown",
-                "health": health if health in HEALTH_STATUSES else "Unknown",
-                "rev": _match(_REVISION, revision[:7]) if isinstance(revision, str) else None,
-                "op": phase if phase in OPERATION_PHASES else None,
-                "synced_at": _match(_TIMESTAMP, operation.get("finishedAt")),
-            }
-        )
+        with _one_item():
+            meta = _dict(item.get("metadata"))
+            name = _name(meta.get("name"))
+            if name is None:
+                continue
+            status = _dict(item.get("status"))
+            sync = _dict(status.get("sync"))
+            operation = _dict(status.get("operationState"))
+            sync_status = _dict(sync).get("status")
+            health = _dict(status.get("health")).get("status")
+            phase = operation.get("phase")
+            revision = sync.get("revision")
+            apps.append(
+                {
+                    "name": name,
+                    "ns": _name(meta.get("namespace")) or "unknown",
+                    "project": _name(_dict(item.get("spec")).get("project")),
+                    "sync": _choice(sync_status, SYNC_STATUSES, "Unknown"),
+                    "health": _choice(health, HEALTH_STATUSES, "Unknown"),
+                    "rev": _match(_REVISION, revision[:7]) if isinstance(revision, str) else None,
+                    "op": _choice(phase, OPERATION_PHASES),
+                    "synced_at": _match(_TIMESTAMP, operation.get("finishedAt")),
+                }
+            )
     return apps
 
 
@@ -601,24 +626,25 @@ def parse_pvcs(data: Any, now: datetime) -> list[dict]:
     """PersistentVolumeClaims, anything not Bound first."""
     claims = []
     for item in _items(data):
-        meta, spec, status = (_dict(item.get(k)) for k in ("metadata", "spec", "status"))
-        name = _name(meta.get("name"))
-        if name is None:
-            continue
-        size = _dict(status.get("capacity")).get("storage")
-        if size is None:
-            size = _dict(_dict(spec.get("resources")).get("requests")).get("storage")
-        phase = status.get("phase")
-        claims.append(
-            {
-                "ns": _name(meta.get("namespace")) or "unknown",
-                "name": name,
-                "phase": phase if phase in PVC_PHASES else "Unknown",
-                "class": _name(spec.get("storageClassName")),
-                "size": _match(_STORAGE, size),
-                "age_s": _age(meta.get("creationTimestamp"), now),
-            }
-        )
+        with _one_item():
+            meta, spec, status = (_dict(item.get(k)) for k in ("metadata", "spec", "status"))
+            name = _name(meta.get("name"))
+            if name is None:
+                continue
+            size = _dict(status.get("capacity")).get("storage")
+            if size is None:
+                size = _dict(_dict(spec.get("resources")).get("requests")).get("storage")
+            phase = status.get("phase")
+            claims.append(
+                {
+                    "ns": _name(meta.get("namespace")) or "unknown",
+                    "name": name,
+                    "phase": _choice(phase, PVC_PHASES, "Unknown"),
+                    "class": _name(spec.get("storageClassName")),
+                    "size": _match(_STORAGE, size),
+                    "age_s": _age(meta.get("creationTimestamp"), now),
+                }
+            )
     claims.sort(key=lambda c: (c["phase"] == "Bound", c["ns"], c["name"]))
     return claims
 
@@ -642,25 +668,28 @@ def parse_warning_events(data: Any, now: datetime) -> list[dict]:
     """The newest warning events, with the message cut to MAX_MESSAGE characters."""
     events = []
     for item in _items(data):
-        if item.get("type") != "Warning":
-            continue
-        meta, target = _dict(item.get("metadata")), _dict(item.get("involvedObject"))
-        kind, name = _match(_WORD, target.get("kind")), _name(target.get("name"))
-        if not kind or not name:
-            continue
-        count = _int(item.get("count")) or _int(_dict(item.get("series")).get("count")) or 1
-        stamp = _event_time(item)
-        events.append(
-            {
-                "ns": _name(meta.get("namespace")) or _name(target.get("namespace")) or "unknown",
-                "obj": f"{kind}/{name}",
-                "reason": _match(_REASON, item.get("reason")),
-                "msg": _text(item.get("message"), MAX_MESSAGE) or "",
-                "count": count,
-                "age_s": _age(stamp, now),
-                "_at": _timestamp(stamp) or 0.0,
-            }
-        )
+        with _one_item():
+            if item.get("type") != "Warning":
+                continue
+            meta, target = _dict(item.get("metadata")), _dict(item.get("involvedObject"))
+            kind, name = _match(_WORD, target.get("kind")), _name(target.get("name"))
+            if not kind or not name:
+                continue
+            count = _int(item.get("count")) or _int(_dict(item.get("series")).get("count")) or 1
+            stamp = _event_time(item)
+            events.append(
+                {
+                    "ns": _name(meta.get("namespace"))
+                    or _name(target.get("namespace"))
+                    or "unknown",
+                    "obj": f"{kind}/{name}",
+                    "reason": _match(_REASON, item.get("reason")),
+                    "msg": _text(item.get("message"), MAX_MESSAGE) or "",
+                    "count": count,
+                    "age_s": _age(stamp, now),
+                    "_at": _timestamp(stamp) or 0.0,
+                }
+            )
     events.sort(key=lambda e: -e["_at"])
     for event in events:
         del event["_at"]
@@ -771,16 +800,27 @@ def collect_cluster_view(client: Any, now: datetime) -> dict:
     charts_body = run.fetch(kube_api.HELMCHARTS, "helm")
     apps_body = run.fetch(kube_api.APPLICATIONS, "argo")
 
-    nodes = parse_nodes(nodes_body, parse_node_metrics(metrics_body))
-    problems, ok_pods, counts = split_pods(parse_pods(pods_body, now))
+    def parsed(name: str, items: list, *bodies: Any) -> list:
+        """`items` parsed from `bodies`; a list that lost items while parsing is incomplete."""
+        if len(items) < sum(len(_items(body)) for body in bodies):
+            run.mark_incomplete(name)
+        return items
+
+    nodes = parsed("nodes", parse_nodes(nodes_body, parse_node_metrics(metrics_body)), nodes_body)
+    pods = parsed("pods", parse_pods(pods_body, now), pods_body)
+    problems, ok_pods, counts = split_pods(pods)
     kept_ok = sum(len(v) for v in ok_pods.values())
     if kept_ok < counts["total"] - counts["problem"]:
         run.mark_cut("ok_pods")
 
-    workloads = (
+    workloads = parsed(
+        "workloads",
         parse_workloads("Deployment", deployments_body)
         + parse_workloads("StatefulSet", statefulsets_body)
-        + parse_workloads("DaemonSet", daemonsets_body)
+        + parse_workloads("DaemonSet", daemonsets_body),
+        deployments_body,
+        statefulsets_body,
+        daemonsets_body,
     )
     argocd = argocd_version(workloads)
     workloads.sort(key=lambda w: (not is_unhealthy_workload(w), w["ns"], w["kind"], w["name"]))
@@ -793,7 +833,7 @@ def collect_cluster_view(client: Any, now: datetime) -> dict:
     helm += [chart for chart in parse_helmcharts(charts_body) if chart["name"] not in known]
     helm.sort(key=lambda h: (h["ns"], h["name"]))
 
-    apps = parse_argo_apps(apps_body)
+    apps = parsed("argo", parse_argo_apps(apps_body), apps_body)
     apps.sort(
         key=lambda a: (a["sync"] == "Synced" and a["health"] == "Healthy", a["ns"], a["name"])
     )
@@ -814,7 +854,7 @@ def collect_cluster_view(client: Any, now: datetime) -> dict:
         "helm": _cap(helm, MAX_HELM, "helm", run),
         "argo": _cap(apps, MAX_ARGO, "argo", run),
         "argocd_version": argocd,
-        "pvcs": _cap(parse_pvcs(pvcs_body, now), MAX_PVCS, "pvcs", run),
+        "pvcs": _cap(parsed("pvcs", parse_pvcs(pvcs_body, now), pvcs_body), MAX_PVCS, "pvcs", run),
         "events": parse_warning_events(events_body, now),
     }
     view["truncated"] = bool(run.cut)
