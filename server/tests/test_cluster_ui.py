@@ -112,7 +112,7 @@ def test_offline_cluster_card_has_an_unlit_lamp_and_the_offline_line(
     rack = section(page(alice_client, "/"), 'id="cluster-rack"', "</ul>")
     assert "lamp--off" in rack
     assert "status-icon" not in rack
-    assert "<strong>Offline</strong> · last data" in rack
+    assert '<strong>Offline</strong><span class="offline-note__sep"> · </span>last data' in rack
 
 
 def test_cluster_unit_template_holds_no_cluster_data(alice_client: Client, live):  # noqa: F811

@@ -61,19 +61,19 @@
   </div>
 
   <section class="summary desk-only" aria-label="Summary">
-    <div class="surface tile">
+    <div class="surface tile tile--red">
       <div class="tile__label"><svg class="tile__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><span>Needs you</span></div>
-      <p class="tile__value"><span id="tile-red">{{ status_counts.red }}</span> <span class="tile__unit" id="tile-red-unit">host{{ status_counts.red|pluralize }}</span></p>
+      <p class="tile__value"><span class="g-flow" id="tile-red">{{ status_counts.red }}</span> <span class="tile__unit" id="tile-red-unit">host{{ status_counts.red|pluralize }}</span></p>
     </div>
-    <div class="surface tile">
+    <div class="surface tile tile--yellow">
       <div class="tile__label"><svg class="tile__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span>Heads up</span></div>
-      <p class="tile__value"><span id="tile-yellow">{{ status_counts.yellow }}</span> <span class="tile__unit" id="tile-yellow-unit">host{{ status_counts.yellow|pluralize }}</span></p>
+      <p class="tile__value"><span class="g-flow" id="tile-yellow">{{ status_counts.yellow }}</span> <span class="tile__unit" id="tile-yellow-unit">host{{ status_counts.yellow|pluralize }}</span></p>
     </div>
-    <div class="surface tile">
+    <div class="surface tile tile--green">
       <div class="tile__label"><svg class="tile__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg><span>All good</span></div>
-      <p class="tile__value"><span id="tile-green">{{ status_counts.green }}</span> <span class="tile__unit" id="tile-green-unit">host{{ status_counts.green|pluralize }}</span></p>
+      <p class="tile__value"><span class="g-flow" id="tile-green">{{ status_counts.green }}</span> <span class="tile__unit" id="tile-green-unit">host{{ status_counts.green|pluralize }}</span></p>
     </div>
-    <div class="surface tile">
+    <div class="surface tile tile--online">
       <div class="tile__label">
         <svg class="tile__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"></rect><rect x="3" y="13" width="18" height="7" rx="2"></rect><path d="M7 7.5h.01M7 16.5h.01"></path></svg>
         <span>Hosts online</span>
@@ -82,6 +82,24 @@
       {# Always rendered (hidden at 0) so overview.js can show it after a refresh. #}
       <p class="offline-note tile__offline" id="tile-offline"{% if not status_counts.offline %} hidden{% endif %}><svg class="tile__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.77.04"></path></svg><span id="tile-offline-text"><strong>Offline</strong> · {{ status_counts.offline }} host{{ status_counts.offline|pluralize }}</span></p>
     </div>
+    {# Glass only: the fourth tile counts offline hosts (Legacy shows "Hosts online" above). #}
+    <div class="surface tile tile--offline g-only">
+      <div class="tile__label"><span>Offline</span></div>
+      <p class="tile__value"><span class="g-flow" id="tile-offline-count">{{ status_counts.offline }}</span> <span class="tile__unit" id="tile-offline-count-unit">host{{ status_counts.offline|pluralize }}</span></p>
+    </div>
+  </section>
+
+  {% comment %}
+    Glass only (.g-only): the red and yellow hosts as larger cards, above the host grid, in
+    backend order (red first). Always rendered, hidden while no host is red or yellow, so
+    overview.js can fill it on a refresh. Legacy never shows it (its rack says the same).
+  {% endcomment %}
+  <section class="g-only g-attention" id="g-attention" aria-labelledby="g-attention-title"{% if not status_counts.red and not status_counts.yellow %} hidden{% endif %}>
+    <h2 class="section-title" id="g-attention-title">Needs attention</h2>
+    <ul class="g-attention__grid" id="g-attention-list">
+      {% for host in hosts %}{% if host.status == "red" or host.status == "yellow" %}{% include "components/attention_card.html" with host=host %}{% endif %}{% endfor %}
+    </ul>
+    <template id="attention-card-template">{% include "components/attention_card.html" with blank=True %}</template>
   </section>
 
   {# From 1200px (pages.css): rack left, "While you were away" right; DOM order = visual order. #}

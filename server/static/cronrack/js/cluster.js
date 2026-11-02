@@ -102,9 +102,13 @@
     if (meta) {
       const parts = [];
       if (offline) {
+        // Like the template: Glass hides "Offline" + " · " visually (labels off).
         const strong = document.createElement("strong");
         strong.textContent = "Offline";
-        parts.push(strong, " · last data " + text(cluster.last_seen_human));
+        const sep = document.createElement("span");
+        sep.className = "offline-note__sep";
+        sep.textContent = " · ";
+        parts.push(strong, sep, "last data " + text(cluster.last_seen_human));
       } else {
         parts.push(cluster.has_snapshot ? "Updated " + text(cluster.last_seen_human) : "No report yet");
       }

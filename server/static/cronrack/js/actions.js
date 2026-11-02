@@ -14,6 +14,9 @@
 //
 // messages.js puts the text in with textContent only. Error text is shown exactly as the
 // backend sent it. Nothing is logged. Loaded with defer.
+//
+// "Check all now" also reports its progress as a "cronrack:progress" event (phases start,
+// asked, done, error; counts only), which the Glass theme's Dynamic Island shows (glass.js).
 (function () {
   "use strict";
   const LOADER_DELAY_MS = 300; // fast answers never flash the loader
@@ -148,21 +151,42 @@
     }
   }
 
+  // Progress of "Check all now" for anyone who wants to show it (glass.js: the Dynamic
+  // Island). Only counts from the server's JSON (integers), never text from it.
+  //   phase  "start" | "asked" (detail.asked, detail.offline) | "done" | "error"
+  function progress(phase, detail) {
+    document.dispatchEvent(
+      new CustomEvent("cronrack:progress", { detail: Object.assign({ action: "check-all", phase }, detail) })
+    );
+  }
+
   // Check all now: show the count, then refresh the overview once the agents had time to report.
   async function checkAll(form, ui) {
-    const result = await send(form);
+    progress("start");
+    let result;
+    try {
+      result = await send(form);
+    } catch (e) {
+      progress("error");
+      throw e; // the submit handler shows the network error toast
+    }
     if (!succeeded(result)) {
+      progress("error");
       ui.say(errorText(result), true);
       return;
     }
     const asked = Number.isInteger(result.data.asked) ? result.data.asked : 0;
     const offline = Number.isInteger(result.data.offline) ? result.data.offline : 0;
+    progress("asked", { asked, offline });
     // Same wording as the no-JS flash message (hosts.views.host_collect_all).
     ui.say("Asked " + plural(asked, "host") + " · " + offline + " offline.", false);
     if (asked > 0) {
       await wait(OVERVIEW_REFRESH_MS);
-      return refreshOverview();
+      const outcome = refreshOverview();
+      progress("done", { asked });
+      return outcome;
     }
+    progress("done", { asked });
   }
 
   async function testAlert(form, ui) {

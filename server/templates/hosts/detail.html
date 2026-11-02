@@ -4,7 +4,9 @@
 
 {% block title %}{{ host.name }} · CronRack{% endblock %}
 {% block main_class %}app-main--detail{% endblock %}
-{% block extra_head %}<script src="{% static 'cronrack/js/disclosure.js' %}" defer></script>{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/disclosure.js' %}" defer></script>
+{# Glass only: groups the sections below into tabs (Legacy keeps one column). #}
+<script src="{% static 'cronrack/js/glass-tabs.js' %}" defer></script>{% endblock %}
 
 {% block content %}
   {% if example %}
@@ -41,7 +43,7 @@
         </div>
         {# Offline: no icon, so this line carries the status in words (faint, "Offline" in bold). #}
         <div class="host-unit__report">
-          <p class="host-unit__meta{% if host.status == 'offline' %} offline-note{% endif %}">{% if host.status == "offline" %}<strong>Offline</strong> · last report{% else %}Last report{% endif %} {{ host.last_seen_human }} · Agent {% if host.agent_version %}v{{ host.agent_version }}{% else %}version unknown (no report yet){% endif %} · Server v{{ server_version }}</p>
+          <p class="host-unit__meta{% if host.status == 'offline' %} offline-note{% endif %}">{% if host.status == "offline" %}<strong>Offline</strong><span class="offline-note__sep"> · </span>last report{% else %}Last report{% endif %} {{ host.last_seen_human }} · Agent {% if host.agent_version %}v{{ host.agent_version }}{% else %}version unknown (no report yet){% endif %} · Server v{{ server_version }}</p>
           {# Shown by actions.js while "Check now" waits for the agent (only after 300ms). #}
           <span class="loader loader--sm surface" role="status" aria-label="Waiting for the agent" id="check-loader" hidden><span></span><span></span><span></span></span>
           {% if host.status == "offline" and not example %}

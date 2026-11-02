@@ -13,6 +13,10 @@
 // it shows. The Welcome example (0 hosts) is rendered by the server only: when hosts
 // appear (or all disappear), the page reloads once so the server renders the right one.
 //
+// Glass also has a "Needs attention" card grid (#g-attention-list, from
+// <template id="attention-card-template">) and an Offline tile (#tile-offline-count); both
+// are refreshed here too and hidden in Legacy.
+//
 // Clusters (when the user has one) sit in their own rack, #cluster-rack, filled the same way
 // from <template id="cluster-unit-template">. When the first cluster appears or the last one
 // goes, the page reloads once so the server adds or drops that section.
@@ -138,6 +142,17 @@
     meter.classList.toggle("meter--amber", p >= 85 && p < 95);
   }
 
+  // "Offline" + its " · " separator, like the templates: <strong>Offline</strong><span
+  // class="offline-note__sep"> · </span>. Glass hides both visually (labels off).
+  function offlineWords() {
+    const strong = document.createElement("strong");
+    strong.textContent = "Offline";
+    const sep = document.createElement("span");
+    sep.className = "offline-note__sep";
+    sep.textContent = " · ";
+    return [strong, sep];
+  }
+
   // The lamp and the status icon (or the offline line) of a unit, like rack_unit.html.
   function fillStatus(li, status, label, offlineText) {
     const offline = status === "offline";
@@ -156,9 +171,7 @@
       placeholder.remove(); // offline: the "Offline · last …" line is the text label
     }
     if (offline) {
-      const strong = document.createElement("strong");
-      strong.textContent = "Offline";
-      note.replaceChildren(strong, offlineText);
+      note.replaceChildren(...offlineWords(), offlineText);
     } else {
       note.remove();
     }
@@ -177,7 +190,7 @@
     link.setAttribute("href", clusterUrl(cluster));
     link.classList.toggle("rack-unit--offline", status === "offline");
     li.querySelector(".rack-unit__name").textContent = text(cluster.name);
-    fillStatus(li, status, text(cluster.status_label), " · last data " + text(cluster.last_seen_human));
+    fillStatus(li, status, text(cluster.status_label), "last data " + text(cluster.last_seen_human));
 
     let line = issues.map((issue) => text(issue && issue.text)).join(" · ");
     if (!line) {
@@ -201,7 +214,7 @@
     link.setAttribute("href", hostUrl(host));
     link.classList.toggle("rack-unit--offline", offline);
     li.querySelector(".rack-unit__name").textContent = text(host.name);
-    fillStatus(li, status, text(host.status_label), " · last report " + text(host.last_seen_human));
+    fillStatus(li, status, text(host.status_label), "last report " + text(host.last_seen_human));
 
     // Kubernetes role label: relabel the template's copy, or drop it with its ", " separator.
     const label = li.querySelector(".rack-unit__role");
@@ -230,6 +243,62 @@
     return li;
   }
 
+  // Glass's "Needs attention" cards (components/attention_card.html; the section is hidden in
+  // Legacy). One card per red or yellow host, in backend order, filled like the template.
+  const attention = byId("g-attention");
+  const attentionList = byId("g-attention-list");
+  const attentionTemplate = byId("attention-card-template");
+
+  function attentionMeta(host) {
+    const parts = [];
+    const role = ROLE_WORDS[text(host.k8s_role)];
+    if (role) {
+      parts.push(role);
+    }
+    if (host.containers) {
+      parts.push(plural(count(host.containers.total), "container"));
+    }
+    if (Number.isFinite(host.disk_max_percent)) {
+      parts.push("disk " + Math.round(host.disk_max_percent) + "%");
+    }
+    parts.push("report " + text(host.last_seen_human));
+    return parts.join(" · ");
+  }
+
+  function buildAttentionCard(host) {
+    const li = attentionTemplate.content.firstElementChild.cloneNode(true);
+    const link = li.querySelector(".g-attn");
+    const status = text(host.status);
+    link.setAttribute("href", hostUrl(host));
+    link.classList.toggle("g-attn--red", status === "red");
+    link.classList.toggle("g-attn--yellow", status === "yellow");
+    li.querySelector(".g-attn__name").textContent = text(host.name);
+    const placeholder = li.querySelector(".g-attn__head .status-icon");
+    const icon = statusIcon(status, text(host.status_label));
+    if (icon) {
+      placeholder.replaceWith(icon);
+    } else {
+      placeholder.remove();
+    }
+    const issues = Array.isArray(host.issues) ? host.issues.slice(0, 2) : [];
+    li.querySelector(".g-attn__issue-text").textContent = issues
+      .map((issue) => text(issue && issue.text))
+      .join(" · ");
+    li.querySelector(".g-attn__meta-text").textContent = attentionMeta(host);
+    return li;
+  }
+
+  function renderAttention(hosts) {
+    if (!attention || !attentionList || !attentionTemplate) {
+      return;
+    }
+    const cards = hosts
+      .filter((h) => h.status === "red" || h.status === "yellow")
+      .map(buildAttentionCard);
+    attention.hidden = cards.length === 0;
+    replaceUnits(attentionList, cards);
+  }
+
   function renderHead(data, hostCount) {
     const attention = count(data.attention_count);
     let title = "All good";
@@ -254,6 +323,9 @@
     setText("tile-online-unit", "of " + hostCount);
 
     const offline = count(counts.offline);
+    // Glass's fourth tile (hidden in Legacy) counts the offline hosts.
+    setText("tile-offline-count", String(offline));
+    setText("tile-offline-count-unit", offline === 1 ? "host" : "hosts");
     const note = byId("tile-offline");
     const noteText = byId("tile-offline-text");
     if (note && noteText) {
@@ -305,7 +377,10 @@
     const href = focused && list.contains(focused) ? focused.getAttribute("href") : null;
     list.replaceChildren(...units);
     if (href) {
-      const again = units.map((li) => li.querySelector(".rack-unit")).find((a) => a && a.getAttribute("href") === href);
+      // Host/cluster units (.rack-unit) and Glass's attention cards (.g-attn).
+      const again = units
+        .map((li) => li.querySelector(".rack-unit, .g-attn"))
+        .find((a) => a && a.getAttribute("href") === href);
       if (again) {
         again.focus({ preventScroll: true });
       }
@@ -355,6 +430,7 @@
       renderHead(data, hosts.length);
       if (!showsExample) {
         replaceUnits(rack, hosts.map(buildUnit));
+        renderAttention(hosts);
       }
       if (clustersShown) {
         replaceUnits(clusterRack, clusters.map(buildClusterUnit));

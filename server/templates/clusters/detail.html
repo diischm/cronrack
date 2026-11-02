@@ -38,7 +38,7 @@
           {% if cluster.status != "offline" %}{% include "components/status_icon.html" with status=cluster.status label=cluster.status_label %}{% endif %}
         </div>
         <div class="host-unit__report">
-          <p class="host-unit__meta{% if cluster.status == 'offline' %} offline-note{% endif %}" id="cluster-meta">{% if cluster.status == "offline" %}<strong>Offline</strong> · last data {{ cluster.last_seen_human }}{% elif cluster.has_snapshot %}Updated {{ cluster.last_seen_human }}{% else %}No report yet{% endif %}{% if cluster.reporter %} · via {{ cluster.reporter }}{% endif %}{% if cluster.version %} · {{ cluster.version }}{% endif %}</p>
+          <p class="host-unit__meta{% if cluster.status == 'offline' %} offline-note{% endif %}" id="cluster-meta">{% if cluster.status == "offline" %}<strong>Offline</strong><span class="offline-note__sep"> · </span>last data {{ cluster.last_seen_human }}{% elif cluster.has_snapshot %}Updated {{ cluster.last_seen_human }}{% else %}No report yet{% endif %}{% if cluster.reporter %} · via {{ cluster.reporter }}{% endif %}{% if cluster.version %} · {{ cluster.version }}{% endif %}</p>
         </div>
         <div class="host-unit__keys">
           <a class="btn" href="{{ cluster.settings_url }}">
