@@ -3,6 +3,7 @@ the install command the "Add host" page shows."""
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -185,13 +186,25 @@ def test_server_and_agent_versions():
     from agent import AGENT_VERSION
     from cronrack import SERVER_VERSION
 
-    assert SERVER_VERSION == "0.1.0"
+    assert SERVER_VERSION == "0.2.0"
     assert AGENT_VERSION == "0.2.0"
+
+
+def test_server_version_is_the_newest_changelog_version():
+    """The footer must show the real version: bump SERVER_VERSION with every release."""
+    from cronrack import SERVER_VERSION
+
+    changelog = (SERVER_DIR.parent / "CHANGELOG.md").read_text(encoding="utf-8")
+    # The first "## [x.y.z]" heading is the newest release ("## [Unreleased]" wouldn't match).
+    newest = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.MULTILINE)
+
+    assert newest is not None, "no '## [x.y.z]' heading in CHANGELOG.md"
+    assert SERVER_VERSION == newest.group(1)
 
 
 def test_sidebar_footer_shows_server_version(alice_client):
     html = alice_client.get("/").content.decode()
-    assert '<p class="side-version">CronRack v0.1.0</p>' in html
+    assert '<p class="side-version">CronRack v0.2.0</p>' in html
 
 
 def test_no_pod_line_outside_kubernetes(alice_client, monkeypatch):
@@ -242,19 +255,19 @@ def test_pod_line_is_only_for_logged_in_users(client, alice, monkeypatch):
 
 
 def test_healthz_does_not_show_the_version(alice):
-    assert b"0.1.0" not in Client().get("/healthz").content
+    assert b"0.2.0" not in Client().get("/healthz").content
 
 
 def test_host_detail_shows_agent_and_server_version(alice_client, host):
     host.latest_report = make_report(agent_version="0.0.9")
     host.save()
     html = alice_client.get(f"/hosts/{host.pk}/").content.decode()
-    assert "Agent v0.0.9 · Server v0.1.0" in html
+    assert "Agent v0.0.9 · Server v0.2.0" in html
 
 
 def test_host_detail_before_first_report(alice_client, host):
     html = alice_client.get(f"/hosts/{host.pk}/").content.decode()
-    assert "Agent version unknown (no report yet) · Server v0.1.0" in html
+    assert "Agent version unknown (no report yet) · Server v0.2.0" in html
 
 
 def test_agent_version_is_escaped(alice_client, host):
