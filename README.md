@@ -228,6 +228,9 @@ Installer options (`install.sh --help` prints the same):
 | `--server URL` | Your server's address, e.g. `https://myserver.tail1234.ts.net`. Required for installing. A re-run always updates it in the config. |
 | `--ca-file PATH` | Root certificate to trust, for Caddy's own CA (Option B). Used for the download and copied to `/etc/cronrack/ca.crt` for the agent. |
 | `--new-token` | On a re-run: ask for a new token. Without it, a re-run keeps the existing token. |
+| `--k8s`, `--k8s-cluster-view`, `--k8s-ca PATH`, `--k8s-api URL` | Kubernetes monitoring, see [docs/kubernetes-monitoring.md](docs/kubernetes-monitoring.md). |
+| `--upgrade` | Upgrade an installed agent. Asks nothing, needs no terminal, keeps every setting, and rolls the code back if the new version doesn't keep running. Exit codes 0-7 are in `--help` and [docs/DEPLOY.md, 2.5](docs/DEPLOY.md#25-upgrading-an-agent). |
+| `--server-change` | With `--upgrade`: allow `--server` to be a different server than the agent uses now (otherwise refused). |
 | `--uninstall` | Remove the agent (see below). |
 
 ## Everyday tasks
@@ -251,9 +254,25 @@ See [CHANGELOG.md](CHANGELOG.md) for what changed.
 
 ### Update an agent
 
-Re-run the same install command on the host. It installs the agent version your server
-has and keeps the config and token, so it doesn't ask for the token again. Update the
-server first.
+Update the server first. An older agent keeps working with a newer server, so you only
+need this when the agent changed (the CHANGELOG says so). On the host:
+
+```bash
+curl -fsSL https://myserver.tail1234.ts.net/agent/install.sh | sudo bash -s -- --server https://myserver.tail1234.ts.net --upgrade
+```
+
+With Caddy's own certificate (Option B), trust the CA the installer already copied to the
+host (`sudo` on curl too, because only root can read it):
+
+```bash
+sudo curl -fsSL --cacert /etc/cronrack/ca.crt https://<your-server>/agent/install.sh | sudo bash -s -- --server https://<your-server> --upgrade
+```
+
+`--upgrade` asks nothing (safe from a script or Ansible), keeps the token, the CA, the
+Kubernetes settings and your Docker choice, does nothing if the agent is already current,
+and puts the previous version back if the new one doesn't keep running. It records what is
+installed in `/opt/cronrack-agent/INSTALLED`. Details and exit codes:
+[docs/DEPLOY.md, 2.5](docs/DEPLOY.md#25-upgrading-an-agent).
 
 ### Uninstall an agent
 

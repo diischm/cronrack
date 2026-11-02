@@ -310,12 +310,13 @@ installer copy it to `/etc/cronrack/ca.crt` for the agent. The installer:
 4. asks for the **token**. Paste it and press Enter. You won't see it while typing; that's
    on purpose, so it never lands on screen or in your shell history. It's written to
    `/etc/cronrack/agent.toml`, readable only by root and the agent (mode 640);
-5. asks about Docker, **only if Docker is installed**: "Give the agent Docker access?"
-   Being in the `docker` group is equivalent to root on that host. Answer `y` only if you
-   want container checks and accept that trade-off; the default is no. Without Docker
-   you'll see "Docker not found: container checks will be off. Re-run this installer
-   after installing Docker to enable them." That's fine; the install continues;
-6. installs and starts the `cronrack-agent` systemd service.
+5. asks about Docker, **only if Docker is installed**: "Give the agent Docker access?
+   [y/N]". Being in the `docker` group is equivalent to root on that host. Answer `y` only
+   if you want container checks and accept that trade-off; the default is no. Without
+   Docker you'll see "Docker not found: container checks will be off. Re-run this
+   installer after installing Docker to enable them." That's fine; the install continues;
+6. installs and starts the `cronrack-agent` systemd service, and writes
+   `/opt/cronrack-agent/INSTALLED`, a small record of what is installed (2.5).
 
 Within a few seconds the host in the web UI changes from "Waiting for first report" to
 green, yellow or red.
@@ -341,22 +342,127 @@ INFO agent.connection: Connected; reporting every 60s (updates, reboot, containe
 
 The host's page in CronRack shows the agent's and the server's version at the bottom.
 
-### 2.5 Re-run to upgrade (or to change things)
+### 2.5 Upgrading an agent
 
-Run the **same install command** again. It upgrades the agent to the version your server
-has and keeps `/etc/cronrack/agent.toml` and the token, so it **doesn't ask for the token**.
+**Do you need to?** An older agent keeps working with a newer server, so you only need
+to upgrade an agent when the **agent** changed. `CHANGELOG.md` says when it did, and the
+host's page shows the agent's version next to the server's.
+
+On the host, run:
+
+```bash
+sudo curl -fsSL --cacert /etc/cronrack/ca.crt https://cronrack.home.lan/agent/install.sh \
+  | sudo bash -s -- --server https://cronrack.home.lan --upgrade
+```
+
+- `--cacert /etc/cronrack/ca.crt` is the CA the installer copied there during the
+  install, so you don't need `cronrack-ca.crt` again. `/etc/cronrack` is readable only by
+  root and the agent, which is why the **curl** runs with `sudo` too.
+- If your server has a publicly trusted certificate (e.g. Tailscale, Option A in the
+  README), there is no `/etc/cronrack/ca.crt`: leave out `sudo` and `--cacert` before the
+  `|`, as in your install command.
+- `--server` must be the server the agent already uses (`server_url` in
+  `/etc/cronrack/agent.toml`). Upper or lower case, a trailing `/` and an explicit `:443`
+  don't matter; anything else does.
+
+`--upgrade` **asks nothing and needs no terminal**, so you can run it from a script, cron
+or Ansible. It:
+
+1. refuses (exit 3) if no agent is installed here: run the normal install instead;
+2. refuses (exit 4) if `--server` is a different server. Add `--server-change` if you
+   really want to move the agent (it then updates `server_url`);
+3. downloads the agent and checks its SHA-256, exactly like the install;
+4. stops right there if that exact version is already installed: "already up to date
+   (0.2.0)", nothing is restarted, exit 0. If the agent service is **not running** at that
+   moment, it exits 7 instead and still starts nothing: something stopped it, so look at
+   `systemctl status cronrack-agent` and `journalctl -u cronrack-agent` first;
+5. otherwise installs the new code, updates its one library (`websockets`) in the venv,
+   re-applies the owners and permissions, restarts the service and watches it for a few
+   seconds to check that it **keeps running**. Whether the service starts at boot is left
+   as it was: a service you disabled (`systemctl disable cronrack-agent`) stays disabled;
+6. prints `Upgraded the CronRack agent: 0.1.0 -> 0.2.0` and what it kept.
+
+**What it keeps, untouched:** the token, the CA certificate (`/etc/cronrack/ca.crt`),
+the Kubernetes token and every `[kubernetes]` setting, and your current Docker choice
+(on stays on, off stays off). `agent.toml` is not rewritten at all, except `server_url`
+with `--server-change` and `ca_file` with `--ca-file new-ca.crt` (allowed, to replace the
+CA). Other options that change settings (`--new-token`, `--k8s…`, `--uninstall`) are
+refused with `--upgrade` (exit 2): run the install command without `--upgrade` for them.
+
+**Automatic rollback:** if the new version doesn't keep running, the installer puts the
+previous code back (with its unit file), restarts it and exits with 6: "upgrade failed,
+rolled back to X.Y.Z". `INSTALLED` is only written once the new version runs, so it still
+describes the old one. **Not** rolled back: the `websockets` library in the venv, and a
+`server_url` or CA that this run changed with `--server-change` or `--ca-file`. If the
+rollback itself doesn't come up, you get exit 5 and the agent is down. Either way, see
+why with `journalctl -u cronrack-agent -n 50`.
+
+**From a script or Ansible:** run the command in a shell with `set -o pipefail` (e.g.
+Ansible's `shell` module with `executable: /bin/bash`), so a failed download (server
+down, wrong CA) makes the command fail instead of giving bash an empty script that
+"succeeds". Only one install or upgrade runs at a time on a host; a second one stops
+with exit 1. The whole script is one function called on its last line, so a download
+that breaks off half-way runs nothing.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | installed, upgraded, or already up to date |
+| 1 | any other failure (e.g. download or checksum failed; nothing was changed) |
+| 2 | invalid arguments, or `--upgrade` with an option that changes settings |
+| 3 | `--upgrade`, but no agent is installed here |
+| 4 | `--upgrade`, but `--server` is not the agent's server (add `--server-change`) |
+| 5 | `--upgrade`: the agent did not keep running, and the rollback didn't either. The agent is **down** |
+| 6 | `--upgrade`: the new version did not keep running; the previous version was put back and runs (`websockets` is not rolled back) |
+| 7 | `--upgrade`: already up to date, but the agent service is not running. Nothing was changed or started; see `systemctl status cronrack-agent` and `journalctl -u cronrack-agent` |
+
+**The `INSTALLED` file.** Every install and upgrade writes `/opt/cronrack-agent/INSTALLED`
+(`root:root`, mode 644, no secrets). It's what `--upgrade` compares with, and what a
+script can read to decide whether a host needs an upgrade:
+
+```
+# CronRack agent install record. Written by install.sh; do not edit.
+format=1
+version=0.2.0
+sha256=<SHA-256 of the agent package, 64 hex characters>
+server_host=cronrack.home.lan
+installed_at=2026-11-02T10:00:00Z
+```
+
+One `key=value` per line, lines starting with `#` are comments. `sha256` matches the
+first word of `https://<server>/agent/download/cronrack-agent.tar.gz.sha256`, so "needs an
+upgrade" is simply "the two differ". `server_host` is only the host name (never the token
+or the full URL); `installed_at` is UTC. New keys may be added later (`format` changes
+only if the meaning of existing keys does). Agents installed before this file existed
+don't have it; their first `--upgrade` writes it.
+
+### 2.6 Re-run to change settings
+
+Run the **install command** again (without `--upgrade`). It also upgrades the agent,
+keeps `/etc/cronrack/agent.toml` and the token, and **doesn't ask for the token** unless
+you pass `--new-token`. It needs a terminal, because it may ask questions.
 
 | You want to... | Run the install command with |
 |---|---|
-| upgrade the agent | nothing extra |
+| upgrade the agent | use `--upgrade` instead (2.5) |
 | point it at a different server address | `--server https://new-name` (updates `server_url`) |
 | use a new token (after "Rotate token" in the host's settings) | `--new-token` (asks for it, replaces only the token) |
 | change the CA certificate | `--ca-file new-ca.crt` |
-| turn Docker checks on after installing Docker | nothing extra; it asks about Docker again |
+| turn Docker checks on or off | nothing extra; it asks about Docker again |
+| turn on Kubernetes | `--k8s` or `--k8s-cluster-view` ([kubernetes-monitoring.md](kubernetes-monitoring.md)) |
+
+The questions, in this order (each only when it applies):
+
+1. `A Kubernetes token is already installed. Replace it? [y/N]` (with `--k8s-cluster-view`,
+   if there is one) and/or `Kubernetes token:` (hidden input);
+2. `Token:` (hidden input), only on the first install or with `--new-token`;
+3. the Docker question, only if Docker is installed. **Its default follows your current
+   choice**, so pressing Enter never changes it: `Docker access is on. Keep it? [Y/n]`
+   when access is on now (only `n` removes it), `Give the agent Docker access? [y/N]`
+   when it's off.
 
 A re-run without `--ca-file` keeps using `/etc/cronrack/ca.crt` from the last install.
 
-### 2.6 Uninstall
+### 2.7 Uninstall
 
 ```bash
 curl -fsSL --cacert cronrack-ca.crt https://cronrack.home.lan/agent/install.sh \
@@ -393,8 +499,9 @@ image sets `SQLITE_PATH=/data/db.sqlite3`. The volume and the files in it stay e
 as they are, so `git pull` and `docker compose up -d --build` keep your database. Only
 if you wrote your own commands or scripts with the old path (`data/db.sqlite3` inside
 the app), change them to `/data/db.sqlite3`, like the backup commands below.
-Then upgrade the agents by re-running the install command on each host (2.5); they
-download the new agent from your server.
+Then upgrade the agents with `--upgrade` on each host (2.5), if the CHANGELOG says the
+agent changed; they download the new agent from your server. An older agent keeps
+working with a newer server in the meantime.
 
 ### 3.2 Back up
 
@@ -600,9 +707,13 @@ scripts/smoke_test.sh
 
 ## Appendix: installer test plan
 
-`deploy/install.sh` needs root and systemd, so it has no automated tests in CI. Run these
-by hand on a test host (a VM or spare Pi), or in a throwaway Debian container with a stub
-`systemctl`, before a release. Each one starts from the state the previous one left.
+`tests/install/` runs `deploy/install.sh` for real, as root, in throwaway Debian
+containers with a fake `systemctl` and no network (`pytest tests/install`; it needs Docker
+and is skipped without it, except in CI). It covers `--upgrade` (refusals, exit codes,
+everything kept, no questions, "already up to date", rollback), the `INSTALLED` record and
+the Docker question's default. What it can't cover is a real systemd and a real server, so
+run these by hand on a test host (a VM or spare Pi) before a release. Each one starts from
+the state the previous one left.
 
 | # | Scenario | Steps | Expected |
 |---|---|---|---|
@@ -612,7 +723,10 @@ by hand on a test host (a VM or spare Pi), or in a throwaway Debian container wi
 | 4 | Re-run with only `--server` | Run with `--server https://<domain>/` and no `--ca-file` | Download still works (uses the installed `ca.crt`); `server_url` updated (trailing slash removed) |
 | 5 | **`--new-token`** | Rotate the token in the UI, re-run with `--new-token`, paste the new one | "Token replaced"; exactly one `token =` line, the new one; every other line unchanged; still `root:cronrack` 640; agent reconnects |
 | 6 | `--new-token`, bad input | Re-run with `--new-token`, type `not a token` | Refused with "doesn't look like a CronRack token; nothing was changed"; old token kept |
-| 7 | Docker installed later | Install Docker, re-run; answer `y`, then re-run and answer `n` | Question appears; `y` writes `/etc/systemd/system/cronrack-agent.service.d/docker.conf` (`SupplementaryGroups=docker`); `n` removes it; the service is started both times |
+| 7 | Docker installed later | Install Docker, re-run; answer `y`, then re-run and press Enter, then re-run and answer `n` | First question ends in `[y/N]`; `y` writes `/etc/systemd/system/cronrack-agent.service.d/docker.conf` (`SupplementaryGroups=docker`); the next question is "Docker access is on. Keep it? [Y/n]" and Enter keeps the file; `n` removes it; the service is started every time |
+| 7a | **`--upgrade`, already current** | Run the `--upgrade` command from 2.5 | "Already up to date (X.Y.Z)"; exit 0; `systemctl status` shows the service was not restarted |
+| 7b | **`--upgrade` after a server update that changed the agent** | Update the server (3.1), run the `--upgrade` command | No questions; "Upgraded the CronRack agent: old -> new"; `agent.toml` unchanged (`sudo sha256sum` before and after); Docker drop-in unchanged; `/opt/cronrack-agent/INSTALLED` has the new version; host page shows the new agent version |
+| 7c | `--upgrade` from a script | `ssh host 'sudo curl ... \| sudo bash -s -- --server ... --upgrade'; echo $?` (no terminal) | Works the same, exit 0 |
 | 8 | **`--uninstall`, keep config** | `... \| sudo bash -s -- --uninstall`, answer `n` | Service stopped and disabled; unit file and drop-ins removed; `/opt/cronrack-agent` gone; `cronrack` user and group gone; `/etc/cronrack` kept as `root:root` |
 | 9 | Reinstall over a kept config | Run the install command | No token question; `agent.toml` and `ca.crt` back to `root:cronrack` 640; agent connects |
 | 10 | **`--uninstall`, delete config** | `--uninstall`, answer `y` | `/etc/cronrack`, `/opt/cronrack-agent` and the user are all gone |
