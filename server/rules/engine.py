@@ -141,6 +141,7 @@ def resolve_override(
         severity_overridden=bool(severity),
         threshold=rule.default_threshold if threshold is None else threshold,
         notify=notify or "",
+        threshold_overridden=threshold is not None,
     )
 
 

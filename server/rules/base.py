@@ -67,6 +67,7 @@ class EffectiveRule:
     severity_overridden: bool  # True if the user picked the severity explicitly
     threshold: float | None
     notify: str  # "" = route by severity (Phase 12)
+    threshold_overridden: bool = False  # True if an override set the threshold
 
 
 @dataclass(frozen=True)

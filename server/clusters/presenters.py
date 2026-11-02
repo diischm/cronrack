@@ -44,7 +44,7 @@ def active_cluster_findings(cluster: Cluster, now: datetime, data: OwnerData) ->
 
 
 def cluster_status(cluster: Cluster, now: datetime, data: OwnerData) -> dict[str, str]:
-    status = effective_cluster_status(cluster, now, data.prefs.silent_after_seconds)
+    status = effective_cluster_status(cluster, now, data.prefs.silent_after_seconds, data.overrides)
     return {"status": status, "status_label": STATUS_LABELS.get(status, status)}
 
 
