@@ -57,6 +57,28 @@ Kubernetes) cluster too. Opt-in and read-only. See `docs/kubernetes-monitoring.m
   and the server log says so at most once an hour per host (IDs only). Deleting a cluster
   frees a slot. This stops a stolen agent token from creating clusters, and an alert for
   each, without end.
+- **`install.sh --upgrade`**: one non-interactive command updates an installed agent:
+  `sudo curl -fsSL --cacert /etc/cronrack/ca.crt https://SERVER/agent/install.sh | sudo
+  bash -s -- --server https://SERVER --upgrade`. It asks nothing and needs no terminal
+  (safe from scripts and Ansible), and keeps the token, the CA, the Kubernetes token and
+  `[kubernetes]` settings and the current Docker choice. It refuses when no agent is
+  installed (exit 3) and when `--server` is another server than the agent's (exit 4;
+  `--server-change` allows the move); it doesn't combine with options that change
+  settings (exit 2). An agent that is already current is left alone ("already up to
+  date", nothing restarted). After the restart it checks that the agent keeps running;
+  if not, it puts the previous code back and exits 6 (5 if that fails too). The
+  `websockets` library in the venv is not rolled back. An agent that is up to date but
+  whose service is not running gives exit 7 and is not started. `--upgrade` never changes
+  whether the service is enabled (a disabled one stays disabled). Exit codes 0-7 are
+  listed in `--help` and `docs/DEPLOY.md`. Only one install or upgrade runs at a time, and a
+  download that breaks off half-way runs nothing (the script is one function).
+- **`/opt/cronrack-agent/INSTALLED`**: every install and upgrade records the agent version,
+  the package's SHA-256, the server's host name and the install time (UTC) as `key=value`
+  lines (`root:root`, 644, no secrets), for `--upgrade` and for scripts that decide
+  whether a host needs an upgrade. Format in `docs/DEPLOY.md`, 2.5.
+- **Automated installer tests** (`tests/install/`): `install.sh` runs for real in
+  throwaway Docker containers with no network. CI runs them (and fails if Docker is
+  missing) and now runs `shellcheck` on the shell scripts.
 
 ### Fixed
 
@@ -69,6 +91,12 @@ Kubernetes) cluster too. Opt-in and read-only. See `docs/kubernetes-monitoring.m
   whose last stop has reason `Unknown` (the container runtime lost the container, as on
   a reboot) don't count for "Pod restarting often", in the agent's problem list or the
   server's finding. Limits in `docs/kubernetes-monitoring.md`, section 6.
+- **Re-running the installer no longer removes Docker access when you press Enter.** The
+  Docker question's default now follows the current choice: "Docker access is on. Keep
+  it? [Y/n]" when it's on (only `n` removes it), "[y/N]" when it's off.
+- **The footer shows the real version**: `SERVER_VERSION` is now 0.2.0 (it said 0.1.0),
+  and a test keeps it equal to the newest version in this file.
+- Installer argument errors now exit with 2 instead of 1.
 
 ### Known issues
 
@@ -83,6 +111,9 @@ Kubernetes) cluster too. Opt-in and read-only. See `docs/kubernetes-monitoring.m
   cluster instead of a host).
 - Old agents (0.1.0) keep working unchanged. A 0.2.0 agent sends Kubernetes data only to a
   server that supports it.
+- To upgrade an agent from now on, use `--upgrade` (`docs/DEPLOY.md`, 2.5). The first
+  upgrade of an agent installed before this release has no `INSTALLED` record yet, so it
+  always installs (it can't tell "already up to date") and writes the record.
 
 ## [0.1.0] - Unreleased
 

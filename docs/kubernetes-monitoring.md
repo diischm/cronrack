@@ -152,8 +152,10 @@ curl -fsSL https://<cronrack-server>/agent/install.sh | sudo bash -s -- --server
 ```
 
 (If your CronRack server uses its own CA, add `--cacert` and `--ca-file` as in
-[DEPLOY.md](DEPLOY.md#part-2-an-agent-on-a-host). Run the installer again with `--k8s` on
-a host that already has the agent: it keeps the rest of its settings.)
+[DEPLOY.md](DEPLOY.md#part-2-an-agent-on-a-host). Run the install command again with
+`--k8s` on a host that already has the agent: it keeps the rest of its settings. Use the
+normal install command for this, not `--upgrade`: `--upgrade` never changes settings and
+refuses the `--k8s` options.)
 
 On **one** server node, use `--k8s-cluster-view` instead (it implies `--k8s`):
 
@@ -172,7 +174,10 @@ It then:
 4. writes a `[kubernetes]` section into `/etc/cronrack/agent.toml`:
    `enabled = true`, `cluster_view = true`, `api_server`, `token_file`, `ca_file`.
 
-Run the installer again to rotate the token: it asks "Replace it? [y/N]". Other flags:
+Run the install command with `--k8s-cluster-view` again to rotate the token: it asks
+"Replace it? [y/N]". Upgrading the agent with `--upgrade` (see
+[DEPLOY.md, 2.5](DEPLOY.md#25-upgrading-an-agent)) keeps the token, the CA copy and every
+`[kubernetes]` setting as they are, and asks nothing. Other flags:
 
 | Flag | What it does |
 |---|---|
