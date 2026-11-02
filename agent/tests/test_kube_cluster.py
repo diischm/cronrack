@@ -22,6 +22,8 @@ from agent.kube_api import (
 
 FIXTURES = Path(__file__).parent / "fixtures" / "k8s"
 NOW = datetime(2026, 10, 29, 12, 0, 0, tzinfo=UTC)
+# About 13 hours after the reboot recorded in fixtures/k8s/pods.json (2026-10-28T23:22Z).
+REBOOT_NOW = datetime(2026, 10, 29, 12, 30, 0, tzinfo=UTC)
 # Right after the lab capture was taken (2026-10-28 23:24 UTC).
 LAB_NOW = datetime(2026, 10, 29, 0, 0, 0, tzinfo=UTC)
 KUBE_SYSTEM_UID = "08528ee9-428d-5167-8a8e-df19e635932f"  # fake, from the sanitizer
@@ -311,6 +313,25 @@ def test_restarts_only_count_when_recent():
     assert problem_count(pod(6, "2026-10-29T10:00:00Z")) == 1  # many restarts, recent
     assert problem_count(pod(6, "2026-10-20T10:00:00Z")) == 0  # many restarts, long ago
     assert problem_count(pod(1, "2026-10-29T10:00:00Z")) == 0  # one restart is normal
+
+
+def test_restarts_from_a_node_reboot_are_not_problems():
+    """pods.json was captured about 13 hours after a node reboot: every restarted container's
+    last stop says reason "Unknown" (exit 255). Within the day those pods aren't problems."""
+    pods = kube_cluster.parse_pods(load("pods"), REBOOT_NOW)
+    restarted = [p for p in pods if p["last"] == "Unknown"]
+    assert len(restarted) >= 10
+    assert any(p["restarts"] >= kube_cluster.RESTART_PROBLEM_MIN for p in restarted)
+    assert all(p["last_age_s"] < kube_cluster.RECENT_SECONDS for p in restarted)
+
+    assert not [p["name"] for p in restarted if kube_cluster.is_problem_pod(p)]
+
+
+def test_a_real_crash_after_a_reboot_is_still_a_problem():
+    pods = kube_cluster.parse_pods(load("pods"), REBOOT_NOW)
+    restarted = next(p for p in pods if p["last"] == "Unknown" and p["restarts"] >= 3)
+
+    assert kube_cluster.is_problem_pod({**restarted, "last": "Error"})
 
 
 def test_not_ready_running_pod_is_a_problem():
@@ -845,6 +866,7 @@ def test_collect_cluster_view_lab():
         "events",
         "truncated",
         "cut",
+        "incomplete",
     }
     assert view["uid"] == KUBE_SYSTEM_UID
     assert view["version"] == "v1.35.5+k3s1"
@@ -865,6 +887,7 @@ def test_collect_cluster_view_lab():
     assert 0 < len(view["events"]) <= 20
     assert view["truncated"] is False
     assert view["cut"] == []
+    assert view["incomplete"] == []
     json.dumps(view)
 
 
@@ -983,18 +1006,19 @@ def test_a_bad_response_for_one_list_does_not_hide_the_others():
 
     assert view["api"]["error"] is None
     assert view["pvcs"] == []
-    assert view["truncated"] is True
-    assert "pvcs" in view["cut"]
+    assert view["incomplete"] == ["pvcs"]  # couldn't be read: not a harmless trim
+    assert view["cut"] == []
+    assert view["truncated"] is False
     assert len(view["nodes"]) == 3
 
 
-def test_deadline_marks_the_rest_as_cut():
+def test_deadline_marks_the_rest_as_incomplete():
     client = lab_client(**{API.PODS.path: kube_api.DeadlineExceeded()})
 
     view = kube_cluster.collect_cluster_view(client, LAB_NOW)
 
-    assert view["truncated"] is True
-    assert "pods" in view["cut"]
+    assert "pods" in view["incomplete"]
+    assert "pods" not in view["cut"]
     assert view["api"]["error"] is None
     assert len(view["nodes"]) == 3
 
@@ -1010,14 +1034,34 @@ def test_token_problem_is_unauthorized():
     assert view["nodes"] == []
 
 
-def test_client_truncation_is_reported():
+def test_a_list_the_client_could_not_read_in_full_is_incomplete():
+    # list_all says truncated: a page was too large even when asked in small bites, or
+    # the pages ran out. Problem pods may be among the ones never read.
     client = lab_client()
-    client.truncated_paths = {API.PODS.path}
+    client.truncated_paths = {API.PODS.path, API.DEPLOYMENTS.path, API.STATEFULSETS.path}
 
     view = kube_cluster.collect_cluster_view(client, LAB_NOW)
 
-    assert view["truncated"] is True
-    assert "pods" in view["cut"]
+    assert view["incomplete"] == ["pods", "workloads"]  # each name once
+    assert view["cut"] == []
+    assert view["truncated"] is False
+
+
+def test_a_required_list_that_answers_404_is_incomplete():
+    client = lab_client(**{API.PVCS.path: NotInstalled()})
+
+    view = kube_cluster.collect_cluster_view(client, LAB_NOW)
+
+    assert view["incomplete"] == ["pvcs"]
+    assert view["missing"] == []
+
+
+def test_caps_are_cut_not_incomplete():
+    client = lab_client(**{API.PODS.path: many_pods(1000, broken=150)})
+
+    view = kube_cluster.collect_cluster_view(client, LAB_NOW)
+
+    assert view["incomplete"] == []  # everything was read; some of it just isn't listed
 
 
 def many_pods(total, broken):
@@ -1149,3 +1193,135 @@ def test_collect_never_raises_on_garbage_responses():
     assert view["uid"] is None
     assert view["version"] is None
     json.dumps(view)
+
+
+# --- one odd item never hides the rest ------------------------------------------------------------
+#
+# A value of the wrong JSON type deep inside one item (a list where a string belongs) must not
+# blank the whole list, and a list that lost items must say so ("incomplete").
+
+UNHASHABLE = ["not", "a", "string"]
+
+
+def good_and_bad(good: dict, bad: dict) -> dict:
+    return {"items": [bad, good]}
+
+
+@pytest.mark.parametrize(
+    ("parse", "good", "bad", "kept"),
+    [
+        (
+            lambda data: kube_cluster.parse_pods(data, LAB_NOW),
+            {"metadata": {"name": "good", "namespace": "apps"}, "status": {"phase": "Running"}},
+            {"metadata": {"name": "bad", "namespace": "apps"}, "status": {"phase": UNHASHABLE}},
+            "good",
+        ),
+        (
+            kube_cluster.parse_nodes,
+            {"metadata": {"name": "good"}},
+            {
+                "metadata": {"name": "bad"},
+                "status": {"conditions": [{"type": UNHASHABLE, "status": "True"}]},
+            },
+            "good",
+        ),
+        (
+            kube_cluster.parse_argo_apps,
+            {"metadata": {"name": "good", "namespace": "argocd"}},
+            {
+                "metadata": {"name": "bad", "namespace": "argocd"},
+                "status": {
+                    "sync": {"status": UNHASHABLE},
+                    "health": {"status": {"x": 1}},
+                    "operationState": {"phase": UNHASHABLE},
+                },
+            },
+            "good",
+        ),
+        (
+            lambda data: kube_cluster.parse_pvcs(data, LAB_NOW),
+            {"metadata": {"name": "good", "namespace": "apps"}, "status": {"phase": "Bound"}},
+            {"metadata": {"name": "bad", "namespace": "apps"}, "status": {"phase": {"x": 1}}},
+            "good",
+        ),
+    ],
+    ids=["pods", "nodes", "argo", "pvcs"],
+)
+def test_an_unhashable_value_keeps_both_items(parse, good, bad, kept):
+    parsed = parse(good_and_bad(good, bad))
+    names = [item["name"] for item in parsed]
+    assert kept in names
+    assert "bad" in names  # the odd field falls back to "Unknown"; the item stays
+
+
+def test_odd_states_become_unknown_not_errors():
+    [pod] = kube_cluster.parse_pods(
+        {"items": [{"metadata": {"name": "p"}, "status": {"phase": UNHASHABLE}}]}, LAB_NOW
+    )
+    assert pod["phase"] == "Unknown"
+    [app] = kube_cluster.parse_argo_apps(
+        {"items": [{"metadata": {"name": "a"}, "status": {"sync": {"status": UNHASHABLE}}}]}
+    )
+    assert app["sync"] == "Unknown"
+    assert app["op"] is None
+
+
+@pytest.mark.parametrize(
+    ("parse", "helper", "data"),
+    [
+        (
+            lambda data: kube_cluster.parse_pods(data, LAB_NOW),
+            "owner_of",
+            {"items": [{"metadata": {"name": "bad"}}, {"metadata": {"name": "good"}}]},
+        ),
+        (
+            kube_cluster.parse_nodes,
+            "_millicores",
+            {"items": [{"metadata": {"name": "bad"}}, {"metadata": {"name": "good"}}]},
+        ),
+        (
+            lambda data: kube_cluster.parse_pvcs(data, LAB_NOW),
+            "_age",
+            {
+                "items": [
+                    {"metadata": {"name": "bad", "namespace": "n"}},
+                    {"metadata": {"name": "good", "namespace": "n"}},
+                ]
+            },
+        ),
+    ],
+    ids=["pods", "nodes", "pvcs"],
+)
+def test_an_item_that_breaks_the_parser_is_skipped_alone(monkeypatch, parse, helper, data):
+    real = getattr(kube_cluster, helper)
+    calls = {"n": 0}
+
+    def breaks_on_the_first_item(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TypeError("odd data")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(kube_cluster, helper, breaks_on_the_first_item)
+
+    assert [item["name"] for item in parse(data)] == ["good"]
+
+
+def test_a_list_that_lost_items_while_parsing_is_incomplete(monkeypatch):
+    real = kube_cluster.owner_of
+
+    def breaks_for_one_pod(pod):
+        if pod["metadata"]["name"].startswith("coredns"):
+            raise TypeError("odd data")
+        return real(pod)
+
+    monkeypatch.setattr(kube_cluster, "owner_of", breaks_for_one_pod)
+
+    view = kube_cluster.collect_cluster_view(lab_client(), LAB_NOW)
+
+    assert view["pod_counts"]["total"] == 16  # the lab has 17 pods; one couldn't be read
+    assert "pods" in view["incomplete"]
+
+
+def test_a_clean_lab_read_is_not_incomplete():
+    assert kube_cluster.collect_cluster_view(lab_client(), LAB_NOW)["incomplete"] == []

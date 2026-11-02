@@ -1,0 +1,23 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  One finding with its plain "why" and a copy-only fix (cluster page, "Needs your attention").
+  Usage: {% include "components/finding_card.html" with issue=issue %}   (an issue_dict)
+         {% include "components/finding_card.html" with blank=True %}    the empty copy for
+                                                                         cluster.js' <template>
+  The code well's id comes from the finding's hex fingerprint, never from a name, so agent
+  data can't pick an id. The fix is a read-only command to copy; CronRack never runs it.
+{% endcomment %}
+<li class="finding finding--{% if blank %}info{% elif issue.severity == 'red' %}red{% elif issue.severity == 'yellow' %}yellow{% else %}info{% endif %}">
+  <div class="issue-line issue-line--{% if blank %}info{% elif issue.severity == 'red' %}red{% elif issue.severity == 'yellow' %}yellow{% else %}info{% endif %}">
+    {% if blank %}{% include "components/status_icon.html" with status="info" label=None %}{% elif issue.severity == "red" or issue.severity == "yellow" %}{% include "components/status_icon.html" with status=issue.severity label=None %}{% else %}{% include "components/status_icon.html" with status="info" label=None %}{% endif %}
+    <span class="issue-line__text">{% if not blank %}{{ issue.text }}{% endif %}</span>
+  </div>
+  {% if blank or issue.why %}<p class="finding__why">{% if not blank %}{{ issue.why }}{% endif %}</p>{% endif %}
+  {% if blank or issue.fix %}
+    <div class="code-head">
+      <p class="muted">Run this yourself</p>
+      <button type="button" class="btn btn--sm js-copy"{% if not blank %} aria-controls="fix-{{ issue.fingerprint|slice:':12' }}"{% endif %}>Copy</button>
+    </div>
+    <pre class="code well"{% if not blank %} id="fix-{{ issue.fingerprint|slice:':12' }}"{% endif %}>{% if not blank %}{{ issue.fix }}{% endif %}</pre>
+  {% endif %}
+</li>

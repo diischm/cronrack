@@ -118,6 +118,30 @@
       <template id="rack-unit-template">{% include "components/rack_unit.html" with blank=True %}</template>
       {# Clicking a unit opens this preview (host-preview.js); without JS the unit is a plain link. #}
       {% include "components/host_preview.html" %}
+
+      {% comment %}
+        Clusters: their own rack under the hosts, same chassis, one unit per cluster
+        (components/cluster_unit.html), only when the user has one. The units are plain
+        links to the cluster page (the host preview only listens on #rack). overview.js
+        refreshes them from overview.json's "clusters"; when the first cluster appears or
+        the last one goes, it reloads once so the server renders or drops this section.
+      {% endcomment %}
+      {% if clusters %}
+        <div class="section-head">
+          <h2 class="section-title" id="clusters-title">Clusters</h2>
+          <a class="section-link" href="/clusters/">See all</a>
+        </div>
+        <div class="rack-chassis surface">
+          <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
+          <ul class="rack well" id="cluster-rack" aria-labelledby="clusters-title">
+            {% for cluster in clusters %}
+              {% include "components/cluster_unit.html" with cluster=cluster %}
+            {% endfor %}
+          </ul>
+          <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
+        </div>
+        <template id="cluster-unit-template">{% include "components/cluster_unit.html" with blank=True %}</template>
+      {% endif %}
     </section>
 
     {% if activity %}

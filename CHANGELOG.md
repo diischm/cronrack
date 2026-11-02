@@ -3,6 +3,68 @@
 All notable changes to CronRack. Versions follow [Semantic Versioning](https://semver.org/);
 before 1.0.0, any release may change things that worked before, and the notes say so.
 
+## [0.2.0] - Unreleased
+
+Kubernetes monitoring: CronRack now answers "what needs my attention?" for a k3s (or other
+Kubernetes) cluster too. Opt-in and read-only. See `docs/kubernetes-monitoring.md`.
+
+### Added
+
+- **Kubernetes role on every node** (`--k8s`): the host's card shows "k8s server" or
+  "k8s worker", and the host page gets a Kubernetes panel (role, node, k3s version, node
+  health, this node's pods). No cluster access or token needed.
+- **A read-only cluster view** from one node (`--k8s-cluster-view`): nodes, pods, workloads,
+  volume claims, warning events, Helm releases, Argo CD apps, versions and the API
+  certificate, read with a ServiceAccount token that may only `list` (and `get` the
+  `kube-system` namespace). Never Secrets, env values, logs, Helm values or Argo CD sources;
+  never the admin kubeconfig. The exact RBAC is documented (no YAML shipped).
+- **Cluster page** (`/clusters/<id>/`), phone first: summary readouts, problems first with
+  a plain "why" and a copy-only `kubectl` command, then every section. Tables become
+  cards on phones. Refreshes itself like the overview. A "Clusters" rack on the overview
+  and a "Clusters" nav item once you have a cluster. Rename or delete a cluster.
+- **Kubernetes findings**: node not ready or under pressure, crash loops, out-of-memory
+  kills, image pull errors, Pending pods, workloads without enough copies, Pending volume
+  claims, Argo CD out of sync or degraded, expiring API certificate or token, images
+  without a fixed tag, missing permissions (with the exact RBAC rule), lists that couldn't
+  be read in full. Cluster status changes go to Activity and Discord like hosts.
+- **Online update checks, off by default**: with "Check for updates online" turned on in
+  Settings, the server compares k3s, Argo CD and Helm with the newest releases once a day
+  (three fixed URLs, nothing about your setup is sent).
+- **`--check-k8s`**: the agent prints what its ServiceAccount may read, one line per API.
+- Agent **0.2.0**. New installer flags: `--k8s`, `--k8s-cluster-view`, `--k8s-ca`, `--k8s-api`.
+- **Limits on new clusters**: one host's agent may add at most 3 clusters, and one account
+  at most 20. A new cluster past a limit is refused (no cluster, no event, no Discord
+  alert); the host's own report is still saved, clusters you already have keep updating,
+  and the server log says so at most once an hour per host (IDs only). Deleting a cluster
+  frees a slot. This stops a stolen agent token from creating clusters, and an alert for
+  each, without end.
+
+### Fixed
+
+- **The `k8s.cluster_offline` override now works.** A threshold set for this rule (for one
+  cluster or all of them) decides when the cluster turns offline, on the cluster page and
+  in the scheduler alike; before, both used their own fixed 180 seconds. With the rule
+  disabled, the cluster is never marked offline. Without an override nothing changes: 180
+  seconds, or Settings' "mark offline after" if that is longer.
+- **A node reboot no longer makes every pod "restarted repeatedly" for a day.** Restarts
+  whose last stop has reason `Unknown` (the container runtime lost the container, as on
+  a reboot) don't count for "Pod restarting often", in the agent's problem list or the
+  server's finding. Limits in `docs/kubernetes-monitoring.md`, section 6.
+
+### Known issues
+
+- **The host offline threshold ignores a `connectivity.offline` override.** Hosts still
+  turn offline after Settings' "mark offline after"; a threshold override for that rule
+  has no effect (the cluster rule above was fixed, the host one not yet).
+
+### Upgrading
+
+- **Back up the database first** (`docs/DEPLOY.md`): this release has migrations, and two
+  of them rebuild tables on SQLite (activity events and suppressions can now belong to a
+  cluster instead of a host).
+- Old agents (0.1.0) keep working unchanged. A 0.2.0 agent sends Kubernetes data only to a
+  server that supports it.
+
 ## [0.1.0] - Unreleased
 
 The first release: the MVP. One question, answered from your phone in seconds:

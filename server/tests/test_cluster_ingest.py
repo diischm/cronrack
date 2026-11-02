@@ -1,6 +1,8 @@
 """A cluster view arrives inside a host's report: who owns it, who reports it, who is a node."""
 
+import logging
 from datetime import timedelta
+from unittest import mock
 
 import pytest
 from django.utils import timezone
@@ -151,18 +153,67 @@ def test_node_only_report_creates_no_cluster(alice, host):
     assert host.latest_report["kubernetes"]["node"]["role"] == "agent"
 
 
-def test_ingest_rolls_back_together(alice, host, monkeypatch):
-    """A failure while saving the cluster must not leave a half-saved report."""
+def test_a_broken_cluster_part_never_costs_the_host_its_report(alice, host, monkeypatch, caplog):
+    """The cluster part runs in its own savepoint: if it fails, only it is rolled back. The
+    host's report is saved and the socket lives on (no exception reaches the consumer)."""
     from agents import consumers
 
-    def boom(*args, **kwargs):
-        raise RuntimeError("database trouble")
+    def boom(host, view):
+        Cluster.objects.create(owner=host.owner, uid=CLUSTER_UID, name="half-done")
+        raise RuntimeError("cluster trouble")
 
     monkeypatch.setattr(consumers, "save_cluster_snapshot", boom)
-    with pytest.raises(RuntimeError):
-        ingest(host, make_kube_report())
+
+    ingest(host, make_kube_report())  # does not raise
+
     host.refresh_from_db()
-    assert host.latest_report is None
+    assert host.latest_report is not None
+    assert host.latest_report["kubernetes"]["node"]["role"] == "server"
+    assert not Cluster.objects.exists()  # the half-done cluster part was rolled back
+    assert "RuntimeError" in caplog.text
+    assert "cluster trouble" not in caplog.text  # class name only, never data
+
+
+def test_a_name_taken_in_a_race_gets_the_next_free_name(alice, host, monkeypatch):
+    """Another report took the default name between choosing it and saving: try again."""
+    from clusters import services
+
+    Cluster.objects.create(owner=alice, uid="1" * 8 + "-1111-1111-1111-" + "1" * 12, name="taken")
+    real = services._default_name
+    picks = iter(["taken"])  # the first pick is already gone
+
+    def racing(owner_id, host):
+        return next(picks, None) or real(owner_id, host)
+
+    monkeypatch.setattr(services, "_default_name", racing)
+
+    ingest(host, make_kube_report())
+
+    cluster = Cluster.objects.get(uid=CLUSTER_UID)
+    assert cluster.name == "nas-cluster"
+    host.refresh_from_db()
+    assert host.latest_report is not None
+
+
+def test_the_default_name_always_fits(alice):
+    from clusters.services import NAME_MAX, _default_name
+
+    long_host = Host.objects.create(owner=alice, name="h" * 64)
+    full = f"{long_host.name}-cluster"
+
+    def nth(n):  # the name _default_name picks for try n, shortened to fit
+        return full[:NAME_MAX] if n == 1 else full[: NAME_MAX - len(f"-{n}")] + f"-{n}"
+
+    Cluster.objects.bulk_create(
+        Cluster(owner=alice, uid=f"{n:08x}-2222-2222-2222-222222222222", name=nth(n))
+        for n in range(1, 1000)
+    )
+
+    name = _default_name(alice.pk, long_host)
+
+    assert len(name) <= NAME_MAX
+    assert name.endswith("-1000")
+    assert not Cluster.objects.filter(owner=alice, name=name).exists()
 
 
 def test_cluster_name_gets_a_suffix_when_taken(alice, host):
@@ -402,3 +453,156 @@ def test_save_report_still_works_with_the_stub(alice, host):
     host_part, _ = split_report(make_kube_report())
     result = save_report(host, host_part)
     assert result.new_status == "green"
+
+
+# --- caps on new clusters (a stolen agent token must not create clusters without end) -----------
+
+
+def uid(n: int) -> str:
+    return f"{n:08x}-0000-4000-8000-{n:012x}"
+
+
+def report_for(n: int):
+    return make_kube_report(cluster=make_cluster(uid=uid(n)))
+
+
+def fill(owner, count, reporter=None, start=1000):
+    """`count` existing clusters of `owner`, reported by `reporter` (or by nobody)."""
+    for n in range(start, start + count):
+        Cluster.objects.create(owner=owner, uid=uid(n), name=f"c{n}", reporter=reporter)
+
+
+@pytest.fixture
+def webhook(alice):
+    from prefs.models import Prefs
+
+    return Prefs.objects.create(
+        owner=alice, discord_webhook_url="https://discord.com/api/webhooks/123456789/abcDEF_-xyz"
+    )
+
+
+def test_a_host_may_add_up_to_three_clusters_and_no_fourth(alice, host):
+    from clusters.services import MAX_CLUSTERS_PER_HOST
+
+    assert MAX_CLUSTERS_PER_HOST == 3
+    for n in range(1, 4):
+        assert save_cluster_snapshot(host, make_cluster(uid=uid(n))) is not None
+    assert save_cluster_snapshot(host, make_cluster(uid=uid(4))) is None
+
+    assert sorted(Cluster.objects.values_list("uid", flat=True)) == [uid(1), uid(2), uid(3)]
+
+
+def test_a_refused_cluster_still_saves_the_hosts_own_report(alice, host):
+    fill(alice, 3, reporter=host)
+
+    ingest(host, report_for(4))
+
+    host.refresh_from_db()
+    assert host.latest_report["kubernetes"]["cluster"]["uid"] == uid(4)
+    assert host.latest_report["hostname"] == make_kube_report()["hostname"]
+    assert not Cluster.objects.filter(uid=uid(4)).exists()
+
+
+def test_a_refused_cluster_records_no_event_and_sends_no_alert(
+    alice, host, webhook, django_capture_on_commit_callbacks
+):
+    fill(alice, 3, reporter=host)
+    ingest(host, make_kube_report(cluster=None))  # the host's own first report (and alert)
+    events_before = StatusEvent.objects.count()
+
+    with (
+        mock.patch("alerts.discord.send_discord", return_value=True) as send,
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        ingest(host, report_for(4))
+
+    assert not StatusEvent.objects.filter(cluster__isnull=False).exists()
+    assert StatusEvent.objects.count() == events_before
+    send.assert_not_called()
+
+
+def test_the_cap_warning_is_logged_once_per_host_with_ids_only(alice, host, caplog):
+    fill(alice, 3, reporter=host)
+
+    with caplog.at_level(logging.WARNING, logger="clusters.services"):
+        ingest(host, report_for(4))
+        ingest(host, report_for(5))
+
+    warnings = [r for r in caplog.records if r.name == "clusters.services"]
+    assert len(warnings) == 1
+    assert warnings[0].getMessage() == (
+        f"Host {host.pk} (owner {alice.pk}): cluster limit reached, new cluster refused"
+    )
+    assert host.name not in caplog.text
+    assert uid(4) not in caplog.text
+
+
+def test_a_known_cluster_keeps_updating_at_the_cap(alice, host):
+    fill(alice, 2, reporter=host)
+    ingest(host, report_for(1))
+    assert Cluster.objects.filter(reporter=host).count() == 3
+
+    ingest(host, make_kube_report(cluster=make_cluster(uid=uid(1), version="v1.31.3+k3s1")))
+
+    assert Cluster.objects.get(uid=uid(1)).latest_snapshot["version"] == "v1.31.3+k3s1"
+
+
+def test_deleting_a_cluster_frees_a_slot(alice, host):
+    fill(alice, 3, reporter=host)
+    ingest(host, report_for(4))
+    assert not Cluster.objects.filter(uid=uid(4)).exists()
+
+    Cluster.objects.filter(reporter=host).first().delete()
+    ingest(host, report_for(4))
+
+    assert Cluster.objects.get(uid=uid(4)).reporter == host
+
+
+def test_other_hosts_clusters_do_not_count_toward_a_hosts_cap(alice, bob, host):
+    other = Host.objects.create(owner=alice, name="pi-01")
+    bobs = Host.objects.create(owner=bob, name="nas")
+    fill(alice, 3, reporter=other)
+    fill(bob, 3, reporter=bobs, start=2000)
+
+    ingest(host, report_for(1))
+
+    assert Cluster.objects.get(uid=uid(1)).reporter == host
+
+
+def test_no_uid_still_updates_the_hosts_cluster_at_the_cap(alice, host):
+    fill(alice, 3, reporter=host)
+    existing = Cluster.objects.filter(reporter=host).first()
+
+    ingest(host, make_kube_report(cluster=make_cluster(uid=None, version="v1.31.3+k3s1")))
+
+    existing.refresh_from_db()
+    assert existing.latest_snapshot["version"] == "v1.31.3+k3s1"
+    assert Cluster.objects.count() == 3
+
+
+def test_the_owner_cap_refuses_the_21st_cluster_across_hosts(alice, bob, host):
+    from clusters.services import MAX_CLUSTERS_PER_OWNER
+
+    assert MAX_CLUSTERS_PER_OWNER == 20
+    # 20 clusters over ten hosts, two each: every host is below its own cap.
+    for h in range(10):
+        reporter = Host.objects.create(owner=alice, name=f"node-{h}")
+        fill(alice, 2, reporter=reporter, start=1000 + 2 * h)
+
+    ingest(host, report_for(1))  # a host with no clusters at all
+
+    assert not Cluster.objects.filter(uid=uid(1)).exists()
+    assert Cluster.objects.filter(owner=alice).count() == 20
+    host.refresh_from_db()
+    assert host.latest_report is not None
+
+    # Bob is not affected by Alice's clusters.
+    bobs = Host.objects.create(owner=bob, name="nas")
+    ingest(bobs, report_for(1))
+    assert Cluster.objects.get(owner=bob).uid == uid(1)
+
+
+def test_clusters_without_a_reporter_count_toward_the_owner_cap(alice, host):
+    fill(alice, 20)  # e.g. their reporting hosts were deleted
+
+    assert save_cluster_snapshot(host, make_cluster(uid=uid(1))) is None

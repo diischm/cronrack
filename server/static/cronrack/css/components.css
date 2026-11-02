@@ -601,3 +601,46 @@ a.rack-unit:hover:not(:active) { transform: translateX(2px);
 @media (prefers-reduced-motion: reduce) {
   .switch__track, .switch__thumb { transition: none; }
 }
+
+/* Kubernetes UI (cluster page, cluster cards, host Kubernetes panel). Reusable pieces only,
+   and every colour is a token from tokens.css, so a theme restyles them without new rules. */
+
+/* Role label: a small icon + word for a fact that isn't a status (a host's Kubernetes role).
+   Plain text, no pill: status is always the status icon + words. */
+.role-label { display: inline-flex; align-items: center; gap: var(--space-1);
+  font: 700 13px var(--font-ui); color: var(--text-muted); white-space: nowrap; vertical-align: middle; }
+.role-label__icon { flex: none; color: var(--accent-text); }
+
+/* A state in a table or list: status icon (shape + hidden words) and the word itself. */
+.state { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 700; }
+
+/* Tables that become stacked cards in a narrow box (phones, narrow panels): each row is a
+   card, each cell "Label  value" with the label from data-label (CSS-generated, no markup). */
+.stack-table { container: stack-table / inline-size; }
+.stack-table td { vertical-align: top; }
+@container stack-table (max-width: 559.98px) {
+  .stack-table table, .stack-table tbody, .stack-table tr, .stack-table td { display: block; width: 100%; }
+  .stack-table.table-scroll table { white-space: normal; } /* beats .table-scroll's nowrap */
+  .stack-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap; }
+  .stack-table tr { padding: var(--space-2) 0; }
+  .stack-table tr + tr { border-top: 1px solid var(--lip); }
+  /* The label sits in a left gutter; the cell's content stays one inline flow (a name plus
+     a link, two state words ...), and long names like image references wrap. */
+  /* [data-label] outranks .table-scroll td's padding in pages.css (loaded later). */
+  .stack-table td[data-label] { position: relative; min-height: 1.5em; padding: 3px 4px 3px 38%;
+    overflow-wrap: anywhere; }
+  .stack-table td[data-label]::before { content: attr(data-label); position: absolute; left: 4px; top: 5px;
+    width: calc(38% - var(--space-3)); font-size: 12px; font-weight: 800; color: var(--text-faint); }
+}
+
+/* Links inside these tables (a node's host) get a 44px target on touch screens. */
+@media (pointer: coarse) {
+  .stack-table a { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
+}
+
+/* A finding with its "why" and a copy-only fix: issue line, plain sentence, code well. */
+.finding { display: flex; flex-direction: column; gap: var(--space-2); }
+.finding + .finding { border-top: 1px solid var(--lip); }
+.finding__why { margin: 0; font-size: 15px; color: var(--text-muted); }
+/* end Kubernetes UI */

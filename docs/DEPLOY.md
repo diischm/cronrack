@@ -320,6 +320,11 @@ installer copy it to `/etc/cronrack/ca.crt` for the agent. The installer:
 Within a few seconds the host in the web UI changes from "Waiting for first report" to
 green, yellow or red.
 
+**Kubernetes nodes (optional):** add `--k8s` on every k3s/Kubernetes node to show its role,
+and `--k8s-cluster-view` on one server node to monitor the cluster read-only (it asks for
+a ServiceAccount token). What it needs and how to set it up:
+[kubernetes-monitoring.md](kubernetes-monitoring.md).
+
 ### 2.4 Check on it
 
 ```bash

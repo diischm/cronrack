@@ -339,6 +339,22 @@ def test_pod_restarts(restarts, age, fires):
         assert findings[0].severity == "yellow"
 
 
+@pytest.mark.parametrize(
+    ("last", "fires"),
+    [("Unknown", False), ("Error", True), ("Completed", True), (None, True)],
+)
+def test_restarts_after_a_node_reboot_are_not_counted(last, fires):
+    # "Unknown" is what the runtime records for a container it lost (node reboot).
+    findings = pods_run(pod(restarts=10, last=last, last_age_s=3600))
+    assert bool(only(findings, "k8s.pod_restarts")) is fires
+
+
+def test_the_reboot_exception_leaves_the_oom_rule_alone():
+    findings = pods_run(pod(restarts=10, last="OOMKilled", last_age_s=3600))
+    assert only(findings, "k8s.pod_oomkilled")
+    assert only(findings, "k8s.pod_restarts")
+
+
 def test_pod_restart_threshold_override():
     rule = "k8s.pod_restarts"
     findings = run(
@@ -517,6 +533,69 @@ def test_snapshot_truncated_is_info_and_does_not_change_the_colour():
     assert "ok_pods" in finding.text
     assert compute_status(findings, cluster, NOW) == "green"
     assert only(run(make_cluster(truncated=False)), "k8s.snapshot_truncated") == []
+
+
+INCOMPLETE_FIXES = {
+    "pods": "kubectl get pods -A",
+    "workloads": "kubectl get deployments,statefulsets,daemonsets -A",
+    "nodes": "kubectl get nodes",
+    "argo": "kubectl get applications -A",
+    "pvcs": "kubectl get pvc -A",
+}
+
+
+@pytest.mark.parametrize(("name", "fix"), INCOMPLETE_FIXES.items())
+def test_a_list_that_could_not_be_read_in_full_is_yellow(name, fix):
+    cluster = fake_cluster(make_cluster(incomplete=[name]))
+    findings = run(cluster=cluster)
+
+    [finding] = only(findings, "k8s.snapshot_incomplete")
+    assert finding.severity == "yellow"
+    assert finding.subject == f"incomplete:{name}"
+    assert finding.fix == fix
+    assert compute_status(findings, cluster, NOW) == "yellow"
+    assert only(findings, "k8s.snapshot_truncated") == []
+
+
+def test_incomplete_pods_say_problems_may_be_hidden():
+    [finding] = only(run(make_cluster(incomplete=["pods"])), "k8s.snapshot_incomplete")
+    assert "couldn't read all pods" in finding.text
+    why = finding.why.lower()
+    assert "problems may be hidden" in why
+    # It must never sound like the harmless trim.
+    for claim in ("healthy", "nothing is missing", "only", "harmless"):
+        assert claim not in why, claim
+
+
+def test_each_incomplete_list_is_its_own_finding():
+    findings = only(run(make_cluster(incomplete=["pods", "workloads"])), "k8s.snapshot_incomplete")
+    assert [f.subject for f in findings] == ["incomplete:pods", "incomplete:workloads"]
+    assert len({f.fingerprint for f in findings}) == 2
+
+
+@pytest.mark.parametrize("name", ["events", "helm", "node_metrics", "version", "namespace"])
+def test_lists_that_hide_no_problem_stay_info(name):
+    findings = run(make_cluster(incomplete=[name]))
+    assert only(findings, "k8s.snapshot_incomplete") == []
+    [finding] = only(findings, "k8s.snapshot_truncated")
+    assert finding.severity == "info"
+    assert name in finding.text
+
+
+def test_the_harmless_trim_why_does_not_claim_everything_was_read_and_shown():
+    rule = CLUSTER_RULES["k8s.snapshot_truncated"]
+    assert rule.default_severity == "info"
+    why = rule.why.lower()
+    assert "problems are listed first" in why
+    # It also covers lists that couldn't be read, so it must not promise everything was.
+    for claim in ("everything was read", "nothing is missing", "all items"):
+        assert claim not in why, claim
+
+
+def test_incomplete_and_cut_together_give_both_findings():
+    findings = run(make_cluster(truncated=True, cut=["ok_pods"], incomplete=["pods"]))
+    assert len(only(findings, "k8s.snapshot_truncated")) == 1
+    assert len(only(findings, "k8s.snapshot_incomplete")) == 1
 
 
 # --- versions (only with "latest" data, i.e. when online checks are on) ---------------------------------
@@ -760,3 +839,37 @@ def test_host_fingerprints_do_not_change():
     assert findings["updates.security_pending"].fingerprint == expected
     expected = hashlib.sha256(b"disk.usage|3|mount:/").hexdigest()
     assert findings["disk.usage"].fingerprint == expected
+
+
+@pytest.mark.parametrize(
+    ("changes", "severity"),
+    [
+        ({"reason": "CrashLoopBackOff"}, "red"),
+        ({"reason": "CreateContainerConfigError"}, "red"),
+        ({"reason": None, "last": "OOMKilled"}, "red"),
+        ({"reason": None, "last": None, "phase": "Failed"}, "red"),
+        ({"reason": "ImagePullBackOff", "last": None}, "yellow"),
+        ({"reason": None, "last": None, "phase": "Pending"}, "yellow"),
+    ],
+)
+def test_pod_severity_matches_the_pod_rules(changes, severity):
+    from rules.k8s import pod_severity
+
+    assert pod_severity(pod(**changes)) == severity
+
+
+@pytest.mark.parametrize(
+    ("desired", "available", "misscheduled", "severity"),
+    [
+        (2, 0, 0, "red"),
+        (2, 1, 0, "yellow"),
+        (2, 2, 1, "yellow"),
+        (2, 2, 0, "green"),
+        (0, 0, 0, "green"),
+    ],
+)
+def test_workload_severity(desired, available, misscheduled, severity):
+    from rules.k8s import workload_severity
+
+    workload = {"desired": desired, "available": available, "misscheduled": misscheduled}
+    assert workload_severity(workload) == severity

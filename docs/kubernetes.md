@@ -143,7 +143,8 @@ Nothing else is written: the root file system can be read-only.
 - The rest of a hardened `securityContext` fits as well: `readOnlyRootFilesystem: true`,
   `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`,
   `seccompProfile.type: RuntimeDefault`, and `automountServiceAccountToken: false`
-  (CronRack never talks to the Kubernetes API).
+  (the CronRack *server* never talks to the Kubernetes API; monitoring a cluster is the
+  agent's job, see [kubernetes-monitoring.md](kubernetes-monitoring.md)).
 
 **Why one ReadWriteOnce volume works for several pods:** `ReadWriteOnce` means "one
 *node*", not "one pod": pods on the same node can share it. Don't use
@@ -304,7 +305,10 @@ deploy separately, which SQLite rules out.
   the box (its embedded network policy controller). The scheduler and migrate need no
   ingress at all.
 - **Egress:** the app and the scheduler send Discord alerts (HTTPS to `discord.com`) and
-  need DNS. If you restrict egress, allow those.
+  need DNS. If you restrict egress, allow those. With "Check for updates online" turned on
+  in Settings (off by default), the scheduler also asks `update.k3s.io` and
+  `api.github.com` (HTTPS) once a day; see
+  [kubernetes-monitoring.md](kubernetes-monitoring.md#7-online-update-checks-off-by-default).
 - **Secrets:** only `SECRET_KEY` (section 4). Logs never contain agent tokens, the setup
   code's hash or report contents; the one-time setup code itself is printed once, on
   purpose.

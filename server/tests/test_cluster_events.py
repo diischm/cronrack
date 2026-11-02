@@ -20,19 +20,24 @@ from alerts.discord import (
 )
 from clusters.models import Cluster
 from clusters.services import (
-    CLUSTER_SILENT_SECONDS,
+    cluster_offline_threshold,
     effective_cluster_status,
     mark_silent_clusters_offline,
 )
 from cronrack.dev_views import XSS_IMG, XSS_SCRIPT
 from hosts.models import Host
 from prefs.models import Prefs
+from rules.engine import CLUSTER_OFFLINE_RULE
+from rules.models import RuleOverride
+from rules.registry import get_rule
 
 from .conftest import CLUSTER_UID
 from .sample import make_cluster
 
 pytestmark = pytest.mark.django_db
 
+# The rule's default_threshold: the only source of the cluster offline limit.
+CLUSTER_SILENT_SECONDS = get_rule(CLUSTER_OFFLINE_RULE).default_threshold
 GOOD_URL = "https://discord.com/api/webhooks/123456789/abcDEF_-xyz"
 NOW = timezone.now()
 
@@ -230,13 +235,113 @@ def test_a_new_snapshot_brings_an_offline_cluster_back(alice, live, host):
 
 
 def test_effective_status_is_worked_out_at_read_time(live):
-    assert effective_cluster_status(live, NOW, 90) == "green"
-    assert effective_cluster_status(live, NOW + timedelta(seconds=300), 90) == "offline"
-    assert effective_cluster_status(live, NOW + timedelta(seconds=300), 900) == "green"
+    assert effective_cluster_status(live, NOW, 90, []) == "green"
+    assert effective_cluster_status(live, NOW + timedelta(seconds=300), 90, []) == "offline"
+    assert effective_cluster_status(live, NOW + timedelta(seconds=300), 900, []) == "green"
 
 
 def test_effective_status_without_data_is_waiting(cluster):
-    assert effective_cluster_status(cluster, NOW, 90) == "waiting"
+    assert effective_cluster_status(cluster, NOW, 90, []) == "waiting"
+
+
+# --- the k8s.cluster_offline override ------------------------------------------------------------
+#
+# cluster_offline_threshold() is the one place the limit is decided; the page
+# (effective_cluster_status) and the scheduler (mark_silent_clusters_offline) both use it.
+
+
+def offline_override(owner, cluster=None, **fields):
+    return RuleOverride.objects.create(
+        owner=owner, rule_id=CLUSTER_OFFLINE_RULE, cluster=cluster, **fields
+    )
+
+
+def page_status(cluster, seconds, silent_after=90):
+    overrides = list(RuleOverride.objects.filter(owner=cluster.owner))
+    return effective_cluster_status(
+        cluster, NOW + timedelta(seconds=seconds), silent_after, overrides
+    )
+
+
+def test_a_longer_cluster_override_keeps_the_cluster_online(alice, live):
+    assert page_status(live, 300) == "offline"  # without an override: past the default
+
+    offline_override(alice, live, threshold=600)
+
+    assert page_status(live, 300) == "green"
+    assert mark_silent_clusters_offline(NOW + timedelta(seconds=300)) == []
+    assert mark_silent_clusters_offline(NOW + timedelta(seconds=621)) == [live]
+
+
+def test_a_shorter_override_wins_over_a_longer_silence_setting(alice, live):
+    Prefs.objects.create(owner=alice, silent_after_seconds=900)
+    offline_override(alice, live, threshold=60)
+
+    assert page_status(live, 120, silent_after=900) == "offline"
+    assert mark_silent_clusters_offline(NOW + timedelta(seconds=120)) == [live]
+
+
+def test_a_global_override_applies_to_the_cluster(alice, live):
+    offline_override(alice, None, threshold=600)
+
+    assert page_status(live, 300) == "green"
+    assert mark_silent_clusters_offline(NOW + timedelta(seconds=300)) == []
+
+
+def test_another_owners_or_a_hosts_override_is_ignored(alice, bob, live, host):
+    offline_override(bob, None, threshold=600)
+    RuleOverride.objects.create(owner=alice, rule_id=CLUSTER_OFFLINE_RULE, host=host, threshold=600)
+    every = list(RuleOverride.objects.all())  # even if a caller passed them in by mistake
+
+    assert cluster_offline_threshold(live, 90, every) == CLUSTER_SILENT_SECONDS
+    assert page_status(live, 300) == "offline"
+    assert mark_silent_clusters_offline(NOW + timedelta(seconds=300)) == [live]
+
+
+@pytest.mark.parametrize("seconds", [100, 300, 700, 3600])
+@pytest.mark.parametrize("threshold", [None, 60, 600])
+def test_the_page_and_the_scheduler_agree(alice, live, seconds, threshold):
+    if threshold is not None:
+        offline_override(alice, live, threshold=threshold)
+    shown = page_status(live, seconds)
+    marked = mark_silent_clusters_offline(NOW + timedelta(seconds=seconds))
+    assert (shown == "offline") == (marked == [live])
+
+
+def test_the_scheduler_loads_overrides_once_not_per_cluster(alice, bob, live):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    for n, owner in enumerate([alice, alice, bob, bob]):
+        Cluster.objects.create(
+            owner=owner,
+            uid=f"{n:08d}-0000-0000-0000-000000000000",
+            name=f"c{n}",
+            status="green",
+            latest_snapshot=make_cluster(),
+            last_seen_at=NOW,
+        )
+    offline_override(alice, None, threshold=600)
+    offline_override(bob, None, threshold=600)
+
+    with CaptureQueriesContext(connection) as ctx:
+        mark_silent_clusters_offline(NOW + timedelta(seconds=60))
+
+    reads = [q["sql"] for q in ctx.captured_queries if "rules_ruleoverride" in q["sql"]]
+    assert len(reads) == 1, reads
+
+
+def test_a_disabled_rule_never_marks_the_cluster_offline(alice, live, webhook):
+    offline_override(alice, live, enabled=False)
+
+    assert cluster_offline_threshold(live, 90, list(RuleOverride.objects.all())) is None
+    assert page_status(live, 86_400 * 30) == "green"
+    with mock.patch("alerts.discord.send_discord", return_value=True) as send:
+        assert mark_silent_clusters_offline(NOW + timedelta(days=30)) == []
+    live.refresh_from_db()
+    assert live.status == "green"
+    assert not StatusEvent.objects.filter(cluster=live).exists()
+    send.assert_not_called()
 
 
 def test_check_hosts_marks_a_silent_cluster_offline(live):

@@ -2,6 +2,7 @@
 
 import copy
 import json
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -230,6 +231,10 @@ def test_node_part_values(change, valid):
         ({"truncated": True, "cut": ["ok_pods", "events"]}, True),
         ({"cut": ["Not A Name"]}, False),
         ({"cut": ["pods"] * 21}, False),
+        ({"incomplete": ["pods", "workloads"]}, True),
+        ({"incomplete": ["Not A Name"]}, False),
+        ({"incomplete": ["pods"] * 21}, False),
+        ({"incomplete": "pods"}, False),
         ({"missing": ["argoproj.io"]}, True),
         ({"missing": [5]}, False),
         ({"argocd_version": "v3.5.6"}, True),
@@ -338,7 +343,6 @@ def mutate(item, **changes):
         ("nodes", NODE_ITEM, {"cpu_m": -1}, False),
         ("nodes", NODE_ITEM, {"cpu_m": None, "mem_mi": None}, True),
         ("nodes", NODE_ITEM, {"name": "n" * 253}, True),
-        ("nodes", NODE_ITEM, {"name": "n" * 254}, False),
         ("nodes", NODE_ITEM, {"os": "x" * 33}, False),
         ("problem_pods", POD_ITEM, {"phase": "Pending", "node": None, "reason": None}, True),
         ("problem_pods", POD_ITEM, {"phase": "Crashed"}, False),
@@ -351,14 +355,8 @@ def mutate(item, **changes):
         ("problem_pods", POD_ITEM, {"restarts": -1}, False),
         ("problem_pods", POD_ITEM, {"age_s": 315_360_001}, False),
         ("problem_pods", POD_ITEM, {"age_s": None, "last_age_s": None, "last": None}, True),
-        ("problem_pods", POD_ITEM, {"name": "pod\x1b[31m"}, False),
-        (
-            "problem_pods",
-            POD_ITEM,
-            {"name": "pod\u0085"},
-            True,
-        ),  # agent cleans C1; C0/DEL only here
-        ("problem_pods", POD_ITEM, {"owner": "x" * 401}, False),
+        ("problem_pods", POD_ITEM, {"name": 5}, False),  # not a string: still refused
+        ("problem_pods", POD_ITEM, {"owner": None}, False),
         ("workloads", WORKLOAD_ITEM, {"kind": "Job"}, False),
         ("workloads", WORKLOAD_ITEM, {"kind": "DaemonSet", "misscheduled": 2}, True),
         ("workloads", WORKLOAD_ITEM, {"misscheduled": None}, False),
@@ -394,6 +392,135 @@ def test_list_item_values(key, item, change, valid):
     assert is_valid(with_cluster(**{key: [mutate(item, **change)]})) is valid
 
 
+# --- Kubernetes names (DNS-1123) -----------------------------------------------------------------
+#
+# A string that isn't a valid name is replaced by INVALID_K8S_NAME: the pod or app is still
+# shown (it may be the broken one), the odd name isn't. Only the field is refused.
+
+BAD_NAMES = [
+    "<script>alert(1)</script>",
+    '"><img src=x onerror=alert(1)>',
+    "Web",  # upper case
+    "web_1",
+    "-web",
+    "web-",
+    "",
+    "web\x1b[31m",
+    "pod\u0085",
+    "n" * 254,
+    "a/b",
+    "javascript:alert(1)",
+]
+LABEL_BAD = [*BAD_NAMES, "a.b", "n" * 64]  # namespaces are labels: no dots, at most 63
+
+NAME_FIELDS = [
+    ("nodes", NODE_ITEM, "name", BAD_NAMES),
+    ("problem_pods", POD_ITEM, "ns", LABEL_BAD),
+    ("problem_pods", POD_ITEM, "name", BAD_NAMES),
+    ("problem_pods", POD_ITEM, "node", BAD_NAMES),
+    ("workloads", WORKLOAD_ITEM, "ns", LABEL_BAD),
+    ("workloads", WORKLOAD_ITEM, "name", BAD_NAMES),
+    ("workloads", WORKLOAD_ITEM, "helm", BAD_NAMES),
+    ("helm", HELM_ITEM, "name", BAD_NAMES),
+    ("helm", HELM_ITEM, "ns", LABEL_BAD),
+    ("argo", ARGO_ITEM, "name", BAD_NAMES),
+    ("argo", ARGO_ITEM, "ns", LABEL_BAD),
+    ("argo", ARGO_ITEM, "project", BAD_NAMES),
+    ("pvcs", PVC_ITEM, "ns", LABEL_BAD),
+    ("pvcs", PVC_ITEM, "name", BAD_NAMES),
+    ("pvcs", PVC_ITEM, "class", BAD_NAMES),
+    ("events", EVENT_ITEM, "ns", LABEL_BAD),
+]
+
+
+def validated_item(key, item):
+    serializer = check(with_cluster(**{key: [item]}))
+    assert serializer.is_valid(), serializer.errors
+    return serializer.validated_data["kubernetes"]["cluster"][key][0]
+
+
+@pytest.mark.parametrize(
+    ("key", "item", "field", "bad"),
+    [(k, i, f, b) for k, i, f, bads in NAME_FIELDS for b in bads],
+    ids=lambda v: v if isinstance(v, str) and len(v) < 30 else None,
+)
+def test_a_bad_kubernetes_name_is_replaced_not_refused(key, item, field, bad):
+    value = validated_item(key, {**item, field: bad})
+    assert value[field] == s.INVALID_K8S_NAME
+    assert value != {**item, field: bad}  # the rest of the item survives
+    assert {k: v for k, v in value.items() if k != field} == {
+        k: v for k, v in item.items() if k != field
+    }
+
+
+@pytest.mark.parametrize(
+    "good",
+    ["web", "web-5d9f7c8b6-x2k4q", "a", "0", "kube-system", "n" * 253, "data.web-0", "a1.b2.c3"],
+)
+def test_valid_names_pass_unchanged(good):
+    assert validated_item("problem_pods", {**POD_ITEM, "name": good})["name"] == good
+    assert validated_item("nodes", {**NODE_ITEM, "name": good})["name"] == good
+
+
+@pytest.mark.parametrize("good", ["apps", "kube-system", "n" * 63, "a"])
+def test_valid_namespaces_pass_unchanged(good):
+    assert validated_item("problem_pods", {**POD_ITEM, "ns": good})["ns"] == good
+
+
+@pytest.mark.parametrize(
+    ("value", "kept"),
+    [
+        ("Deployment/web", True),
+        ("StatefulSet/data-web", True),
+        ("Pod/unknown", True),
+        ("Node/server-1", True),
+        ("web", False),  # a reference needs Kind/name
+        ("Deployment/web/extra", False),
+        ("deployment/web", False),
+        ("Deployment/<b>web</b>", False),
+        ("Deploy ment/web", False),
+        ("D" * 64 + "/web", False),
+        ("Deployment/" + "n" * 254, False),
+    ],
+)
+def test_object_references_allow_one_slash(value, kept):
+    expected = value if kept else s.INVALID_K8S_NAME
+    assert validated_item("problem_pods", {**POD_ITEM, "owner": value})["owner"] == expected
+    assert validated_item("events", {**EVENT_ITEM, "obj": value})["obj"] == expected
+
+
+def test_null_stays_null_where_a_name_is_optional():
+    assert validated_item("problem_pods", {**POD_ITEM, "node": None})["node"] is None
+    assert validated_item("pvcs", {**PVC_ITEM, "class": None})["class"] is None
+
+
+def test_bad_names_in_ok_pods_are_replaced_and_namespaces_merge():
+    report = with_cluster(
+        ok_pods={
+            "apps": [["web-1", "worker-1", 0, 5], ["<b>x</b>", "Worker 1", 0, 5]],
+            "Bad NS": [["db-0", None, 1, 7]],
+            "also bad\x1b": [["db-1", None, 1, 7]],
+        }
+    )
+    serializer = check(report)
+    assert serializer.is_valid(), serializer.errors
+    ok_pods = serializer.validated_data["kubernetes"]["cluster"]["ok_pods"]
+    bad = s.INVALID_K8S_NAME
+    assert ok_pods == {
+        "apps": [["web-1", "worker-1", 0, 5], [bad, bad, 0, 5]],
+        bad: [["db-0", None, 1, 7], ["db-1", None, 1, 7]],  # both bad namespaces, none lost
+    }
+
+
+def test_the_placeholder_is_not_a_valid_name_itself():
+    # So it can never be mistaken for (or collide with) a real object.
+    for pattern in (s._DNS_LABEL, s._DNS_SUBDOMAIN, s._OBJECT_REF):
+        assert not re.fullmatch(pattern, s.INVALID_K8S_NAME)
+    # And sending it is just another bad name: it stays the placeholder.
+    item = validated_item("problem_pods", {**POD_ITEM, "name": s.INVALID_K8S_NAME})
+    assert item["name"] == s.INVALID_K8S_NAME
+
+
 def test_pod_counts():
     counts = make_cluster()["pod_counts"]
     assert is_valid(with_cluster(pod_counts={**counts, "total": 5}))
@@ -424,9 +551,6 @@ def test_ok_pods_accepts_empty_and_nulls():
         {"apps": [["web-1", "n", True, 5]]},
         {"apps": [["web-1", "n", -1, 5]]},
         {"apps": [["web-1", "n", 0, "5"]]},
-        {"apps": [["web\n", "n", 0, 5]]},
-        {"app\x1bs": [["web-1", "n", 0, 5]]},
-        {"x" * 254: [["web-1", "n", 0, 5]]},
     ],
 )
 def test_ok_pods_rejects_malformed_data(bad):

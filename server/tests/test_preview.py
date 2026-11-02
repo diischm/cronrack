@@ -159,3 +159,90 @@ def test_templates_follow_the_placeholder_and_csp_rules() -> None:
 def test_components_render(template: str) -> None:
     html = render_to_string(template, {"status": "offline", "label": "Offline"})
     assert "{%" not in html
+
+
+# --- every dev page, anonymously, and every URL under dev/ ----------------------------------------
+#
+# The dev pages need no login (they only show sample data), so they are checked as an
+# anonymous visitor too. An account must exist, or every page redirects to /setup/.
+
+DEV_PAGES = [
+    "/dev/preview/",
+    "/dev/preview/?state=xss",
+    "/dev/preview/?state=empty",
+    "/dev/preview/cluster/",
+    *(
+        f"/dev/preview/cluster/?state={state}"
+        for state in ("broken", "xss", "truncated", "offline", "waiting")
+    ),
+    "/dev/styleguide/",
+]
+REAL_NAMES = ("realhost-7f3a", "realcluster-9c2b", "alice-real-user")
+
+
+def dev_url_patterns() -> list[str]:
+    """Every route under dev/ in the URLconf, as a path to request.
+
+    A converter is filled with a value it accepts (1 for <int:...>, x otherwise), so a
+    route with arguments is reached too instead of 404ing for the wrong reason.
+    """
+    from django.urls import URLPattern, get_resolver
+
+    def fill(route: str) -> str:
+        return re.sub(r"<(?:(\w+):)?\w+>", lambda m: "1" if m[1] == "int" else "x", route)
+
+    paths = []
+    for pattern in get_resolver().url_patterns:
+        route = str(pattern.pattern)
+        if route.startswith("dev/"):
+            assert isinstance(pattern, URLPattern), f"include() under dev/ isn't walked: {route}"
+            paths.append("/" + fill(route))
+    return paths
+
+
+@pytest.fixture
+def anonymous(client: Client, django_user_model) -> Client:
+    from clusters.models import Cluster
+    from hosts.models import Host
+
+    owner = django_user_model.objects.create_user(username=REAL_NAMES[2], password="unused-pw-9")
+    Host.objects.create(owner=owner, name=REAL_NAMES[0])
+    Cluster.objects.create(
+        owner=owner, uid="08528ee9-428d-5167-8a8e-df19e635932f", name=REAL_NAMES[1]
+    )
+    return client
+
+
+@override_settings(DEBUG=False)
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", DEV_PAGES)
+def test_dev_pages_are_404_for_anonymous_visitors_without_debug(anonymous: Client, url) -> None:
+    assert anonymous.get(url).status_code == 404
+
+
+@override_settings(DEBUG=True)
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", DEV_PAGES)
+def test_dev_pages_show_only_sample_data_to_anonymous_visitors(anonymous: Client, url) -> None:
+    response = anonymous.get(url)
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    for name in REAL_NAMES:
+        assert name not in html, name
+
+
+def test_dev_url_patterns_are_found():
+    # Not a vacuous walk: the three known dev pages are among the routes.
+    assert {"/dev/preview/", "/dev/preview/cluster/", "/dev/styleguide/"} <= set(dev_url_patterns())
+
+
+@override_settings(DEBUG=False)
+@pytest.mark.django_db
+@pytest.mark.parametrize("logged_in", [False, True])
+def test_every_url_under_dev_is_404_without_debug(client: Client, alice, logged_in) -> None:
+    """Covers dev pages added later automatically: each new route under dev/ must 404."""
+    if logged_in:
+        client.force_login(alice)
+    for path in dev_url_patterns():
+        assert client.get(path).status_code == 404, path

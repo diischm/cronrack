@@ -13,6 +13,10 @@
 // it shows. The Welcome example (0 hosts) is rendered by the server only: when hosts
 // appear (or all disappear), the page reloads once so the server renders the right one.
 //
+// Clusters (when the user has one) sit in their own rack, #cluster-rack, filled the same way
+// from <template id="cluster-unit-template">. When the first cluster appears or the last one
+// goes, the page reloads once so the server adds or drops that section.
+//
 // While the host preview (host-preview.js) is open, refreshes wait: the unit that opened it
 // must stay the same element for the close animation and for focus to return to it. One
 // refresh runs right after the preview closes if any came due meanwhile.
@@ -24,6 +28,8 @@
 
   const rack = document.getElementById("rack");
   const unitTemplate = document.getElementById("rack-unit-template");
+  const clusterRack = document.getElementById("cluster-rack");
+  const clusterTemplate = document.getElementById("cluster-unit-template");
   if (!rack || !unitTemplate) {
     return;
   }
@@ -85,6 +91,17 @@
     return Number.isInteger(host.id) ? "/hosts/" + host.id + "/" : "/";
   }
 
+  // Same check for a cluster unit: only /clusters/<id>/.
+  function clusterUrl(cluster) {
+    if (typeof cluster.url === "string" && /^\/clusters\/\d+\/$/.test(cluster.url)) {
+      return cluster.url;
+    }
+    return Number.isInteger(cluster.id) ? "/clusters/" + cluster.id + "/" : "/clusters/";
+  }
+
+  // Kubernetes role words, like role_label.html. Unknown roles get no label.
+  const ROLE_WORDS = { server: "k8s server", agent: "k8s worker", node: "k8s node" };
+
   // Same wording as rack_unit.html.
   function updatesText(u) {
     if (!u) {
@@ -121,6 +138,57 @@
     meter.classList.toggle("meter--amber", p >= 85 && p < 95);
   }
 
+  // The lamp and the status icon (or the offline line) of a unit, like rack_unit.html.
+  function fillStatus(li, status, label, offlineText) {
+    const offline = status === "offline";
+    if (LAMPS[status]) {
+      const lamp = document.createElement("span");
+      lamp.className = "lamp " + LAMPS[status];
+      lamp.setAttribute("aria-hidden", "true");
+      li.querySelector(".rack-unit__lamp").appendChild(lamp);
+    }
+    const placeholder = li.querySelector(".rack-unit__head .status-icon");
+    const note = li.querySelector(".rack-unit__offline");
+    const icon = offline ? null : statusIcon(status, label);
+    if (icon) {
+      placeholder.replaceWith(icon);
+    } else {
+      placeholder.remove(); // offline: the "Offline · last …" line is the text label
+    }
+    if (offline) {
+      const strong = document.createElement("strong");
+      strong.textContent = "Offline";
+      note.replaceChildren(strong, offlineText);
+    } else {
+      note.remove();
+    }
+  }
+
+  // One <li> for one cluster: a clone of its template, filled like cluster_unit.html.
+  function buildClusterUnit(cluster) {
+    const fragment = clusterTemplate.content.cloneNode(true);
+    const li = fragment.firstElementChild;
+    const link = li.querySelector(".rack-unit");
+    const status = text(cluster.status);
+    const issues = Array.isArray(cluster.issues) ? cluster.issues.slice(0, 3) : [];
+    const nodes = cluster.nodes || {};
+    const problems = count(cluster.problem_pods);
+
+    link.setAttribute("href", clusterUrl(cluster));
+    link.classList.toggle("rack-unit--offline", status === "offline");
+    li.querySelector(".rack-unit__name").textContent = text(cluster.name);
+    fillStatus(li, status, text(cluster.status_label), " · last data " + text(cluster.last_seen_human));
+
+    let line = issues.map((issue) => text(issue && issue.text)).join(" · ");
+    if (!line) {
+      line = { waiting: "Waiting for the first report", offline: "No current data" }[status] || "Nothing needs you";
+    }
+    li.querySelector(".cluster-unit__issues").textContent = line;
+    li.querySelector(".cluster-unit__facts").textContent =
+      "Nodes " + count(nodes.ready) + "/" + count(nodes.total) + " ready · " + plural(problems, "problem pod");
+    return li;
+  }
+
   // One <li> for one host: a clone of the template, filled like rack_unit.html.
   function buildUnit(host) {
     const fragment = unitTemplate.content.cloneNode(true);
@@ -132,30 +200,17 @@
 
     link.setAttribute("href", hostUrl(host));
     link.classList.toggle("rack-unit--offline", offline);
-
-    if (LAMPS[status]) {
-      const lamp = document.createElement("span");
-      lamp.className = "lamp " + LAMPS[status];
-      lamp.setAttribute("aria-hidden", "true");
-      li.querySelector(".rack-unit__lamp").appendChild(lamp);
-    }
-
     li.querySelector(".rack-unit__name").textContent = text(host.name);
+    fillStatus(li, status, text(host.status_label), " · last report " + text(host.last_seen_human));
 
-    const placeholder = li.querySelector(".rack-unit__head .status-icon");
-    const note = li.querySelector(".rack-unit__offline");
-    const icon = offline ? null : statusIcon(status, text(host.status_label));
-    if (icon) {
-      placeholder.replaceWith(icon);
+    // Kubernetes role label: relabel the template's copy, or drop it with its ", " separator.
+    const label = li.querySelector(".rack-unit__role");
+    const role = ROLE_WORDS[text(host.k8s_role)];
+    if (role) {
+      label.querySelector(".role-label__text").textContent = role;
     } else {
-      placeholder.remove(); // offline: "Offline · last report …" is the text label
-    }
-    if (offline) {
-      const strong = document.createElement("strong");
-      strong.textContent = "Offline";
-      note.replaceChildren(strong, " · last report " + text(host.last_seen_human));
-    } else {
-      note.remove();
+      label.previousElementSibling.remove();
+      label.remove();
     }
 
     const issueLine = li.querySelector(".rack-unit__issues");
@@ -245,10 +300,10 @@
 
   // Re-rendering replaces every unit. If one had keyboard focus, give it to the new unit
   // with the same link, so focus isn't dropped back to the top of the page.
-  function replaceUnits(units) {
+  function replaceUnits(list, units) {
     const focused = document.activeElement;
-    const href = focused && rack.contains(focused) ? focused.getAttribute("href") : null;
-    rack.replaceChildren(...units);
+    const href = focused && list.contains(focused) ? focused.getAttribute("href") : null;
+    list.replaceChildren(...units);
     if (href) {
       const again = units.map((li) => li.querySelector(".rack-unit")).find((a) => a && a.getAttribute("href") === href);
       if (again) {
@@ -285,16 +340,24 @@
 
       const showsExample = rack.querySelector(".rack-unit--example") !== null;
       const hosts = data.hosts.filter((h) => h && typeof h === "object");
-      if (showsExample !== (hosts.length === 0)) {
-        // Example shown but hosts exist, or units shown but none left. If the reload was
-        // already tried, keep the page as it is rather than show a mix (or an empty rack).
+      const clusters = (Array.isArray(data.clusters) ? data.clusters : []).filter(
+        (c) => c && typeof c === "object"
+      );
+      const clustersShown = clusterRack !== null && clusterTemplate !== null;
+      if (showsExample !== (hosts.length === 0) || clustersShown !== (clusters.length > 0)) {
+        // Example shown but hosts exist, or units shown but none left; or the Clusters rack
+        // should appear or go. If the reload was already tried, keep the page as it is
+        // rather than show a mix (or an empty rack).
         reloadOnce();
         return;
       }
       clearReloadMark();
       renderHead(data, hosts.length);
       if (!showsExample) {
-        replaceUnits(hosts.map(buildUnit));
+        replaceUnits(rack, hosts.map(buildUnit));
+      }
+      if (clustersShown) {
+        replaceUnits(clusterRack, clusters.map(buildClusterUnit));
       }
     } catch (e) {
       showFailed(true); // keep the current content, try again on the next tick

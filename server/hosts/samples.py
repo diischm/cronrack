@@ -7,7 +7,8 @@ database or an agent, and none of it is ever counted anywhere.
 
 # Sample context in the shape of hosts.presenters.overview_context(), with the
 # hosts from design-ref/cronrack-dashboard-desktop.html: one red, one yellow and
-# two green hosts, plus three activity entries.
+# two green hosts, plus three activity entries. homeserver and pi-01 are the k3s server and
+# worker of one sample cluster (the role chips and the Clusters rack).
 PREVIEW_CONTEXT = {
     "attention_count": 2,
     "updated_human": "30s ago",
@@ -27,6 +28,7 @@ PREVIEW_CONTEXT = {
             ],
             "last_seen_human": "40s ago",
             "url": "/hosts/3/",
+            "k8s_role": "server",
             "updates": {"total": 12, "security": 3},
             "containers": {"total": 9, "running": 8, "failing": 1},
             "disk_max_percent": 62,
@@ -42,6 +44,7 @@ PREVIEW_CONTEXT = {
             ],
             "last_seen_human": "22s ago",
             "url": "/hosts/1/",
+            "k8s_role": "agent",
             "updates": {"total": 4, "security": 0},
             "containers": {"total": 3, "running": 3, "failing": 0},
             "disk_max_percent": 87,
@@ -54,6 +57,7 @@ PREVIEW_CONTEXT = {
             "issues": [],
             "last_seen_human": "15s ago",
             "url": "/hosts/2/",
+            "k8s_role": None,
             "updates": {"total": 0, "security": 0},
             "containers": {"total": 6, "running": 6, "failing": 0},
             "disk_max_percent": 48,
@@ -66,10 +70,26 @@ PREVIEW_CONTEXT = {
             "issues": [],
             "last_seen_human": "31s ago",
             "url": "/hosts/4/",
+            "k8s_role": None,
             "updates": {"total": 1, "security": 0},
             "containers": {"total": 4, "running": 4, "failing": 0},
             "disk_max_percent": 71,
         },
+    ],
+    # In the shape of clusters.presenters.cluster_summary().
+    "clusters": [
+        {
+            "id": 1,
+            "name": "homelab",
+            "status": "yellow",
+            "status_label": "Heads up",
+            "issues": [{"text": "apps/web can't pull its image", "severity": "yellow"}],
+            "last_seen_human": "25s ago",
+            "url": "/clusters/1/",
+            "nodes": {"ready": 2, "total": 2},
+            "problem_pods": 1,
+            "version": "v1.31.2+k3s1",
+        }
     ],
     "activity": [
         {"text": "homeserver went red", "time_human": "14:32", "status": "red"},

@@ -1,0 +1,11 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  One problem pod (Kubernetes panel): namespace/name, then status icon + reason (or phase),
+  restarts under it. `p` = a problem pod from the cluster snapshot (agent data), with its
+  severity from the presenter (rules.k8s.pod_severity: red or yellow).
+{% endcomment %}
+<li class="item-row">
+  <span class="item-row__name mono">{{ p.ns }}/{{ p.name }}</span>
+  <span class="item-row__state">{% include "components/state_word.html" with status=p.severity word=p.reason|default:p.phase %}</span>
+  <span class="item-row__note">{{ p.restarts }} restart{{ p.restarts|pluralize }}{% if p.last %} · last ended: {{ p.last }}{% endif %}</span>
+</li>

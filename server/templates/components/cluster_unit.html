@@ -1,0 +1,27 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  One cluster in the overview's "Clusters" rack, in the same rack style as a host
+  (components/rack_unit.html, components.css "Rack"). Two ways to include it:
+    {% include "components/cluster_unit.html" with cluster=cluster %}  a real cluster
+    {% include "components/cluster_unit.html" with blank=True %}       the empty copy inside
+                                                                       <template id="cluster-unit-template">
+  overview.js clones the blank copy and fills it with textContent / setAttribute only. Keep
+  the class names in sync with overview.js.
+
+  Status: lamp (decorative) + status icon with its words, never colour alone. Offline: unlit
+  lamp, no icon, "Offline · last data …" says it. Waiting (no snapshot yet): unlit lamp and
+  the hourglass. Two lines under the name: the top issues, then the counts ("Nodes 2/2
+  ready · 1 problem pod"). Both show at every width (no desktop-only front panel), so a
+  phone sees the counts too. Everything in `cluster` is agent data or user input: plain {{ }}.
+{% endcomment %}
+<li class="rack__slot">
+  <a class="rack-unit card-press{% if cluster.status == 'offline' %} rack-unit--offline{% endif %}"{% if not blank %} href="{{ cluster.url }}"{% endif %}>
+    <span class="rack-unit__lamp" aria-hidden="true">{% if blank %}{% elif cluster.status == "offline" or cluster.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=cluster.status %}{% endif %}</span>
+    <span class="rack-unit__body">
+      <span class="rack-unit__head"><span class="rack-unit__name">{{ cluster.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif cluster.status != "offline" %}{% include "components/status_icon.html" with status=cluster.status label=cluster.status_label %}{% endif %}{% if blank or cluster.status == "offline" %}<span class="offline-note rack-unit__offline"><strong>Offline</strong> · last data {{ cluster.last_seen_human }}</span>{% endif %}</span>
+      <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text cluster-unit__issues">{% if cluster.issues %}{% for issue in cluster.issues|slice:":3" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif cluster.status == "waiting" %}Waiting for the first report{% elif cluster.status == "offline" %}No current data{% elif not blank %}Nothing needs you{% endif %}</span></span>
+      <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text cluster-unit__facts">{% if not blank %}Nodes {{ cluster.nodes.ready }}/{{ cluster.nodes.total }} ready · {{ cluster.problem_pods }} problem pod{{ cluster.problem_pods|pluralize }}{% endif %}</span></span>
+    </span>
+    <span class="rack-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+  </a>
+</li>

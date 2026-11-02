@@ -1,0 +1,91 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "components/app_panel.html" %}
+{% comment %}
+  Kubernetes panel. data = detail_context()["kubernetes"]:
+    {"role", "dist", "node_name", "k3s", "kubelet", "helm", "k3s_update": {"state", "latest"},
+     "updates_online", "hint", "cluster": {"id", "name", "url"} | None,
+     "conditions": {"ready", "pressure", "kubelet"} | None,
+     "pods": [problem pods on this node], "ok_pods": [{"ns", "name", "restarts"}]}
+  The role and versions come from this host's own report (no cluster access needed). Node
+  conditions and pods come from the linked cluster's snapshot, so they only show once an
+  agent with the cluster view reports this node. Problem pods first, then healthy ones; the
+  first 6 rows show, the rest sit behind "Show N more" (components/show_more.html).
+  The update badge is the status icon + words. Without update checks it's the Settings hint.
+  Everything here is agent data: plain {{ }} output only.
+{% endcomment %}
+{% block icon %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"></path><circle cx="12" cy="12" r="3"></circle></svg>{% endblock %}
+{% block facts %}{% if data.role == "agent" %}k3s worker{% elif data.role == "server" %}{% if data.dist == "k3s" %}k3s server{% else %}Kubernetes server{% endif %}{% elif data.role == "node" %}Kubernetes node{% else %}Helm only{% endif %}{% if data.k3s %} · {{ data.k3s }}{% elif data.kubelet %} · {{ data.kubelet }}{% endif %}{% endblock %}
+{% block body %}
+  <dl class="readouts">
+    {% if data.role %}
+    <div class="readout-well well">
+      <dt class="readout-well__label">Role</dt>
+      <dd class="readout-well__value">{% include "components/role_label.html" with role=data.role %}</dd>
+    </div>
+    {% endif %}
+    {% if data.node_name %}
+    <div class="readout-well well">
+      <dt class="readout-well__label">Node</dt>
+      <dd class="readout-well__value mono">{{ data.node_name }}</dd>
+    </div>
+    {% endif %}
+    {% if data.k3s or data.kubelet %}
+    <div class="readout-well well">
+      <dt class="readout-well__label">{% if data.k3s %}k3s{% else %}kubelet{% endif %}</dt>
+      <dd class="readout-well__value mono">{% firstof data.k3s data.kubelet %}</dd>
+    </div>
+    {% endif %}
+    {% if data.helm %}
+    <div class="readout-well well">
+      <dt class="readout-well__label">Helm</dt>
+      <dd class="readout-well__value mono">{{ data.helm }}</dd>
+    </div>
+    {% endif %}
+  </dl>
+
+  {% if data.k3s %}
+    {% if data.k3s_update.state == "patch" %}
+      <p>{% include "components/state_word.html" with status="yellow" word="Update available" %} <span class="mono">{{ data.k3s_update.latest }}</span></p>
+    {% elif data.k3s_update.state == "minor" %}
+      <p>{% include "components/state_word.html" with status="info" word="Newer minor version" %} <span class="mono">{{ data.k3s_update.latest }}</span></p>
+    {% elif data.k3s_update.state == "current" %}
+      <p>{% include "components/state_word.html" with status="green" word="Up to date" %}</p>
+    {% elif data.hint %}
+      <p class="muted">{{ data.hint }}.</p>
+    {% endif %}
+  {% endif %}
+
+  {% if data.conditions %}
+    <h3 class="app-panel__subtitle">Node</h3>
+    <ul class="item-list plain-list">
+      <li class="item-row"><span class="item-row__name">Ready</span><span class="item-row__state">{% if data.conditions.ready %}{% include "components/state_word.html" with status="green" word="Ready" %}{% else %}{% include "components/state_word.html" with status="red" word="Not ready" %}{% endif %}</span></li>
+      {% for condition in data.conditions.pressure %}
+        <li class="item-row"><span class="item-row__name">{{ condition }}</span><span class="item-row__state">{% include "components/state_word.html" with status="yellow" word="Under pressure" %}</span></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if data.cluster %}
+    {% with problems=data.pods|length healthy=data.ok_pods|length %}{% with total=problems|add:healthy %}
+      <h3 class="app-panel__subtitle">Pods on this node</h3>
+      {% if total %}
+        <ul class="item-list plain-list">
+          {% for p in data.pods|slice:":6" %}{% include "components/panels/pod_row.html" %}{% endfor %}
+          {% for p in data.ok_pods %}{% if forloop.counter|add:problems <= 6 %}{% include "components/panels/pod_ok_row.html" %}{% endif %}{% endfor %}
+        </ul>
+        {% if total > 6 %}
+          {% include "components/show_more.html" with target="k8s-pods-more" count=total|add:"-6" noun="more" %}
+          <ul class="item-list plain-list" id="k8s-pods-more">
+            {% for p in data.pods|slice:"6:" %}{% include "components/panels/pod_row.html" %}{% endfor %}
+            {% for p in data.ok_pods %}{% if forloop.counter|add:problems > 6 %}{% include "components/panels/pod_ok_row.html" %}{% endif %}{% endfor %}
+          </ul>
+        {% endif %}
+      {% else %}
+        <p class="muted">No pods listed for this node.</p>
+      {% endif %}
+    {% endwith %}{% endwith %}
+    <p><a class="btn btn--sm" href="{{ data.cluster.url }}">Open cluster</a></p>
+  {% elif data.role %}
+    <p class="muted">Node health and pods show once an agent with the cluster view reports this node.</p>
+  {% endif %}
+{% endblock %}
