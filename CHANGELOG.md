@@ -32,6 +32,30 @@ Kubernetes) cluster too. Opt-in and read-only. See `docs/kubernetes-monitoring.m
   (three fixed URLs, nothing about your setup is sent).
 - **`--check-k8s`**: the agent prints what its ServiceAccount may read, one line per API.
 - Agent **0.2.0**. New installer flags: `--k8s`, `--k8s-cluster-view`, `--k8s-ca`, `--k8s-api`.
+- **Limits on new clusters**: one host's agent may add at most 3 clusters, and one account
+  at most 20. A new cluster past a limit is refused (no cluster, no event, no Discord
+  alert); the host's own report is still saved, clusters you already have keep updating,
+  and the server log says so at most once an hour per host (IDs only). Deleting a cluster
+  frees a slot. This stops a stolen agent token from creating clusters, and an alert for
+  each, without end.
+
+### Fixed
+
+- **The `k8s.cluster_offline` override now works.** A threshold set for this rule (for one
+  cluster or all of them) decides when the cluster turns offline, on the cluster page and
+  in the scheduler alike; before, both used their own fixed 180 seconds. With the rule
+  disabled, the cluster is never marked offline. Without an override nothing changes: 180
+  seconds, or Settings' "mark offline after" if that is longer.
+- **A node reboot no longer makes every pod "restarted repeatedly" for a day.** Restarts
+  whose last stop has reason `Unknown` (the container runtime lost the container, as on
+  a reboot) don't count for "Pod restarting often", in the agent's problem list or the
+  server's finding. Limits in `docs/kubernetes-monitoring.md`, section 6.
+
+### Known issues
+
+- **The host offline threshold ignores a `connectivity.offline` override.** Hosts still
+  turn offline after Settings' "mark offline after"; a threshold override for that rule
+  has no effect (the cluster rule above was fixed, the host one not yet).
 
 ### Upgrading
 

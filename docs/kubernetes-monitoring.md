@@ -252,6 +252,26 @@ CHANGELOG's known issues), so the defaults below are what you'll see.
 | The cluster view stopped reporting | offline |
 | The API is unreachable / the token is rejected / the token expires within 14 days | red / red / yellow |
 
+**Restarts after a node reboot.** When a node reboots, every container on it restarts,
+and Kubernetes records the last stop with the reason `Unknown`. Those restarts are not the
+pod's fault, so a pod whose last stop says `Unknown` isn't flagged as "restarted
+repeatedly" (a later real crash, say `Error`, counts again). Two limits:
+
+- Kubernetes keeps one restart count per container, not one per cause. A pod with 4
+  restarts from reboots and 2 real crashes shows 6, and is flagged after the second crash.
+- `Unknown` also appears when the container runtime (containerd) itself crashed, without
+  a reboot. Those restarts are skipped too; the node's own findings cover that case.
+
+**When a cluster counts as offline.** By default after 180 seconds without a cluster view,
+or Settings' "mark offline after" if that is longer. A threshold override for
+`k8s.cluster_offline` replaces both; with the rule disabled the cluster is never marked
+offline.
+
+**Limits on new clusters.** One host may add at most 3 clusters (a reinstall gives the
+cluster a new ID, so the old one stays until you delete it), and one account at most 20.
+Past a limit the new cluster is refused and the server logs one warning per host per hour.
+Delete a cluster you no longer use to free a slot.
+
 Pod findings are keyed by the workload that owns the pod (for example `Deployment/web`),
 not by the pod's name, which changes with every rollout. So "This is expected" still holds
 after a restart. A cluster's status changes appear in Activity and go to Discord with the
