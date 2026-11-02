@@ -104,7 +104,7 @@ def test_no_text_chips_on_any_page(alice_client: Client, alice):
         ),
     )
     make_host(alice, "new-box", "waiting")
-    make_silent_host(alice, "diicpi")
+    make_silent_host(alice, "edge-pi")
     pages = ["/", f"/hosts/{red.pk}/", "/activity/", "/settings/", f"/hosts/{red.pk}/settings/"]
     for url in pages:
         html = alice_client.get(url).content.decode()
@@ -342,7 +342,7 @@ def test_detail_header_is_a_server_unit(alice_client: Client, alice):
 
 
 def test_offline_header_keeps_the_disabled_check_now_and_no_icon(alice_client: Client, alice):
-    host = make_silent_host(alice, "diicpi")
+    host = make_silent_host(alice, "edge-pi")
     html = alice_client.get(f"/hosts/{host.pk}/").content.decode()
     header = html[html.index('<header class="host-rack') :]
     header = header[: header.index("</header>")]

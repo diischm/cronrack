@@ -1,0 +1,24 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  One card in the Glass overview's "Needs attention" grid (hosts/overview.html), for a red or
+  yellow host. Glass only: the section is .g-only, so Legacy never shows it.
+    {% include "components/attention_card.html" with host=host %}   a real host
+    {% include "components/attention_card.html" with blank=True %}  the empty copy inside
+                                                                    <template id="attention-card-template">
+  overview.js clones the blank copy every refresh and fills it with textContent /
+  setAttribute only (its status icon is swapped for a clone from <template id="status-icons">).
+  Keep the class names in sync with overview.js.
+
+  A plain link to the host page (the host preview opens from the host grid below). Status:
+  the dot (status icon) with its visually-hidden words; the issue text says why in plain
+  words. Red cards get the Border Beam (glass.css). Everything in `host` is agent data or
+  user input: plain {{ }} output, escaped. The ", " pieces make the link read
+  "nas-01, Needs you, immich-server exited …, 2 containers · disk 71% · report 18s ago".
+{% endcomment %}
+<li class="g-attention__slot">
+  <a class="g-attn{% if host.status == 'red' %} g-attn--red{% elif host.status == 'yellow' %} g-attn--yellow{% endif %}"{% if not blank %} href="{{ host.url }}"{% endif %}>
+    <span class="g-attn__head"><span class="g-attn__name">{{ host.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% else %}{% include "components/status_icon.html" with status=host.status label=host.status_label %}{% endif %}</span>
+    <span class="g-attn__issue"><span class="visually-hidden">, </span><span class="g-attn__issue-text">{% for issue in host.issues|slice:":2" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}</span></span>
+    <span class="g-attn__meta"><span class="visually-hidden">, </span><span class="g-attn__meta-text">{% if not blank %}{% if host.k8s_role == "server" %}k8s server · {% elif host.k8s_role == "agent" %}k8s worker · {% elif host.k8s_role == "node" %}k8s node · {% endif %}{% if host.containers %}{{ host.containers.total }} container{{ host.containers.total|pluralize }} · {% endif %}{% if host.disk_max_percent is not None %}disk {{ host.disk_max_percent }}% · {% endif %}report {{ host.last_seen_human }}{% endif %}</span></span>
+  </a>
+</li>

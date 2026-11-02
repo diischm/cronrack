@@ -3,7 +3,10 @@
 {% load static %}
 
 {% block title %}Styleguide · CronRack{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'cronrack/css/styleguide.css' %}">{% endblock %}
+{# Legacy shell, so the Glass island (data-skin="glass") and the Legacy sets sit side by side. #}
+{% block skin_override %}<meta name="cronrack-skin-override" content="legacy">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'cronrack/css/styleguide.css' %}">
+<script src="{% static 'cronrack/js/power-slide.js' %}" defer></script>{% endblock %}
 {% block main_class %}app-main--wide{% endblock %}
 
 {% comment %}
@@ -15,8 +18,9 @@
 {% block content %}
   <div class="page-head">
     <h1 class="page-title">Styleguide</h1>
-    <p class="page-sub">Design system components, light and dark. Dev only.</p>
+    <p class="page-sub">Design system components: Glass (the default), then Legacy light and dark. Dev only.</p>
   </div>
+  {% include "dev/_styleguide_glass.html" %}
   <div class="sg-themes">
     {% include "dev/_styleguide_set.html" with theme="light" %}
     {% include "dev/_styleguide_set.html" with theme="dark" %}

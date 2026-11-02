@@ -10,12 +10,19 @@
   <link rel="icon" href="{% static 'cronrack/favicon.svg' %}" type="image/svg+xml">
   <link rel="icon" href="{% static 'cronrack/favicon-32.png' %}" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="{% static 'cronrack/apple-touch-icon.png' %}">
-  {# Must stay first and must not be deferred: sets data-theme before first paint. #}
+  {# Only the dev styleguide fills this (a <meta> that forces the Legacy shell). #}
+  {% block skin_override %}{% endblock %}
+  {# Must stay first and must not be deferred: sets data-skin, data-theme, data-motion and #}
+  {# data-labels before first paint. #}
   <script src="{% static 'cronrack/js/theme-init.js' %}"></script>
   <link rel="stylesheet" href="{% static 'cronrack/css/tokens.css' %}">
   <link rel="stylesheet" href="{% static 'cronrack/css/components.css' %}">
   <link rel="stylesheet" href="{% static 'cronrack/css/pages.css' %}">
+  {# Glass: every rule is scoped to [data-skin="glass"], so Legacy is unchanged by it. Last, #}
+  {# so it wins ties with the Legacy files. #}
+  <link rel="stylesheet" href="{% static 'cronrack/css/glass.css' %}">
   <script src="{% static 'cronrack/js/theme.js' %}" defer></script>
+  <script src="{% static 'cronrack/js/glass.js' %}" defer></script>
   <script src="{% static 'cronrack/js/messages.js' %}" defer></script>
   <script src="{% static 'cronrack/js/copy.js' %}" defer></script>
   <script src="{% static 'cronrack/js/actions.js' %}" defer></script>
@@ -23,6 +30,19 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body>
+  {% comment %}
+    Glass only (glass.css hides .g-only in Legacy; all of it is decorative, aria-hidden):
+    - the two orange background glows (drift and pulse unless data-motion="off" or reduced
+      motion asks for stillness),
+    - the progressive blur under the top bar (shown once the page scrolls, glass.js) and at
+      the bottom edge behind the phone nav,
+    - the Dynamic Island: the "Check all now" progress pill (glass.js, driven by actions.js
+      events). The toast and the loader's role="status" already tell screen readers.
+  {% endcomment %}
+  <div class="g-only g-backdrop" aria-hidden="true"><span class="g-glow g-glow--a"></span><span class="g-glow g-glow--b"></span></div>
+  <div class="g-only g-edge g-edge--top" id="g-edge-top" aria-hidden="true"><span></span><span></span><span></span></div>
+  {% if user.is_authenticated %}<div class="g-only g-edge g-edge--bottom" aria-hidden="true"><span></span><span></span></div>{% endif %}
+  <div class="g-only g-island" id="g-island" aria-hidden="true" hidden><span class="g-island__bars"><span></span><span></span><span></span></span><span class="g-island__text" id="g-island-text"></span><span class="g-island__count" id="g-island-count"></span></div>
   {% comment %}
     Toast area (handoff 5.0): flash messages from the server, and the results of the fetch
     actions (actions.js), which messages.js clones from #toast-template. Always rendered, so

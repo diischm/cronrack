@@ -168,9 +168,13 @@
     statusSlot.replaceChildren(...(icon ? [icon] : []));
     offlineLine.hidden = !offline;
     if (offline) {
+      // Like the templates: Glass hides "Offline" + " · " visually (labels off).
       const strong = document.createElement("strong");
       strong.textContent = "Offline";
-      offlineLine.replaceChildren(strong, " · last report " + lastSeen);
+      const sep = document.createElement("span");
+      sep.className = "offline-note__sep";
+      sep.textContent = " · ";
+      offlineLine.replaceChildren(strong, sep, "last report " + lastSeen);
     }
   }
 

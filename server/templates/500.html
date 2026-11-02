@@ -9,11 +9,18 @@
   <link rel="icon" href="/static/cronrack/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/static/cronrack/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="/static/cronrack/apple-touch-icon.png">
+  {# This page has always been light in Legacy (it never ran theme-init.js); keep it so. #}
+  <meta name="cronrack-legacy-theme-override" content="light">
+  {# First and not deferred, like base.html: sets the skin and theme before first paint. #}
+  <script src="/static/cronrack/js/theme-init.js"></script>
   <link rel="stylesheet" href="/static/cronrack/css/tokens.css">
   <link rel="stylesheet" href="/static/cronrack/css/components.css">
   <link rel="stylesheet" href="/static/cronrack/css/pages.css">
+  <link rel="stylesheet" href="/static/cronrack/css/glass.css">
 </head>
 <body>
+  {# Glass background glows (decorative; hidden in Legacy). Still here: no glass.js on this page. #}
+  <div class="g-only g-backdrop" aria-hidden="true"><span class="g-glow g-glow--a"></span><span class="g-glow g-glow--b"></span></div>
   <div class="app app--bare">
     <main class="app-main app-main--single">
       <section class="surface empty">

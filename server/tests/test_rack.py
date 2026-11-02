@@ -115,7 +115,7 @@ def test_example_is_in_no_count(alice_client: Client):
     assert "example" not in json.dumps(data).lower()
     # Desktop tiles: all zero, "Hosts online 0 of 0", no offline note.
     for key in ("red", "yellow", "green"):
-        assert f'<span id="tile-{key}">0</span>' in html
+        assert f'<span class="g-flow" id="tile-{key}">0</span>' in html
     assert '<span id="tile-online">0</span>' in html
     assert '<span class="tile__unit" id="tile-online-unit">of 0</span>' in html
     assert 'id="tile-offline" hidden>' in html
@@ -138,7 +138,7 @@ def test_example_disappears_once_a_host_exists(alice_client: Client, alice):
 def test_offline_unit_has_an_unlit_lamp_and_no_status_icon(alice_client: Client, alice):
     from .test_host_views import make_silent_host
 
-    make_silent_host(alice, "diicpi")
+    make_silent_host(alice, "edge-pi")
 
     html = alice_client.get("/").content.decode()
     unit = html[html.index('<a class="rack-unit card-press rack-unit--offline"') :]
@@ -146,7 +146,10 @@ def test_offline_unit_has_an_unlit_lamp_and_no_status_icon(alice_client: Client,
 
     assert "lamp--off" in unit
     assert 'class="status-icon' not in unit
-    assert "<strong>Offline</strong> · last report 28 h ago" in unit
+    assert (
+        '<strong>Offline</strong><span class="offline-note__sep"> · </span>last report 28 h ago'
+        in unit
+    )
     assert "Nothing needs you" not in unit
 
 

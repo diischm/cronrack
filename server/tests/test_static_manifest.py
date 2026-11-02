@@ -66,6 +66,30 @@ def test_font_urls_in_css_point_at_hashed_fonts(collected):
         assert f'url("../fonts/{font}")' not in css
 
 
+GLASS_FILES = (
+    "cronrack/css/glass.css",
+    "cronrack/js/glass.js",
+    "cronrack/js/glass-tabs.js",
+    "cronrack/js/power-slide.js",
+    "cronrack/fonts/InterVariable.woff2",
+)
+
+
+def test_glass_files_get_hashed_names(collected):
+    root, paths = collected
+    for name in GLASS_FILES:
+        assert HASHED.search(paths[name]), name
+        assert (root / paths[name]).is_file(), name
+
+
+def test_inter_url_in_glass_css_points_at_the_hashed_font(collected):
+    root, paths = collected
+    css = (root / paths["cronrack/css/glass.css"]).read_text()
+    hashed_font = paths["cronrack/fonts/InterVariable.woff2"]
+    assert f'url("../fonts/{Path(hashed_font).name}")' in css
+    assert 'url("../fonts/InterVariable.woff2")' not in css
+
+
 def test_static_tag_uses_hashed_names(manifest_storage):
     html = Template("{% load static %}{% static 'cronrack/js/theme.js' %}").render(Context())
     assert html == "/static/" + manifest_storage["cronrack/js/theme.js"]
@@ -80,7 +104,9 @@ def test_rendered_page_links_hashed_files(manifest_storage, client, alice):
         "cronrack/css/tokens.css",
         "cronrack/css/components.css",
         "cronrack/css/pages.css",
+        "cronrack/css/glass.css",
         "cronrack/js/theme-init.js",
+        "cronrack/js/glass.js",
         "cronrack/favicon.svg",
     ):
         assert f'"/static/{manifest_storage[name]}"' in html, name

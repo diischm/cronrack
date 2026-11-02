@@ -334,7 +334,10 @@ def test_silent_host_is_offline_everywhere(alice_client: Client, alice):
     assert card["issues"] == []  # "Offline · last report …" says it, no issue line repeats it
     for html in (overview, detail):
         assert "lamp--off" in html
-        assert "<strong>Offline</strong> · last report 28 h ago" in html
+        assert (
+            '<strong>Offline</strong><span class="offline-note__sep"> · </span>last report 28 h ago'
+            in html
+        )
         # No status icon (issue rows on the detail page keep their severity icons).
         assert not re.search(
             r'<span class="visually-hidden">(All good|Needs you|Heads up|Offline)</span>',
@@ -413,7 +416,7 @@ def test_silent_host_threshold_comes_from_prefs(alice_client: Client, alice):
 
 
 def test_attention_count_includes_offline_hosts(alice_client: Client, alice):
-    make_silent_host(alice, "diicpi")
+    make_silent_host(alice, "edge-pi")
     make_host(alice, "nas", "green", make_report())
 
     data = alice_client.get("/api/v1/overview.json").json()
@@ -422,22 +425,25 @@ def test_attention_count_includes_offline_hosts(alice_client: Client, alice):
     assert data["attention_count"] == 1
     assert data["status_counts"] == {"red": 0, "yellow": 0, "green": 1, "offline": 1}
     assert data["hosts_online"] == 1
-    assert [h["name"] for h in data["hosts"]] == ["diicpi", "nas"]  # offline sorts first
+    assert [h["name"] for h in data["hosts"]] == ["edge-pi", "nas"]  # offline sorts first
     assert "1 thing needs you" in html
 
 
 def test_overview_html_and_json_agree_on_offline(alice_client: Client, alice):
-    make_silent_host(alice, "diicpi")
+    make_silent_host(alice, "edge-pi")
     make_host(alice, "nas", "green", make_report())
 
     data = alice_client.get("/api/v1/overview.json").json()
     html = alice_client.get("/").content.decode()
 
     statuses = {h["name"]: h["status"] for h in data["hosts"]}
-    assert statuses == {"diicpi": "offline", "nas": "green"}
-    # diicpi's card only: the "Hosts online" tile is a summary and uses an icon, not a lamp.
+    assert statuses == {"edge-pi": "offline", "nas": "green"}
+    # edge-pi's card only: the "Hosts online" tile is a summary and uses an icon, not a lamp.
     assert html.count("lamp--off") == 1
-    assert "<strong>Offline</strong> · last report 28 h ago" in html
+    assert (
+        '<strong>Offline</strong><span class="offline-note__sep"> · </span>last report 28 h ago'
+        in html
+    )
     assert "<strong>Offline</strong> · 1 host" in html
     assert len(re.findall(status_icon("good", "All good"), shown(html))) == 1  # nas keeps its icon
 

@@ -10,6 +10,25 @@ Kubernetes) cluster too. Opt-in and read-only. See `docs/kubernetes-monitoring.m
 
 ### Added
 
+- **Glass, the new default look**: dark graphite, frosted-glass cards, an orange accent and
+  two slow orange background glows. The old look stays as **Legacy**, with its own Light /
+  Dark / System choice, and looks exactly as before. Switch in Settings > Appearance >
+  Theme. Everyone lands on Glass, also with a saved Light or Dark; that choice is kept for
+  when you switch back to Legacy. Browser-only (saved in this browser, like the theme was).
+  - Two new Glass settings: **Moving background** (on by default; off keeps the glows
+    still) and **Show status labels** (off by default; shows the word next to each dot).
+  - Status in Glass is a **flat dot** (red, yellow, green, grey). Accessibility, a
+    conscious choice (WCAG 1.4.1, use of colour): by default the dot's colour alone shows
+    the status to a sighted user. Mitigations: every dot carries its words for screen
+    readers (and as a tooltip), every card says what is wrong in plain text, and "Show
+    status labels" puts the word next to every dot. The four summary tiles always show
+    the words.
+  - Moving parts, all off with "reduce motion": card tilt and glare (mouse only), a light
+    running around red cards, rolling counts, a "Check all now" progress pill, tabs on the
+    host page, a step bar and terminal look on Add host.
+  - Font: Inter 4.1 (self-hosted, only downloaded in Glass). No new requests to other
+    sites; the Content Security Policy is unchanged.
+  - Components adapted from SmoothUI (MIT); see `THIRD_PARTY_NOTICES.md`.
 - **Kubernetes role on every node** (`--k8s`): the host's card shows "k8s server" or
   "k8s worker", and the host page gets a Kubernetes panel (role, node, k3s version, node
   health, this node's pods). No cluster access or token needed.
