@@ -138,7 +138,7 @@ def test_example_disappears_once_a_host_exists(alice_client: Client, alice):
 def test_offline_unit_has_an_unlit_lamp_and_no_status_icon(alice_client: Client, alice):
     from .test_host_views import make_silent_host
 
-    make_silent_host(alice, "diicpi")
+    make_silent_host(alice, "edge-pi")
 
     html = alice_client.get("/").content.decode()
     unit = html[html.index('<a class="rack-unit card-press rack-unit--offline"') :]
