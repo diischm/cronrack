@@ -22,6 +22,8 @@ from agent.kube_api import (
 
 FIXTURES = Path(__file__).parent / "fixtures" / "k8s"
 NOW = datetime(2026, 10, 29, 12, 0, 0, tzinfo=UTC)
+# About 13 hours after the reboot recorded in fixtures/k8s/pods.json (2026-10-28T23:22Z).
+REBOOT_NOW = datetime(2026, 10, 29, 12, 30, 0, tzinfo=UTC)
 # Right after the lab capture was taken (2026-10-28 23:24 UTC).
 LAB_NOW = datetime(2026, 10, 29, 0, 0, 0, tzinfo=UTC)
 KUBE_SYSTEM_UID = "08528ee9-428d-5167-8a8e-df19e635932f"  # fake, from the sanitizer
@@ -311,6 +313,25 @@ def test_restarts_only_count_when_recent():
     assert problem_count(pod(6, "2026-10-29T10:00:00Z")) == 1  # many restarts, recent
     assert problem_count(pod(6, "2026-10-20T10:00:00Z")) == 0  # many restarts, long ago
     assert problem_count(pod(1, "2026-10-29T10:00:00Z")) == 0  # one restart is normal
+
+
+def test_restarts_from_a_node_reboot_are_not_problems():
+    """pods.json was captured about 13 hours after a node reboot: every restarted container's
+    last stop says reason "Unknown" (exit 255). Within the day those pods aren't problems."""
+    pods = kube_cluster.parse_pods(load("pods"), REBOOT_NOW)
+    restarted = [p for p in pods if p["last"] == "Unknown"]
+    assert len(restarted) >= 10
+    assert any(p["restarts"] >= kube_cluster.RESTART_PROBLEM_MIN for p in restarted)
+    assert all(p["last_age_s"] < kube_cluster.RECENT_SECONDS for p in restarted)
+
+    assert not [p["name"] for p in restarted if kube_cluster.is_problem_pod(p)]
+
+
+def test_a_real_crash_after_a_reboot_is_still_a_problem():
+    pods = kube_cluster.parse_pods(load("pods"), REBOOT_NOW)
+    restarted = next(p for p in pods if p["last"] == "Unknown" and p["restarts"] >= 3)
+
+    assert kube_cluster.is_problem_pod({**restarted, "last": "Error"})
 
 
 def test_not_ready_running_pod_is_a_problem():

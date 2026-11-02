@@ -47,6 +47,9 @@ MAX_MESSAGE = 256
 # goes down until the pod is recreated. Below RESTART_PROBLEM_MIN it is normal noise.
 RECENT_SECONDS = 86_400
 RESTART_PROBLEM_MIN = 3
+# The last termination's reason when the container runtime lost the container, as after a
+# node reboot (exit code 255). Such a restart is not the pod's fault and isn't counted.
+NODE_RESTART_REASON = "Unknown"
 MAX_AGE_SECONDS = 315_360_000  # 10 years
 MAX_COUNT = 1_000_000
 
@@ -395,6 +398,8 @@ def is_problem_pod(pod: dict) -> bool:
         return True
     if pod["last"] == "OOMKilled" and _recent(pod["last_age_s"]):
         return True
+    if pod["last"] == NODE_RESTART_REASON:
+        return False  # the runtime lost it (node reboot): not the pod's own restart
     return pod["restarts"] >= RESTART_PROBLEM_MIN and _recent(pod["last_age_s"])
 
 

@@ -339,6 +339,22 @@ def test_pod_restarts(restarts, age, fires):
         assert findings[0].severity == "yellow"
 
 
+@pytest.mark.parametrize(
+    ("last", "fires"),
+    [("Unknown", False), ("Error", True), ("Completed", True), (None, True)],
+)
+def test_restarts_after_a_node_reboot_are_not_counted(last, fires):
+    # "Unknown" is what the runtime records for a container it lost (node reboot).
+    findings = pods_run(pod(restarts=10, last=last, last_age_s=3600))
+    assert bool(only(findings, "k8s.pod_restarts")) is fires
+
+
+def test_the_reboot_exception_leaves_the_oom_rule_alone():
+    findings = pods_run(pod(restarts=10, last="OOMKilled", last_age_s=3600))
+    assert only(findings, "k8s.pod_oomkilled")
+    assert only(findings, "k8s.pod_restarts")
+
+
 def test_pod_restart_threshold_override():
     rule = "k8s.pod_restarts"
     findings = run(

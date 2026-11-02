@@ -311,10 +311,19 @@ def _pending(rule: Rule, ctx: RuleContext, pod: dict, subject: str) -> bool:
 def _restarts(rule: Rule, ctx: RuleContext, pod: dict, subject: str) -> bool:
     # A restart count never goes down, so only a recent restart (the same 24 hours as
     # the OOM rule) counts: otherwise the pod would stay yellow for as long as it lives.
+    # A last stop with reason "Unknown" means the container runtime lost the container,
+    # as on a node reboot: that's not the pod's fault, so it doesn't count. (The count
+    # itself can't be split by cause; a later real crash counts again.)
     limit, age = rule.threshold(ctx, subject), pod["last_age_s"]
+    if pod["last"] == NODE_RESTART_REASON:
+        return False
     return (
         limit is not None and pod["restarts"] > limit and age is not None and age < RESTART_WINDOW
     )
+
+
+# lastState.terminated.reason after a node reboot or a container runtime crash.
+NODE_RESTART_REASON = "Unknown"
 
 
 RESTART_WINDOW = 86_400
