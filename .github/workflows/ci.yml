@@ -30,6 +30,18 @@ jobs:
       - run: ruff check --output-format=github .
 
       - run: ruff format --check .
+  shellcheck:
+    name: Shell lint (shellcheck)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # shellcheck comes with the ubuntu-24.04 runner image; nothing is downloaded.
+      - run: shellcheck --version
+      - run: shellcheck deploy/install.sh scripts/*.sh scripts/ci/*.sh tests/install/*.sh
   bandit:
     name: Security lint (bandit)
     runs-on: ubuntu-24.04
@@ -73,7 +85,7 @@ jobs:
   tests:
     name: Tests (pytest)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20  # tests/install builds a test image and runs ~35 containers
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -87,7 +99,11 @@ jobs:
 
       - run: pip install -r requirements-dev.txt
 
+      # tests/install runs deploy/install.sh in throwaway Docker containers. Locally
+      # those tests skip without Docker; here they must run, so a missing Docker fails.
       - run: pytest -v
+        env:
+          CRONRACK_REQUIRE_INSTALL_TESTS: "1"
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-24.04

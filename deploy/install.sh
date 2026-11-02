@@ -15,10 +15,11 @@
 #   1. creates the unprivileged "cronrack" system user
 #   2. downloads the agent from YOUR server and checks its SHA-256 before unpacking
 #   3. installs it in /opt/cronrack-agent/{app,venv} (root-owned: the agent can't modify itself)
+#      and records what is installed in /opt/cronrack-agent/INSTALLED (see the usage text)
 #   4. asks for the token (hidden input; never a command-line argument, never in shell history)
 #      and writes /etc/cronrack/agent.toml as root:cronrack, mode 0640
 #   5. if Docker is installed, asks whether the agent may read it
-#      (docker group = root-equivalent; default: no)
+#      (docker group = root-equivalent; default: no, or "keep" if access is already on)
 #   6. installs and starts the cronrack-agent systemd service
 #
 # Kubernetes (optional, off unless you ask; see docs/kubernetes-monitoring.md):
@@ -31,7 +32,13 @@
 #   --k8s-ca PATH          use this CA certificate instead (only with --k8s-cluster-view)
 #   --k8s-api URL          API server address (default https://127.0.0.1:6443)
 #
-# Re-running it upgrades the agent in place and keeps the existing config and token:
+# Upgrade an installed agent: asks nothing, needs no terminal (safe for scripts and
+# Ansible) and keeps every setting. The usage text lists the exit codes.
+#
+#   sudo curl -fsSL --cacert /etc/cronrack/ca.crt https://SERVER/agent/install.sh \
+#     | sudo bash -s -- --server https://SERVER --upgrade
+#
+# Re-running WITHOUT --upgrade also upgrades the code, and is how you change settings:
 #   --server URL     always updates server_url in the existing config
 #   --new-token      asks for a new token and replaces only the token
 #   --ca-file PATH   copies the CA certificate to /etc/cronrack/ca.crt and sets ca_file
@@ -45,9 +52,15 @@
 
 set -euo pipefail
 
+# Everything is inside main(), which is called on the very last line: if a download
+# through curl | bash is cut off, bash has only read part of a function and runs nothing.
+main() {
+
 PREFIX=/opt/cronrack-agent
 APP_DIR="$PREFIX/app"
+APP_PREV="$PREFIX/app.prev"
 VENV_DIR="$PREFIX/venv"
+INSTALLED_FILE="$PREFIX/INSTALLED"
 CONFIG_DIR=/etc/cronrack
 CONFIG_FILE="$CONFIG_DIR/agent.toml"
 CA_DEST="$CONFIG_DIR/ca.crt"
@@ -61,21 +74,56 @@ DOCKER_DROPIN="$DOCKER_DROPIN_DIR/docker.conf"
 AGENT_USER=cronrack
 MIN_PYTHON="3.11"
 
+# Exit codes (listed in usage() and docs/DEPLOY.md).
+EXIT_FAILED=1         # any other failure
+EXIT_USAGE=2          # invalid arguments or a forbidden combination
+EXIT_NOT_INSTALLED=3  # --upgrade, but no agent is installed
+EXIT_SERVER=4         # --upgrade, but --server differs from server_url (no --server-change)
+EXIT_DOWN=5           # the service did not come up (after an upgrade AND its rollback)
+EXIT_ROLLED_BACK=6    # the upgrade did not come up; the previous code runs again
+EXIT_NOT_RUNNING=7    # --upgrade: already up to date, but the service is not running
+
+# Stability check after an upgrade: the service must be active this many polls in a row
+# (one per second) within the limit. Restart=always would otherwise hide a crash loop.
+STABLE_POLLS=4
+STABLE_MAX_POLLS=15
+
 say() { printf '==> %s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
-die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+die_code() { local code="$1"; shift; printf 'ERROR: %s\n' "$*" >&2; exit "$code"; }
+die() { die_code "$EXIT_FAILED" "$@"; }
+die_usage() { die_code "$EXIT_USAGE" "$@"; }
+
+# Functions that read or write agent.toml see the token: they switch a `bash -x` trace
+# off while they run, so the token never ends up in a debug log.
+XTRACE_WAS_ON=0
+xtrace_off() { XTRACE_WAS_ON=0; case "$-" in *x*) XTRACE_WAS_ON=1; set +x ;; esac; }
+xtrace_restore() { if [ "$XTRACE_WAS_ON" -eq 1 ]; then set -x; fi; }
+
+UPGRADE=0
+
+# --upgrade must never ask anything: it runs from scripts with no terminal.
+no_questions_in_upgrade() {
+  [ "$UPGRADE" -eq 0 ] || die "internal error: --upgrade tried to ask a question; nothing was asked"
+}
 
 # Questions are read from the terminal, because stdin is the script itself (curl | bash).
-ask_yes_no() {  # ask_yes_no "Question? [y/N] " -> 0 for yes
-  local answer=""
+# ask_yes_no "Question? [y/N] " [y|n] -> 0 for yes. An empty or unclear answer gives the
+# default (the second argument, "n" if left out), so Enter never does the unexpected.
+ask_yes_no() {
+  no_questions_in_upgrade
+  local answer="" default="${2:-n}"
   read -r -p "$1" answer </dev/tty || true
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
+  if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then return 0; fi
+  if [[ "$answer" =~ ^[Nn]([Oo])?$ ]]; then return 1; fi
+  [ "$default" = "y" ]
 }
 
 usage() {
   cat <<'USAGE'
 Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
                   [--k8s | --k8s-cluster-view [--k8s-ca PATH] [--k8s-api URL]]
+       install.sh --server https://SERVER --upgrade [--server-change] [--ca-file PATH]
        install.sh --uninstall
 
   --server URL     Base URL of your CronRack server, e.g. https://cronrack.lan
@@ -91,8 +139,39 @@ Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
   --k8s-ca PATH    Cluster CA certificate to copy (default: the k3s server CA). Public
                    certificate only: files with a private key are refused.
   --k8s-api URL    Kubernetes API address, https only (default https://127.0.0.1:6443)
+  --upgrade        Upgrade an installed agent. Asks nothing and needs no terminal.
+                   Keeps the token, the CA, the Kubernetes token and settings and the
+                   current Docker choice. Changes nothing if it is already up to date.
+                   If the new version doesn't keep running, the previous code is put
+                   back (the websockets library in the venv is not rolled back).
+                   Not combinable with --new-token, --k8s*, --uninstall.
+  --server-change  With --upgrade: allow --server to differ from server_url in
+                   /etc/cronrack/agent.toml, and update it. Without it a different
+                   server is refused, so an upgrade never moves an agent silently.
   --uninstall      Stop and remove the service, /opt/cronrack-agent and the cronrack
                    user; asks before deleting /etc/cronrack
+
+Upgrade, trusting the CA the agent already uses (sudo curl: only root can read it):
+  sudo curl -fsSL --cacert /etc/cronrack/ca.crt https://SERVER/agent/install.sh \
+    | sudo bash -s -- --server https://SERVER --upgrade
+No /etc/cronrack/ca.crt (the server has a publicly trusted certificate)? Leave out
+"sudo" and "--cacert ..." before the |. In scripts, run it under `set -o pipefail`,
+so a failed download is a failure too, not an empty script that "succeeds".
+
+Exit codes:
+  0  installed, upgraded, or already up to date
+  1  any other failure
+  2  invalid arguments or a forbidden combination of options
+  3  --upgrade: no agent is installed here (run the normal install instead)
+  4  --upgrade: --server is not the server_url in agent.toml (add --server-change)
+  5  --upgrade: the agent did not keep running, and the rollback did not either
+  6  --upgrade: the new version did not keep running; the previous version was put
+     back and runs again (websockets in the venv is not rolled back)
+  7  --upgrade: already up to date, but the agent service is not running (nothing
+     was changed or started; see systemctl status cronrack-agent)
+
+/opt/cronrack-agent/INSTALLED records what is installed (key=value lines, no secrets):
+  format=1, version, sha256 (of the package), server_host, installed_at (UTC)
 USAGE
 }
 
@@ -106,24 +185,36 @@ K8S=0
 K8S_VIEW=0
 K8S_CA=""
 K8S_API=""
+SERVER_CHANGE=0
+SETTING_FLAGS=()  # options that change settings: refused together with --upgrade
 while [ $# -gt 0 ]; do
   case "$1" in
-    --server) [ $# -ge 2 ] || die "--server needs a URL"; SERVER="$2"; shift 2 ;;
+    --server) [ $# -ge 2 ] || die_usage "--server needs a URL"; SERVER="$2"; shift 2 ;;
     --server=*) SERVER="${1#--server=}"; shift ;;
-    --ca-file) [ $# -ge 2 ] || die "--ca-file needs a path"; CA_FILE="$2"; shift 2 ;;
+    --ca-file) [ $# -ge 2 ] || die_usage "--ca-file needs a path"; CA_FILE="$2"; shift 2 ;;
     --ca-file=*) CA_FILE="${1#--ca-file=}"; shift ;;
-    --new-token) NEW_TOKEN=1; shift ;;
-    --k8s) K8S=1; shift ;;
-    --k8s-cluster-view) K8S=1; K8S_VIEW=1; shift ;;
-    --k8s-ca) [ $# -ge 2 ] || die "--k8s-ca needs a path"; K8S_CA="$2"; shift 2 ;;
-    --k8s-ca=*) K8S_CA="${1#--k8s-ca=}"; shift ;;
-    --k8s-api) [ $# -ge 2 ] || die "--k8s-api needs a URL"; K8S_API="$2"; shift 2 ;;
-    --k8s-api=*) K8S_API="${1#--k8s-api=}"; shift ;;
-    --uninstall) UNINSTALL=1; shift ;;
+    --new-token) NEW_TOKEN=1; SETTING_FLAGS+=(--new-token); shift ;;
+    --k8s) K8S=1; SETTING_FLAGS+=(--k8s); shift ;;
+    --k8s-cluster-view) K8S=1; K8S_VIEW=1; SETTING_FLAGS+=(--k8s-cluster-view); shift ;;
+    --k8s-ca) [ $# -ge 2 ] || die_usage "--k8s-ca needs a path"; K8S_CA="$2"; SETTING_FLAGS+=(--k8s-ca); shift 2 ;;
+    --k8s-ca=*) K8S_CA="${1#--k8s-ca=}"; SETTING_FLAGS+=(--k8s-ca); shift ;;
+    --k8s-api) [ $# -ge 2 ] || die_usage "--k8s-api needs a URL"; K8S_API="$2"; SETTING_FLAGS+=(--k8s-api); shift 2 ;;
+    --k8s-api=*) K8S_API="${1#--k8s-api=}"; SETTING_FLAGS+=(--k8s-api); shift ;;
+    --uninstall) UNINSTALL=1; SETTING_FLAGS+=(--uninstall); shift ;;
+    --upgrade) UPGRADE=1; shift ;;
+    --server-change) SERVER_CHANGE=1; shift ;;
     -h|--help) usage; exit 0 ;;
-    *) usage >&2; die "unknown argument: $1" ;;
+    *) usage >&2; die_usage "unknown argument: $1" ;;
   esac
 done
+
+if [ "$UPGRADE" -eq 1 ] && [ "${#SETTING_FLAGS[@]}" -gt 0 ]; then
+  die_usage "--upgrade can't be combined with ${SETTING_FLAGS[*]}: those change settings; run without --upgrade"
+fi
+if [ "$SERVER_CHANGE" -eq 1 ] && [ "$UPGRADE" -eq 0 ]; then
+  die_usage "--server-change only works with --upgrade (a normal re-run always updates server_url)"
+fi
+
 # --- uninstall ------------------------------------------------------------------------
 
 uninstall() {
@@ -174,7 +265,7 @@ fi
 
 # --- install: check the arguments ------------------------------------------------------
 
-[ -n "$SERVER" ] || { usage >&2; die "--server is required"; }
+[ -n "$SERVER" ] || { usage >&2; die_usage "--server is required"; }
 SERVER="${SERVER%/}"
 
 # Same rule as the agent (agent/config.py): https, or plain http only to this machine.
@@ -185,25 +276,25 @@ elif [[ "$SERVER" =~ ^http://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]{1,5})?/?$ ]
   CURL_PROTO="=http"
   say "WARNING: plain http:// to $SERVER: only for local testing (e.g. an SSH tunnel)."
 else
-  die "--server must be https://HOST (plain http:// is only allowed for localhost, 127.0.0.1 and [::1])"
+  die_usage "--server must be https://HOST (plain http:// is only allowed for localhost, 127.0.0.1 and [::1])"
 fi
 
 # Same rule as the agent (agent/config.py): the Kubernetes API is https only, no path.
 if [ -n "$K8S_CA" ] || [ -n "$K8S_API" ]; then
-  [ "$K8S_VIEW" -eq 1 ] || die "--k8s-ca and --k8s-api only make sense with --k8s-cluster-view"
+  [ "$K8S_VIEW" -eq 1 ] || die_usage "--k8s-ca and --k8s-api only make sense with --k8s-cluster-view"
 fi
 if [ -n "$K8S_API" ]; then
   K8S_API="${K8S_API%/}"
   [[ "$K8S_API" =~ ^https://([A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\])(:[0-9]{1,5})?$ ]] \
-    || die "--k8s-api must be https://HOST[:PORT] (no path; plain http:// is not allowed)"
+    || die_usage "--k8s-api must be https://HOST[:PORT] (no path; plain http:// is not allowed)"
 fi
 
 # curl trusts exactly this CA (not the system's) when --ca-file is given.
 CURL_CA=()
 if [ -n "$CA_FILE" ]; then
-  if [ ! -f "$CA_FILE" ] || [ ! -r "$CA_FILE" ]; then die "--ca-file: cannot read $CA_FILE"; fi
+  if [ ! -f "$CA_FILE" ] || [ ! -r "$CA_FILE" ]; then die_usage "--ca-file: cannot read $CA_FILE"; fi
   grep -q -- '-----BEGIN CERTIFICATE-----' "$CA_FILE" \
-    || die "--ca-file: $CA_FILE is not a PEM certificate (expected -----BEGIN CERTIFICATE-----)"
+    || die_usage "--ca-file: $CA_FILE is not a PEM certificate (expected -----BEGIN CERTIFICATE-----)"
   CURL_CA=(--cacert "$CA_FILE")
 elif [ -f "$CA_DEST" ]; then
   # A re-run without --ca-file: keep trusting the CA installed last time, the one
@@ -229,7 +320,122 @@ if ! python3 -c 'import venv, ensurepip' 2>/dev/null; then
   die "Python's venv module is missing: sudo apt install python3-venv"
 fi
 
-[ -r /dev/tty ] || die "no terminal to ask questions on; run this from an interactive shell"
+# One installer at a time (e.g. an Ansible run and a person at the same moment).
+if command -v flock >/dev/null; then
+  exec 9>/run/cronrack-agent-install.lock
+  flock -n 9 || die "another CronRack install or upgrade is running; try again when it has finished"
+fi
+
+# normalize_url URL: the URL with the scheme and host in lowercase, a default :443 on
+# https dropped and trailing slashes dropped. Everything else is kept as it is.
+normalize_url() {
+  local url="$1" scheme hostport path
+  if ! [[ "$url" =~ ^([A-Za-z][A-Za-z0-9+.-]*)://([^/]*)(/.*)?$ ]]; then
+    printf '%s' "$url"
+    return
+  fi
+  scheme="${BASH_REMATCH[1],,}"
+  hostport="${BASH_REMATCH[2],,}"
+  path="${BASH_REMATCH[3]}"
+  if [ "$scheme" = "https" ]; then hostport="${hostport%:443}"; fi
+  while [ "${path%/}" != "$path" ]; do path="${path%/}"; done
+  printf '%s://%s%s' "$scheme" "$hostport" "$path"
+}
+
+# url_host URL: only the host name (no scheme, port or path), in lowercase.
+url_host() {
+  local rest="${1#*://}"
+  rest="${rest%%/*}"
+  if [[ "$rest" =~ ^(\[[^]]*\]) ]]; then rest="${BASH_REMATCH[1]}"; else rest="${rest%%:*}"; fi
+  printf '%s' "${rest,,}"
+}
+
+# config_server_url: the top-level server_url in agent.toml (empty if there is none).
+# Matched with a pattern, never executed.
+config_server_url() {
+  local line value=""
+  { xtrace_off; } 2>/dev/null
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ "$line" =~ ^[[:space:]]*\[ ]]; then break; fi
+    if [[ "$line" =~ ^[[:space:]]*server_url[[:space:]]*=[[:space:]]*\"([^\"]*)\"[[:space:]]*(#.*)?$ ]]; then
+      value="${BASH_REMATCH[1]}"
+      break
+    fi
+  done <"$CONFIG_FILE"
+  xtrace_restore
+  printf '%s' "$value"
+}
+
+# installed_value KEY: one value from $INSTALLED_FILE (empty if missing). Never sourced.
+installed_value() {
+  local key="$1" line
+  [ -f "$INSTALLED_FILE" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ "$line" =~ ^${key}=([A-Za-z0-9._:+-]{1,64})$ ]]; then
+      printf '%s' "${BASH_REMATCH[1]}"
+      return
+    fi
+  done <"$INSTALLED_FILE"
+}
+
+# code_version DIR: AGENT_VERSION from DIR/agent/__init__.py (empty if not found).
+code_version() {
+  local file="$1/agent/__init__.py"
+  [ -f "$file" ] || return 0
+  sed -n -E 's/^AGENT_VERSION = "([0-9A-Za-z.+-]{1,40})"$/\1/p' "$file" | head -n 1
+}
+
+OLD_VERSION=""
+WAS_ENABLED=0
+CONFIG_SERVER=""
+SERVER_MOVED=0
+if [ "$UPGRADE" -eq 1 ]; then
+  # Installed = a config with a token, the unit, the code, the venv and the user.
+  missing=""
+  if [ ! -f "$CONFIG_FILE" ]; then
+    missing="$CONFIG_FILE"
+  elif ! grep -Eq '^[[:space:]]*token[[:space:]]*=' "$CONFIG_FILE"; then
+    missing="a token in $CONFIG_FILE"
+  elif [ ! -f "$UNIT_FILE" ]; then
+    missing="the $UNIT_NAME service"
+  elif [ ! -f "$APP_DIR/agent/__main__.py" ] || [ ! -x "$VENV_DIR/bin/python" ]; then
+    missing="the agent code in $PREFIX"
+  elif ! id -u "$AGENT_USER" >/dev/null 2>&1; then
+    missing="the $AGENT_USER user"
+  fi
+  if [ -n "$missing" ]; then
+    die_code "$EXIT_NOT_INSTALLED" "no CronRack agent is installed here (missing: $missing).
+       --upgrade only updates an installed agent. Run the normal install command
+       (the same command without --upgrade) instead; it asks for the token."
+  fi
+
+  CONFIG_SERVER="$(config_server_url)"
+  if [ "$(normalize_url "$CONFIG_SERVER")" != "$(normalize_url "$SERVER")" ]; then
+    if [ "$SERVER_CHANGE" -eq 0 ]; then
+      die_code "$EXIT_SERVER" "--server $SERVER is not the server this agent uses (server_url = \"$CONFIG_SERVER\").
+       Nothing was changed. To move the agent to $SERVER, add --server-change."
+    fi
+    SERVER_MOVED=1
+  fi
+
+  # A drop-in naming a group that no longer exists would stop the service from starting.
+  # A normal re-run deletes it; --upgrade must not change the Docker choice, so it stops.
+  if [ -f "$DOCKER_DROPIN" ] && ! getent group docker >/dev/null; then
+    die "Docker access is on ($DOCKER_DROPIN), but the docker group no longer exists,
+       so the service could not start. Nothing was changed. Reinstall Docker, or run the
+       install command without --upgrade to turn Docker access off."
+  fi
+
+  # --upgrade never changes whether the service starts at boot: it is only enabled
+  # again if it was enabled before.
+  if systemctl is-enabled --quiet "$UNIT_NAME"; then WAS_ENABLED=1; fi
+
+  OLD_VERSION="$(installed_value version)"
+  [ -n "$OLD_VERSION" ] || OLD_VERSION="$(code_version "$APP_DIR")"
+  [ -n "$OLD_VERSION" ] || OLD_VERSION="unknown"
+else
+  [ -r /dev/tty ] || die "no terminal to ask questions on; run this from an interactive shell (to upgrade without one, add --upgrade)"
+fi
 
 # --- Kubernetes: check everything and ask for the token BEFORE changing anything ------------
 
@@ -250,6 +456,7 @@ check_k8s_ca() {
 # ask_k8s_token: reads the service account token into K8S_TOKEN, hidden. It is only ever
 # written to a file with printf (a bash builtin), never printed or passed as an argument.
 ask_k8s_token() {
+  no_questions_in_upgrade
   echo
   echo "Paste the Kubernetes service account token for the cluster view."
   echo "(Typing is hidden. It must be a read-only token; see docs/kubernetes-monitoring.md.)"
@@ -316,6 +523,26 @@ ACTUAL="$(sha256sum "$TMP/cronrack-agent.tar.gz" | awk '{print $1}')"
 [ "$EXPECTED" = "$ACTUAL" ] || die "checksum mismatch: the download is corrupt or was tampered with; nothing was installed"
 say "Checksum OK ($ACTUAL)"
 
+# The version is read from the verified package with a pattern; nothing in it is run.
+NEW_VERSION="$(tar -xzOf "$TMP/cronrack-agent.tar.gz" agent/__init__.py 2>/dev/null \
+  | sed -n -E 's/^AGENT_VERSION = "([0-9A-Za-z.+-]{1,40})"$/\1/p' | head -n 1)" || true
+[[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.+-]*)?$ ]] \
+  || die "the downloaded package has no valid AGENT_VERSION; nothing was installed"
+say "Package version $NEW_VERSION"
+
+if [ "$UPGRADE" -eq 1 ] && [ -z "$CA_FILE" ] && [ "$SERVER_MOVED" -eq 0 ] \
+  && [ "$(installed_value version)" = "$NEW_VERSION" ] \
+  && [ "$(installed_value sha256)" = "$ACTUAL" ]; then
+  # Not restarted on purpose: something stopped it, and that needs a look first.
+  if ! systemctl is-active --quiet "$UNIT_NAME"; then
+    die_code "$EXIT_NOT_RUNNING" "already up to date ($NEW_VERSION), but the agent service is not running.
+       Nothing was changed or started. See: systemctl status cronrack-agent
+       and journalctl -u cronrack-agent -n 50"
+  fi
+  say "Already up to date ($NEW_VERSION). Nothing was changed or restarted."
+  exit 0
+fi
+
 # --- 3. install code and venv ------------------------------------------------------
 
 say "Installing to $PREFIX"
@@ -338,18 +565,42 @@ fi
 say "Installing the agent's one dependency (websockets)"
 "$VENV_DIR/bin/pip" install --quiet --disable-pip-version-check --no-cache-dir \
   --upgrade -r "$STAGING/agent/requirements.txt"
+# The venv is root's: the agent must not be able to change its own libraries.
+chown -R root:root "$VENV_DIR"
+chmod -R go-w "$VENV_DIR"
 
-# Swap in the new code only now that everything above worked.
-rm -rf "$PREFIX/app.old"
-[ -d "$APP_DIR" ] && mv "$APP_DIR" "$PREFIX/app.old"
+# Swap in the new code only now that everything above worked. The previous code stays
+# in app.prev until the new code is known to run, so a failed upgrade can be undone.
+rm -rf "$APP_PREV" "$PREFIX/app.old"
+if [ -d "$APP_DIR" ]; then mv "$APP_DIR" "$APP_PREV"; fi
 mv "$STAGING" "$APP_DIR"
-rm -rf "$PREFIX/app.old"
 # The service can't write to /opt (ProtectSystem=strict), so compile the .pyc files now.
 "$VENV_DIR/bin/python" -m compileall -q "$APP_DIR/agent" >/dev/null
+
+# write_installed: $INSTALLED_FILE, root:root 0644, key=value lines, no secrets (only
+# the host of server_url, never the token). Written only once the new code runs (after
+# the stability check on --upgrade), so it never claims a version that didn't start,
+# and a failed or interrupted upgrade leaves the old record (and isn't "up to date").
+write_installed() {
+  local tmp
+  tmp="$(mktemp "$PREFIX/.INSTALLED.XXXXXX")"
+  {
+    printf '# CronRack agent install record. Written by install.sh; do not edit.\n'
+    printf 'format=1\n'
+    printf 'version=%s\n' "$NEW_VERSION"
+    printf 'sha256=%s\n' "$ACTUAL"
+    printf 'server_host=%s\n' "$(url_host "$SERVER")"
+    printf 'installed_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } >"$tmp" || { rm -f "$tmp"; die "cannot write $tmp"; }
+  chown root:root "$tmp"
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$INSTALLED_FILE"
+}
 
 # --- 4. config and token -------------------------------------------------------------
 
 ask_token() {  # reads the token into TOKEN, hidden; dies before anything is written
+  no_questions_in_upgrade
   echo
   echo "Paste the agent token shown on the server's \"Add host\" page."
   echo "(Typing is hidden. The token is not shown again on the server.)"
@@ -365,6 +616,7 @@ ask_token() {  # reads the token into TOKEN, hidden; dies before anything is wri
 # 0640 before anything is written to it, then moved over the old one in one step.
 set_config_key() {
   local key="$1" value="$2" tmp line written=0 in_table=0
+  { xtrace_off; } 2>/dev/null
   tmp="$(mktemp "$CONFIG_DIR/.agent.toml.XXXXXX")"
   if ! { chown root:"$AGENT_USER" "$tmp" && chmod 0640 "$tmp"; }; then
     rm -f "$tmp"
@@ -387,6 +639,7 @@ set_config_key() {
     if [ "$written" -eq 0 ]; then printf '%s = "%s"\n' "$key" "$value"; fi
   } >"$tmp" || { rm -f "$tmp"; die "cannot write $tmp"; }
   mv -f "$tmp" "$CONFIG_FILE"
+  xtrace_restore
 }
 
 # set_kubernetes_table KEY=VALUE...: in $CONFIG_FILE, set these keys inside the
@@ -430,23 +683,32 @@ set_kubernetes_table() {
   mv -f "$tmp" "$CONFIG_FILE"
 }
 
-install -d -m 0750 -o root -g "$AGENT_USER" "$CONFIG_DIR"
-if [ -f "$CONFIG_FILE" ]; then
-  say "Keeping the existing $CONFIG_FILE"
+# fix_config_permissions: kept files (e.g. after --uninstall kept /etc/cronrack) must be
+# readable by the agent again, and by nobody else. Their content is not touched.
+fix_config_permissions() {
+  local kept
   chown root:"$AGENT_USER" "$CONFIG_FILE"
   chmod 0640 "$CONFIG_FILE"
-  # A kept CA certificate (e.g. after --uninstall kept /etc/cronrack) must be readable again.
-  if [ -f "$CA_DEST" ]; then
-    chown root:"$AGENT_USER" "$CA_DEST"
-    chmod 0640 "$CA_DEST"
-  fi
-  # Kept Kubernetes files (e.g. after --uninstall kept /etc/cronrack) must be readable again.
-  for kept in "$K8S_TOKEN_FILE" "$K8S_CA_DEST"; do
+  for kept in "$CA_DEST" "$K8S_TOKEN_FILE" "$K8S_CA_DEST"; do
     if [ -f "$kept" ]; then
       chown root:"$AGENT_USER" "$kept"
       chmod 0640 "$kept"
     fi
   done
+}
+
+install -d -m 0750 -o root -g "$AGENT_USER" "$CONFIG_DIR"
+if [ "$UPGRADE" -eq 1 ]; then
+  # --upgrade: agent.toml, the token, the CA and the Kubernetes files stay byte for byte
+  # as they are; only server_url (with --server-change) and ca_file (with --ca-file) change.
+  fix_config_permissions
+  if [ "$SERVER_MOVED" -eq 1 ]; then
+    set_config_key server_url "$SERVER"
+    say "server_url = \"$SERVER\" (was \"$CONFIG_SERVER\")"
+  fi
+elif [ -f "$CONFIG_FILE" ]; then
+  say "Keeping the existing $CONFIG_FILE"
+  fix_config_permissions
   set_config_key server_url "$SERVER"
   say "server_url = \"$SERVER\""
   # grep only reads the file; the token itself never becomes an argument.
@@ -505,10 +767,25 @@ fi
 # --- 5. Docker access (opt-in, only if Docker is installed) --------------------------------
 
 echo
-if getent group docker >/dev/null; then
+if [ "$UPGRADE" -eq 1 ]; then
+  # --upgrade keeps the current choice and never asks (checked above that it can start).
+  if [ -f "$DOCKER_DROPIN" ]; then
+    say "Docker access kept: on ($DOCKER_DROPIN)"
+  else
+    say "Docker access kept: off"
+  fi
+elif getent group docker >/dev/null; then
   echo "The agent can check your Docker containers, but only if it's in the docker group."
   echo "Members of the docker group can control Docker, which is equivalent to root on this host."
-  if ask_yes_no "Give the agent Docker access? (docker group = root-equivalent) [y/N] "; then
+  # The default follows the current choice, so pressing Enter never removes access.
+  if [ -f "$DOCKER_DROPIN" ]; then
+    docker_prompt="Docker access is on. Keep it? (docker group = root-equivalent) [Y/n] "
+    docker_default=y
+  else
+    docker_prompt="Give the agent Docker access? (docker group = root-equivalent) [y/N] "
+    docker_default=n
+  fi
+  if ask_yes_no "$docker_prompt" "$docker_default"; then
     if install -d -m 0755 "$DOCKER_DROPIN_DIR" \
       && printf '[Service]\nSupplementaryGroups=docker\n' >"$DOCKER_DROPIN" \
       && chmod 0644 "$DOCKER_DROPIN"; then
@@ -529,17 +806,94 @@ fi
 
 # --- 6. systemd service -------------------------------------------------------------------
 
-install -m 0644 -o root -g root "$APP_DIR/deploy/$UNIT_NAME" "$UNIT_FILE"
-systemctl daemon-reload
-systemctl enable --quiet "$UNIT_NAME"
-systemctl restart "$UNIT_NAME"
+# start_service DIR (--upgrade only): install DIR's unit file and restart the service.
+# It is enabled only if it was enabled before the upgrade; a disabled one stays disabled.
+start_service() {
+  install -m 0644 -o root -g root "$1/deploy/$UNIT_NAME" "$UNIT_FILE"
+  systemctl daemon-reload
+  if [ "$WAS_ENABLED" -eq 1 ]; then systemctl enable --quiet "$UNIT_NAME"; fi
+  systemctl restart "$UNIT_NAME" || true
+}
 
-echo
-say "Done. The agent is running and connecting to $SERVER."
-echo "    Status:  systemctl status cronrack-agent"
-echo "    Logs:    journalctl -u cronrack-agent -f"
-echo "    Upgrade: re-run the same install command (the config and token are kept)"
-if [ "$K8S_VIEW" -eq 1 ]; then
-  echo "    Check the Kubernetes access:"
-  echo "      cd $APP_DIR && sudo -u $AGENT_USER ../venv/bin/python -m agent --check-k8s --config $CONFIG_FILE"
+# wait_until_stable: 0 once the service was active $STABLE_POLLS polls in a row.
+wait_until_stable() {
+  local polls=0 good=0
+  while [ "$polls" -lt "$STABLE_MAX_POLLS" ]; do
+    sleep 1
+    polls=$((polls + 1))
+    if systemctl is-active --quiet "$UNIT_NAME"; then
+      good=$((good + 1))
+      if [ "$good" -ge "$STABLE_POLLS" ]; then return 0; fi
+    else
+      good=0
+    fi
+  done
+  return 1
+}
+
+if [ "$UPGRADE" -eq 0 ]; then
+  install -m 0644 -o root -g root "$APP_DIR/deploy/$UNIT_NAME" "$UNIT_FILE"
+  systemctl daemon-reload
+  systemctl enable --quiet "$UNIT_NAME"
+  systemctl restart "$UNIT_NAME"
+  rm -rf "$APP_PREV"
+  write_installed
+  echo
+  say "Done. The agent is running and connecting to $SERVER."
+  echo "    Status:  systemctl status cronrack-agent"
+  echo "    Logs:    journalctl -u cronrack-agent -f"
+  if [ -f "$CA_DEST" ]; then
+    echo "    Upgrade: sudo curl -fsSL --cacert $CA_DEST $SERVER/agent/install.sh \\"
+  else
+    echo "    Upgrade: curl -fsSL $SERVER/agent/install.sh \\"
+  fi
+  echo "               | sudo bash -s -- --server $SERVER --upgrade"
+  echo "             (asks nothing and keeps the token and every setting)"
+  if [ "$K8S_VIEW" -eq 1 ]; then
+    echo "    Check the Kubernetes access:"
+    echo "      cd $APP_DIR && sudo -u $AGENT_USER ../venv/bin/python -m agent --check-k8s --config $CONFIG_FILE"
+  fi
+  exit 0
 fi
+
+say "Restarting the agent and checking that it keeps running"
+start_service "$APP_DIR"
+if wait_until_stable; then
+  write_installed
+  rm -rf "$APP_PREV"
+  kept="token"
+  if [ -f "$CA_DEST" ] && [ -z "$CA_FILE" ]; then kept="$kept, CA certificate"; fi
+  if [ -f "$K8S_TOKEN_FILE" ]; then kept="$kept, Kubernetes token"; fi
+  if grep -Eq '^[[:space:]]*\[kubernetes\]' "$CONFIG_FILE"; then kept="$kept, [kubernetes] settings"; fi
+  if [ -f "$DOCKER_DROPIN" ]; then kept="$kept, Docker access (on)"; else kept="$kept, Docker access (off)"; fi
+  echo
+  say "Upgraded the CronRack agent: $OLD_VERSION -> $NEW_VERSION"
+  echo "    Kept:    $kept"
+  if [ "$SERVER_MOVED" -eq 1 ]; then echo "    Changed: server_url is now $SERVER"; fi
+  if [ -n "$CA_FILE" ]; then echo "    Changed: the CA certificate was replaced ($CA_DEST)"; fi
+  echo "    Status:  systemctl status cronrack-agent"
+  exit 0
+fi
+
+# The new code didn't keep running: put the previous code (with its unit file) back.
+# INSTALLED was not rewritten, so it still describes that code. Not rolled back: the
+# websockets library in the venv, and a server_url or CA changed by this run.
+warn "the agent $NEW_VERSION did not keep running; rolling back to $OLD_VERSION"
+if [ ! -d "$APP_PREV" ]; then
+  die_code "$EXIT_DOWN" "the agent is not running and there is no previous version to roll back to.
+       See: journalctl -u cronrack-agent -n 50"
+fi
+if ! { rm -rf "$APP_DIR" && mv "$APP_PREV" "$APP_DIR"; }; then
+  die_code "$EXIT_DOWN" "the rollback could not put $APP_PREV back: the agent is NOT running.
+       See: journalctl -u cronrack-agent -n 50"
+fi
+start_service "$APP_DIR"
+if wait_until_stable; then
+  die_code "$EXIT_ROLLED_BACK" "upgrade failed, rolled back to $OLD_VERSION; see journalctl -u cronrack-agent -n 50
+       (the agent $OLD_VERSION runs again; the websockets library in the venv was not rolled back)"
+fi
+die_code "$EXIT_DOWN" "upgrade failed and the rollback to $OLD_VERSION did not come up either: the agent is NOT running.
+       See: journalctl -u cronrack-agent -n 50"
+}
+
+main "$@"
