@@ -1,95 +1,339 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ cluster.name }} · CronRack{% endblock %}
 {% block nav_clusters %}aria-current="page"{% endblock %}
+{% block main_class %}app-main--detail{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/disclosure.js' %}" defer></script>
+<script src="{% static 'cronrack/js/cluster.js' %}" defer></script>{% endblock %}
 
+{% comment %}
+  The cluster page, phone first. Order: header (a mini rack, like the host page), the summary
+  readouts, notices (lists cut or not read in full), "Needs your attention" (every finding
+  with its why and a copy-only fix), then Nodes, Workloads, Pods, Helm releases, Argo CD apps,
+  Versions & updates, Recent warnings, Volume claims.
+
+  Every table is a .stack-table: a table on wide screens, one card per row in a narrow box
+  (the cell labels come from data-label). Status is always the status icon (shape + words)
+  next to a word (components/state_word.html), never colour alone. Lamps: the header only.
+  Row colours (severity) come from the presenter, so this file only prints values.
+
+  cluster.js refreshes the header status, the readouts and the findings every 60s from
+  detail.json (the fixed URL in #cluster-live), and shows "New data · Show latest" when a
+  newer snapshot arrived, so the long sections below are reloaded by the server, not rebuilt
+  in JS. The ids are its hooks. Everything from the cluster is agent data: plain {{ }} only.
+{% endcomment %}
 {% block content %}
-  <div class="page-head">
-    <a class="btn btn--icon" href="{% url 'clusters' %}" aria-label="Back">&lsaquo;</a>
-    <h1 class="page-title">{{ cluster.name }}</h1>
-    {% if cluster.status == "offline" %}<p class="offline-note"><strong>Offline</strong> · last data {{ cluster.last_seen_human }}</p>{% else %}{% include "components/status_icon.html" with status=cluster.status label=cluster.status_label %}{% endif %}
-    <a class="btn" href="{{ cluster.settings_url }}">Settings</a>
-  </div>
+  <header class="host-rack rack-chassis surface">
+    <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
+    <div class="host-rack__bay rack well">
+      <div class="host-unit">
+        <a class="btn btn--icon host-unit__back" href="{% url 'clusters' %}" aria-label="Back to clusters">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+        </a>
+        <span class="host-unit__lamp" aria-hidden="true" id="cluster-lamp">{% if cluster.status == "offline" or cluster.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=cluster.status %}{% endif %}</span>
+        <div class="host-unit__title" id="cluster-title">
+          <h1 class="page-title host-unit__name">{{ cluster.name }}</h1>
+          {% if cluster.status != "offline" %}{% include "components/status_icon.html" with status=cluster.status label=cluster.status_label %}{% endif %}
+        </div>
+        <div class="host-unit__report">
+          <p class="host-unit__meta{% if cluster.status == 'offline' %} offline-note{% endif %}" id="cluster-meta">{% if cluster.status == "offline" %}<strong>Offline</strong> · last data {{ cluster.last_seen_human }}{% elif cluster.has_snapshot %}Updated {{ cluster.last_seen_human }}{% else %}No report yet{% endif %}{% if cluster.reporter %} · via {{ cluster.reporter }}{% endif %}{% if cluster.version %} · {{ cluster.version }}{% endif %}</p>
+        </div>
+        <div class="host-unit__keys">
+          <a class="btn" href="{{ cluster.settings_url }}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"></path></svg>
+            Cluster settings
+          </a>
+        </div>
+        <span class="rack-unit__vents host-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+      </div>
+    </div>
+    <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
+  </header>
+
+  {# cluster.js: where to fetch (a fixed same-site URL) and which snapshot this page shows. #}
+  <div id="cluster-live" data-json-url="{{ cluster.json_url }}" data-snapshot="{{ cluster.snapshot_received_at|default_if_none:'' }}" hidden></div>
+  <p class="refresh-failed" id="refresh-failed" role="status" hidden>{% include "components/status_icon.html" with status="yellow" label="Warning" %}<span>Offline — retrying</span></p>
+  <p class="muted" id="cluster-new" hidden role="status">New data arrived. <a class="btn btn--sm" href="{{ cluster.url }}">Show latest</a></p>
 
   {% if not cluster.has_snapshot %}
-    <section class="surface empty"><p class="empty__text">Waiting for the first report from this cluster.</p></section>
+    <section class="surface panel">
+      <p>{% include "components/status_icon.html" with status="waiting" label="Waiting" %} Waiting for the first report from this cluster.</p>
+      <p class="muted">It arrives from the agent that has the cluster view turned on.</p>
+    </section>
   {% else %}
-    <p class="page-sub">Updated {{ cluster.last_seen_human }}{% if cluster.reporter %} · via {{ cluster.reporter }}{% endif %}{% if cluster.version %} · {{ cluster.version }}{% endif %}</p>
+    <dl class="readouts" id="cluster-tiles">
+      <div class="readout-well well">
+        <dt class="readout-well__label">Nodes ready</dt>
+        <dd class="readout-well__value" id="tile-nodes">{{ tiles.nodes_ready }}/{{ tiles.nodes_total }}</dd>
+      </div>
+      <div class="readout-well well">
+        <dt class="readout-well__label">All pods</dt>
+        <dd class="readout-well__value" id="tile-pods">{{ tiles.pods.running }} running · {{ tiles.pods.problem }} problem{{ tiles.pods.problem|pluralize }}</dd>
+      </div>
+      <div class="readout-well well">
+        <dt class="readout-well__label">Workloads healthy</dt>
+        <dd class="readout-well__value" id="tile-workloads">{{ tiles.workloads_ok }}/{{ tiles.workloads_total }}</dd>
+      </div>
+      <div class="readout-well well">
+        <dt class="readout-well__label">Argo CD synced</dt>
+        <dd class="readout-well__value" id="tile-argo">{% if tiles.argo %}{{ tiles.argo_synced }}/{{ tiles.argo }}{% else %}—{% endif %}</dd>
+      </div>
+      <div class="readout-well well">
+        <dt class="readout-well__label">Updates</dt>
+        <dd class="readout-well__value" id="tile-updates">{% if tiles.updates is None %}Off{% else %}{{ tiles.updates }}{% endif %}</dd>
+      </div>
+    </dl>
 
-    <h2 class="section-title">Needs your attention</h2>
-    {% if issues %}
-      <ul class="surface item-list">
-        {% for issue in issues %}
-          {% include "components/issue_line.html" with issue=issue %}
-          {% if issue.why %}<li>{{ issue.why }}</li>{% endif %}
-          {% if issue.fix %}<li><pre class="code well">{{ issue.fix }}</pre></li>{% endif %}
-        {% endfor %}
+    {% if truncated or incomplete %}
+      <ul class="issue-list plain-list" id="cluster-notices">
+        {% if incomplete %}
+          <li class="issue-line">{% include "components/status_icon.html" with status="yellow" label=None %}<span class="issue-line__text"><strong>Not read in full:</strong> {{ incomplete|join:", " }}. Problems may be hidden there.</span></li>
+        {% endif %}
+        {% if truncated %}
+          <li class="issue-line issue-line--info">{% include "components/status_icon.html" with status="info" label=None %}<span class="issue-line__text">Not everything is listed (cut: {{ cut|join:", " }}). Problems are listed first.</span></li>
+        {% endif %}
       </ul>
-    {% else %}
-      <p>Nothing needs you.</p>
     {% endif %}
+  {% endif %}
 
-    <h2 class="section-title">Summary</h2>
-    <p>Nodes {{ tiles.nodes_ready }}/{{ tiles.nodes_total }} ready · Pods {{ tiles.pods.running }}/{{ tiles.pods.total }} running, {{ tiles.pods.problem }} with problems · Apps {{ tiles.workloads_ok }}/{{ tiles.workloads_total }} healthy</p>
-
-    {% if incomplete %}<p><strong>Not read in full:</strong> {{ incomplete|join:", " }}. Problems may be hidden there.</p>{% endif %}
-    {% if truncated %}<p>Not everything is listed (cut: {{ cut|join:", " }}). Problems are listed first.</p>{% endif %}
-
-    <h2 class="section-title">Nodes</h2>
-    <ul class="surface item-list">
-      {% for node in nodes %}
-        <li>{{ node.name }} · {% if node.ready %}Ready{% else %}Not ready{% endif %}{% if node.pressure %} · {{ node.pressure|join:", " }}{% endif %}{% if node.kubelet %} · {{ node.kubelet }}{% endif %}{% if node.host %} · <a href="{{ node.host.url }}">{{ node.host.name }}</a>{% endif %}</li>
-      {% endfor %}
+  <section class="surface panel attention" aria-labelledby="attention-title">
+    <h2 class="section-title" id="attention-title">Needs your attention</h2>
+    {% if cluster.status == "offline" %}
+      {# Fixed text, not cluster data. The commands are copy-only: CronRack never runs them. #}
+      <ul class="issue-list plain-list">
+        <li class="issue-line">
+          <svg class="issue-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>
+          <span class="issue-line__text">This cluster's view stopped reporting. Last data {{ cluster.last_seen_human }}.</span>
+        </li>
+      </ul>
+      <div class="code-head">
+        <p class="muted">Check the agent on the reporting host</p>
+        <button type="button" class="btn btn--sm js-copy" aria-controls="cluster-agent-check">Copy</button>
+      </div>
+      <pre class="code well" id="cluster-agent-check">sudo systemctl status cronrack-agent
+sudo journalctl -u cronrack-agent -n 50 --no-pager</pre>
+    {% endif %}
+    <ul class="plain-list" id="cluster-issues">
+      {% for issue in issues %}{% include "components/finding_card.html" with issue=issue %}{% endfor %}
     </ul>
-    {% if unlinked_nodes %}<p>Nodes without a CronRack host: {{ unlinked_nodes|join:", " }}</p>{% endif %}
+    <p class="muted" id="cluster-no-issues"{% if issues or cluster.status == "offline" or not cluster.has_snapshot %} hidden{% endif %}>Nothing needs you in this cluster.</p>
+  </section>
+  <template id="finding-template">{% include "components/finding_card.html" with blank=True %}</template>
 
-    {% if problem_pods %}
-      <h2 class="section-title">Problem pods</h2>
-      <ul class="surface item-list">
-        {% for pod in problem_pods %}
-          <li>{{ pod.ns }}/{{ pod.name }} · {{ pod.phase }}{% if pod.reason %} · {{ pod.reason }}{% endif %} · {{ pod.restarts }} restart{{ pod.restarts|pluralize }}</li>
+  {% if cluster.has_snapshot %}
+    <section class="surface panel" aria-labelledby="sec-nodes">
+      <h2 class="section-title" id="sec-nodes">Nodes</h2>
+      {% if nodes %}
+        <div class="stack-table table-scroll well">
+          <table>
+            <thead><tr><th scope="col">Node</th><th scope="col">Role</th><th scope="col">Version</th><th scope="col">Ready</th><th scope="col">CPU</th><th scope="col">Memory</th></tr></thead>
+            <tbody>
+              {% for node in nodes %}
+                <tr>
+                  <td data-label="Node"><span class="mono">{{ node.name }}</span>{% if node.host %} · <a href="{{ node.host.url }}">{{ node.host.name }}</a>{% endif %}</td>
+                  <td data-label="Role">{% if node.roles %}{{ node.roles|join:", " }}{% else %}worker{% endif %}</td>
+                  <td data-label="Version"><span class="mono">{{ node.kubelet|default:"—" }}</span></td>
+                  <td data-label="Ready">{% if node.ready %}{% include "components/state_word.html" with status="green" word="Ready" %}{% else %}{% include "components/state_word.html" with status="red" word="Not ready" %}{% endif %}{% for condition in node.pressure %} {% include "components/state_word.html" with status="yellow" word=condition %}{% endfor %}</td>
+                  <td data-label="CPU">{% if node.cpu_used_m is not None %}{{ node.cpu_used_m }}m of {% endif %}{% if node.cpu_m is not None %}{{ node.cpu_m }}m{% else %}—{% endif %}</td>
+                  <td data-label="Memory">{% if node.mem_used_mi is not None %}{{ node.mem_used_mi }} Mi of {% endif %}{% if node.mem_mi is not None %}{{ node.mem_mi }} Mi{% else %}—{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if unlinked_nodes %}<p class="muted">Nodes without a CronRack host: {{ unlinked_nodes|join:", " }}. A node is matched to the host with the same name.</p>{% endif %}
+      {% else %}
+        <p class="muted">No nodes listed.</p>
+      {% endif %}
+    </section>
+
+    <section class="surface panel" aria-labelledby="sec-workloads">
+      <h2 class="section-title" id="sec-workloads">Workloads</h2>
+      {% if workloads %}
+        <div class="stack-table table-scroll well">
+          <table>
+            <thead><tr><th scope="col">Name</th><th scope="col">Namespace</th><th scope="col">Kind</th><th scope="col">Available</th><th scope="col">Updated</th><th scope="col">Images</th></tr></thead>
+            <tbody>
+              {% for w in workloads %}
+                <tr>
+                  <td data-label="Name"><span class="mono">{{ w.name }}</span></td>
+                  <td data-label="Namespace">{{ w.ns }}</td>
+                  <td data-label="Kind">{{ w.kind }}</td>
+                  <td data-label="Available">{% include "components/state_word.html" with status=w.severity word=w.available_text %}</td>
+                  <td data-label="Updated">{{ w.updated }}/{{ w.desired }}</td>
+                  <td data-label="Images"><span class="mono">{{ w.images|join:", "|default:"—" }}</span></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">No Deployments, StatefulSets or DaemonSets listed.</p>
+      {% endif %}
+    </section>
+
+    <section class="surface panel" aria-labelledby="sec-pods">
+      <h2 class="section-title" id="sec-pods">Pods</h2>
+      {% if problem_pods %}
+        <h3 class="subsection-title">Problem pods</h3>
+        <div class="stack-table table-scroll well">
+          <table>
+            <thead><tr><th scope="col">Pod</th><th scope="col">Namespace</th><th scope="col">Node</th><th scope="col">State</th><th scope="col">Restarts</th><th scope="col">Age</th></tr></thead>
+            <tbody>
+              {% for p in problem_pods %}
+                <tr>
+                  <td data-label="Pod"><span class="mono">{{ p.name }}</span></td>
+                  <td data-label="Namespace">{{ p.ns }}</td>
+                  <td data-label="Node">{{ p.node|default:"—" }}</td>
+                  <td data-label="State">{% include "components/state_word.html" with status=p.severity word=p.reason|default:p.phase %}{% if p.last %} · last ended: {{ p.last }}{% endif %}</td>
+                  <td data-label="Restarts">{{ p.restarts }}</td>
+                  <td data-label="Age">{{ p.age_human }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      {% if ok_pods %}
+        <h3 class="subsection-title">Healthy pods by namespace</h3>
+        {% for group in ok_pods %}
+          {# ids come from the loop counter, never from a namespace name (agent data). #}
+          {% with n=forloop.counter|stringformat:"s" %}{% with list_id="pods-ns-"|add:n %}
+          <div class="code-head">
+            <p class="subsection-title">{{ group.ns }}</p>
+            {% include "components/show_more.html" with target=list_id count=group.pods|length noun="pods" %}
+          </div>
+          <ul class="item-list plain-list" id="{{ list_id }}">
+            {% for p in group.pods %}
+              <li class="item-row"><span class="item-row__name mono">{{ p.name }}</span><span class="item-row__note">{% if p.node %}{{ p.node }} · {% endif %}{{ p.age_human }}{% if p.restarts %} · {{ p.restarts }} restart{{ p.restarts|pluralize }}{% endif %}</span></li>
+            {% endfor %}
+          </ul>
+          {% endwith %}{% endwith %}
         {% endfor %}
-      </ul>
-    {% endif %}
+      {% endif %}
+      {% if not problem_pods and not ok_pods %}
+        <p class="muted">No pods listed.</p>
+      {% endif %}
+    </section>
 
-    {% if ok_pods %}
-      <h2 class="section-title">Healthy pods</h2>
-      {% for group in ok_pods %}
-        <h3>{{ group.ns }}</h3>
-        <ul class="surface item-list">{% for pod in group.pods %}<li>{{ pod.name }}{% if pod.node %} · {{ pod.node }}{% endif %}</li>{% endfor %}</ul>
-      {% endfor %}
-    {% endif %}
+    <section class="surface panel" aria-labelledby="sec-helm">
+      <h2 class="section-title" id="sec-helm">Helm releases</h2>
+      {% if helm %}
+        <div class="stack-table table-scroll well">
+          <table>
+            <thead><tr><th scope="col">Release</th><th scope="col">Namespace</th><th scope="col">Chart</th><th scope="col">App version</th><th scope="col">Found by</th></tr></thead>
+            <tbody>
+              {% for h in helm %}
+                <tr>
+                  <td data-label="Release"><span class="mono">{{ h.name }}</span></td>
+                  <td data-label="Namespace">{{ h.ns }}</td>
+                  <td data-label="Chart"><span class="mono">{{ h.chart|default:"—" }}</span></td>
+                  <td data-label="App version">{{ h.app_version|default:"—" }}</td>
+                  <td data-label="Found by">{% if h.source == "helmchart" %}k3s HelmChart{% else %}Helm labels{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">No Helm releases found.</p>
+      {% endif %}
+    </section>
 
-    {% if workloads %}
-      <h2 class="section-title">Apps</h2>
-      <ul class="surface item-list">
-        {% for w in workloads %}<li>{{ w.ns }}/{{ w.name }} ({{ w.kind }}) · {{ w.available }}/{{ w.desired }} available</li>{% endfor %}
-      </ul>
-    {% endif %}
+    <section class="surface panel" aria-labelledby="sec-argo">
+      <h2 class="section-title" id="sec-argo">Argo CD apps</h2>
+      {% if argo %}
+        <div class="stack-table table-scroll well">
+          <table>
+            <thead><tr><th scope="col">App</th><th scope="col">Namespace</th><th scope="col">Project</th><th scope="col">Sync</th><th scope="col">Health</th><th scope="col">Revision</th><th scope="col">Last sync</th></tr></thead>
+            <tbody>
+              {% for a in argo %}
+                <tr>
+                  <td data-label="App"><span class="mono">{{ a.name }}</span></td>
+                  <td data-label="Namespace">{{ a.ns }}</td>
+                  <td data-label="Project">{{ a.project|default:"—" }}</td>
+                  <td data-label="Sync">{% if a.sync == "Synced" %}{% include "components/state_word.html" with status="green" word=a.sync %}{% elif a.sync == "OutOfSync" %}{% include "components/state_word.html" with status="yellow" word=a.sync %}{% else %}{% include "components/state_word.html" with status="info" word=a.sync %}{% endif %}</td>
+                  <td data-label="Health">{% if a.health == "Healthy" %}{% include "components/state_word.html" with status="green" word=a.health %}{% elif a.health == "Degraded" or a.health == "Missing" %}{% include "components/state_word.html" with status="red" word=a.health %}{% else %}{% include "components/state_word.html" with status="info" word=a.health %}{% endif %}</td>
+                  <td data-label="Revision"><span class="mono">{{ a.rev|default:"—" }}</span></td>
+                  <td data-label="Last sync">{{ a.synced_at|default:"—" }}{% if a.op and a.op != "Succeeded" %} · {{ a.op }}{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% elif "argoproj.io" in missing %}
+        <p class="muted">Argo CD is not installed in this cluster.</p>
+      {% else %}
+        <p class="muted">No Argo CD apps.</p>
+      {% endif %}
+    </section>
 
-    {% if helm %}
-      <h2 class="section-title">Helm releases</h2>
-      <ul class="surface item-list">{% for h in helm %}<li>{{ h.ns }}/{{ h.name }}{% if h.chart %} · {{ h.chart }}{% endif %}</li>{% endfor %}</ul>
-    {% endif %}
+    <section class="surface panel" aria-labelledby="sec-versions">
+      <h2 class="section-title" id="sec-versions">Versions &amp; updates</h2>
+      {% if versions.rows %}
+        <div class="stack-table table-scroll well">
+          <table>
+            <thead><tr><th scope="col">Component</th><th scope="col">Installed</th><th scope="col">Latest</th><th scope="col">State</th></tr></thead>
+            <tbody>
+              {% for row in versions.rows %}
+                <tr>
+                  <td data-label="Component">{{ row.name }}</td>
+                  <td data-label="Installed"><span class="mono">{{ row.installed }}</span></td>
+                  <td data-label="Latest"><span class="mono">{{ row.latest|default:"—" }}</span></td>
+                  <td data-label="State">{% if row.state == "update" %}{% include "components/state_word.html" with status="yellow" word="Update available" %}{% elif row.state == "minor" %}{% include "components/state_word.html" with status="info" word="Newer minor version" %}{% elif row.state == "current" %}{% include "components/state_word.html" with status="green" word="Up to date" %}{% else %}Not checked{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">No versions reported.</p>
+      {% endif %}
+      {% if versions.hint %}<p class="muted">{{ versions.hint }} (<a href="{% url 'prefs' %}">Settings</a>).</p>{% endif %}
+    </section>
 
-    {% if argo %}
-      <h2 class="section-title">Argo CD apps</h2>
-      <ul class="surface item-list">{% for a in argo %}<li>{{ a.ns }}/{{ a.name }} · {{ a.sync }} · {{ a.health }}</li>{% endfor %}</ul>
-    {% endif %}
+    <section class="surface panel" aria-labelledby="sec-events">
+      <h2 class="section-title" id="sec-events">Recent warnings</h2>
+      {% if events %}
+        <ul class="item-list plain-list">
+          {% for e in events %}
+            <li class="item-row">
+              <span class="item-row__name mono">{{ e.obj }}</span>
+              <span class="item-row__state">{{ e.reason|default:"Warning" }}</span>
+              <span class="item-row__note">{{ e.msg }} · {{ e.ns }} · {{ e.count }}× · {{ e.age_human }} ago</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No recent warnings.</p>
+      {% endif %}
+    </section>
 
-    {% if pvcs %}
-      <h2 class="section-title">Volume claims</h2>
-      <ul class="surface item-list">{% for p in pvcs %}<li>{{ p.ns }}/{{ p.name }} · {{ p.phase }}{% if p.size %} · {{ p.size }}{% endif %}</li>{% endfor %}</ul>
-    {% endif %}
-
-    {% if events %}
-      <h2 class="section-title">Recent warnings</h2>
-      <ul class="surface item-list">{% for e in events %}<li>{{ e.ns }} · {{ e.obj }} · {{ e.reason }} · {{ e.msg }} ({{ e.count }}×, {{ e.age_human }} ago)</li>{% endfor %}</ul>
-    {% endif %}
-
-    <h2 class="section-title">Versions</h2>
-    <p>Kubernetes {{ versions.kubernetes|default:"unknown" }}{% if versions.k3s_stable %} · k3s stable is {{ versions.k3s_stable }}{% endif %}{% if versions.argocd %} · Argo CD {{ versions.argocd }}{% endif %}{% if versions.argocd_latest %} (latest {{ versions.argocd_latest }}){% endif %}</p>
-    {% if versions.hint %}<p>{{ versions.hint }}</p>{% endif %}
+    <section class="surface panel" aria-labelledby="sec-pvcs">
+      <h2 class="section-title" id="sec-pvcs">Volume claims (PVCs)</h2>
+      {% if pvcs %}
+        <div class="stack-table table-scroll well">
+          <table>
+            <thead><tr><th scope="col">Claim</th><th scope="col">Namespace</th><th scope="col">Phase</th><th scope="col">Storage class</th><th scope="col">Size</th><th scope="col">Age</th></tr></thead>
+            <tbody>
+              {% for c in pvcs %}
+                <tr>
+                  <td data-label="Claim"><span class="mono">{{ c.name }}</span></td>
+                  <td data-label="Namespace">{{ c.ns }}</td>
+                  <td data-label="Phase">{% if c.phase == "Bound" %}{% include "components/state_word.html" with status="green" word=c.phase %}{% elif c.phase == "Pending" %}{% include "components/state_word.html" with status="yellow" word=c.phase %}{% elif c.phase == "Lost" %}{% include "components/state_word.html" with status="red" word=c.phase %}{% else %}{% include "components/state_word.html" with status="info" word=c.phase %}{% endif %}</td>
+                  <td data-label="Storage class">{{ c.class|default:"—" }}</td>
+                  <td data-label="Size">{{ c.size|default:"—" }}</td>
+                  <td data-label="Age">{{ c.age_human }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">No volume claims.</p>
+      {% endif %}
+    </section>
   {% endif %}
 {% endblock %}

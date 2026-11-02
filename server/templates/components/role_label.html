@@ -1,0 +1,8 @@
+{# PLACEHOLDER — Apo owns the final version #}{% comment %}
+  A host's Kubernetes role as a small label: icon + word, never colour alone. A plain label,
+  not a chip (the design system has no chips: status is always the status icon + words).
+  Usage: {% include "components/role_label.html" with role=host.k8s_role extra_class="rack-unit__role" %}
+    role  server | agent | node (anything else renders nothing)
+  "agent" is k3s' name for a worker node, so it reads "k8s worker". The icon is decorative.
+  blank=True renders the "k8s server" copy that overview.js clones and relabels.
+{% endcomment %}{% if blank or role == "server" or role == "agent" or role == "node" %}<span class="role-label{% if extra_class %} {{ extra_class }}{% endif %}"><svg class="role-label__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"></path><circle cx="12" cy="12" r="3"></circle></svg><span class="role-label__text">{% if role == "agent" %}k8s worker{% elif role == "node" %}k8s node{% else %}k8s server{% endif %}</span></span>{% endif %}

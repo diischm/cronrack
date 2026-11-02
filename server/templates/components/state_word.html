@@ -1,0 +1,8 @@
+{# PLACEHOLDER — Apo owns the final version #}{% comment %}
+  A state as status icon + the word, e.g. an Argo CD sync status or a node's Ready state.
+  Usage: {% include "components/state_word.html" with status="yellow" word=app.sync %}
+    status  red | yellow | green | info (anything else: "i" icon)
+    word    the visible text (agent data: plain {{ }} output, escaped)
+  The icon carries its default hidden words ("Needs you", "Heads up", "All good", "Info"),
+  so a screen reader hears "Heads up OutOfSync": severity and state, never colour only.
+{% endcomment %}<span class="state">{% if status == "red" or status == "yellow" or status == "green" %}{% include "components/status_icon.html" with status=status label=None %}{% else %}{% include "components/status_icon.html" with status="info" label=None %}{% endif %}<span>{{ word }}</span></span>

@@ -15,6 +15,7 @@ urlpatterns = [
     path("", include("agents.urls")),
     # Dev-only: 404 unless DEBUG=1 (checked inside each view).
     path("dev/preview/", dev_views.preview, name="dev-preview"),
+    path("dev/preview/cluster/", dev_views.preview_cluster, name="dev-preview-cluster"),
     path("dev/styleguide/", dev_views.styleguide, name="dev-styleguide"),
 ]
 

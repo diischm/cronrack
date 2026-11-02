@@ -31,6 +31,30 @@ MAX_SUBJECT = 200
 IMAGE_PULL_REASONS = frozenset({"ImagePullBackOff", "ErrImagePull", "InvalidImageName"})
 CONFIG_REASONS = frozenset({"CreateContainerConfigError"})
 
+
+def pod_severity(pod: Mapping[str, Any]) -> str:
+    """red or yellow for a problem pod, the way the pod rules see it: a crash loop, an
+    out-of-memory kill, a config error or a failed pod is red; the rest (image pulls,
+    Pending, not ready) is yellow. The pages colour pod rows with it."""
+    if (
+        pod.get("reason") in ("CrashLoopBackOff", *CONFIG_REASONS)
+        or pod.get("last") == "OOMKilled"
+        or pod.get("phase") == "Failed"
+    ):
+        return RED
+    return YELLOW
+
+
+def workload_severity(workload: Mapping[str, Any]) -> str:
+    """red (none of its copies run), yellow (fewer than asked, or misscheduled) or green."""
+    desired, available = workload.get("desired", 0), workload.get("available", 0)
+    if desired > 0 and available == 0:
+        return RED
+    if available < desired or workload.get("misscheduled"):
+        return YELLOW
+    return "green"
+
+
 _SERVICE_ACCOUNT = re.compile(r"system:serviceaccount:([a-z0-9][a-z0-9.-]*):([a-z0-9][a-z0-9.-]*)")
 FALLBACK_SERVICE_ACCOUNT_FIX = "kubectl get serviceaccounts -A"
 

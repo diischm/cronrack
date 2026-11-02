@@ -52,3 +52,28 @@ def minor_of(text) -> tuple[int, int] | None:
     """(major, minor), e.g. (1, 31) for v1.31.2+k3s1."""
     parsed = parse_version(text)
     return None if parsed is None else parsed[:2]
+
+
+def k3s_update(installed, channels) -> dict:
+    """What the k3s release channels say about an installed k3s version.
+
+    {"state", "latest"}: "patch" (a newer patch exists in its own minor line; latest is
+    that patch), "minor" (patched, but a newer minor is the stable one), "current", or None
+    (not a k3s version, or no channel data). The same logic as the k3s_patch_behind and
+    k3s_minor_behind rules, so the pages and the findings agree.
+    """
+    unknown = {"state": None, "latest": None}
+    minor = minor_of(installed)
+    if minor is None or "+k3s" not in installed:
+        return unknown
+    patch = channels.get(f"v{minor[0]}.{minor[1]}")
+    stable = channels.get("stable")
+    if is_behind(installed, patch):
+        return {"state": "patch", "latest": patch}
+    stable_minor = minor_of(stable)
+    if stable_minor is not None and minor < stable_minor:
+        return {"state": "minor", "latest": stable}
+    newest = patch if minor_of(patch) is not None else stable
+    if minor_of(newest) is None:
+        return unknown
+    return {"state": "current", "latest": newest}

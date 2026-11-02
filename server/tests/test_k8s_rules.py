@@ -823,3 +823,37 @@ def test_host_fingerprints_do_not_change():
     assert findings["updates.security_pending"].fingerprint == expected
     expected = hashlib.sha256(b"disk.usage|3|mount:/").hexdigest()
     assert findings["disk.usage"].fingerprint == expected
+
+
+@pytest.mark.parametrize(
+    ("changes", "severity"),
+    [
+        ({"reason": "CrashLoopBackOff"}, "red"),
+        ({"reason": "CreateContainerConfigError"}, "red"),
+        ({"reason": None, "last": "OOMKilled"}, "red"),
+        ({"reason": None, "last": None, "phase": "Failed"}, "red"),
+        ({"reason": "ImagePullBackOff", "last": None}, "yellow"),
+        ({"reason": None, "last": None, "phase": "Pending"}, "yellow"),
+    ],
+)
+def test_pod_severity_matches_the_pod_rules(changes, severity):
+    from rules.k8s import pod_severity
+
+    assert pod_severity(pod(**changes)) == severity
+
+
+@pytest.mark.parametrize(
+    ("desired", "available", "misscheduled", "severity"),
+    [
+        (2, 0, 0, "red"),
+        (2, 1, 0, "yellow"),
+        (2, 2, 1, "yellow"),
+        (2, 2, 0, "green"),
+        (0, 0, 0, "green"),
+    ],
+)
+def test_workload_severity(desired, available, misscheduled, severity):
+    from rules.k8s import workload_severity
+
+    workload = {"desired": desired, "available": available, "misscheduled": misscheduled}
+    assert workload_severity(workload) == severity

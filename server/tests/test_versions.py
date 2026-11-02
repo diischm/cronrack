@@ -2,7 +2,7 @@
 
 import pytest
 
-from rules.versions import compare, is_behind, minor_of, parse_version
+from rules.versions import compare, is_behind, k3s_update, minor_of, parse_version
 
 
 def test_k3s_revision_orders_within_the_same_version():
@@ -70,3 +70,25 @@ def test_is_behind():
 def test_minor_of():
     assert minor_of("v1.31.2+k3s1") == (1, 31)
     assert minor_of("nonsense") is None
+
+
+CHANNELS = {"stable": "v1.33.1+k3s1", "v1.31": "v1.31.9+k3s1", "v1.33": "v1.33.1+k3s1"}
+
+
+@pytest.mark.parametrize(
+    ("installed", "channels", "state", "latest"),
+    [
+        # A newer patch in its own line comes first: that's the one to install.
+        ("v1.31.2+k3s1", CHANNELS, "patch", "v1.31.9+k3s1"),
+        # Patched, but a newer minor is the stable one: plan an upgrade.
+        ("v1.31.9+k3s1", CHANNELS, "minor", "v1.33.1+k3s1"),
+        ("v1.33.1+k3s1", CHANNELS, "current", "v1.33.1+k3s1"),
+        ("v1.33.0+k3s1", {"stable": "v1.33.0+k3s1"}, "current", "v1.33.0+k3s1"),
+        ("v1.33.1+k3s1", {}, None, None),  # no channel data: say nothing
+        ("v1.31.2", CHANNELS, None, None),  # not k3s: never compared with k3s channels
+        (None, CHANNELS, None, None),
+        ("garbage", CHANNELS, None, None),
+    ],
+)
+def test_k3s_update(installed, channels, state, latest):
+    assert k3s_update(installed, channels) == {"state": state, "latest": latest}

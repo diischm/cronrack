@@ -1,0 +1,6 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{# One healthy pod (Kubernetes panel). `p` = {"ns", "name", "restarts"} (agent data). #}
+<li class="item-row">
+  <span class="item-row__name mono">{{ p.ns }}/{{ p.name }}</span>
+  <span class="item-row__note">Running{% if p.restarts %} · {{ p.restarts }} restart{{ p.restarts|pluralize }}{% endif %}</span>
+</li>

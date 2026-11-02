@@ -43,6 +43,21 @@ def preview(request: HttpRequest) -> HttpResponse:
     return render(request, "hosts/overview.html", context)
 
 
+def preview_cluster(request: HttpRequest) -> HttpResponse:
+    """Render the cluster page with sample data (clusters.samples), so the design can be
+    checked without a cluster.
+
+    ?state= healthy (default) | broken | xss | truncated | offline | waiting. Same guard as
+    preview(): the URL always exists, but answers 404 unless DEBUG is on.
+    """
+    if not settings.DEBUG:
+        raise Http404
+    # Imported here: clusters.samples imports this module for the XSS strings.
+    from clusters.samples import preview_context
+
+    return render(request, "clusters/detail.html", preview_context(request.GET.get("state", "")))
+
+
 def styleguide(request: HttpRequest) -> HttpResponse:
     """Every design-system component in every state, in both themes.
 

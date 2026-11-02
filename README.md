@@ -20,7 +20,7 @@ You reach it through your own VPN. It is never a hosted service and never phones
 
 ## Not yet
 
-Kubernetes checks, CVE scanning, deprecation/EOL checks, log summaries, local security posture,
+CVE scanning, deprecation/EOL checks, log summaries, local security posture,
 cron job wrappers, approved remote actions, external heartbeat.
 
 ## What you need
@@ -177,6 +177,7 @@ name in front of volume names. `docker-compose.yml` sets it to `cronrack` with
 names, the firewall, a real public domain with Let's Encrypt, and restoring backups.
 
 Experimental: running on Kubernetes, see [docs/kubernetes.md](docs/kubernetes.md).
+Monitoring a Kubernetes/k3s cluster (opt-in, read-only): see [docs/kubernetes-monitoring.md](docs/kubernetes-monitoring.md).
 
 ## Add a host to monitor
 

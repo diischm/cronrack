@@ -28,8 +28,10 @@ from rules.engine import (
     sort_hosts,
     top_issues,
 )
+from rules.k8s import pod_severity
 from rules.models import RuleOverride, Suppression
 from rules.registry import get_rule
+from rules.versions import k3s_update
 
 STATUS_LABELS = {
     "red": "Needs you",
@@ -268,6 +270,10 @@ def _kubernetes_panel(host: Host, report: dict, data: OwnerData) -> dict[str, An
         "kubelet": node.get("kubelet"),
         "helm": node.get("helm"),
         "k3s_stable": (latest.get("k3s") or {}).get("stable") if online else None,
+        # {"state": patch | minor | current | None, "latest"}: the badge next to the version.
+        "k3s_update": k3s_update(node.get("k3s"), latest.get("k3s") or {})
+        if online
+        else {"state": None, "latest": None},
         "helm_latest": (latest.get("helm") or {}).get("latest") if online else None,
         "updates_online": online,
         "hint": None
@@ -276,6 +282,7 @@ def _kubernetes_panel(host: Host, report: dict, data: OwnerData) -> dict[str, An
         "cluster": None,
         "conditions": None,
         "pods": [],
+        "ok_pods": [],
     }
     cluster = host.cluster if host.cluster_id is not None else None
     # The link is set by the server from the owner's own hosts, but check the owner anyway.
@@ -295,7 +302,16 @@ def _kubernetes_panel(host: Host, report: dict, data: OwnerData) -> dict[str, An
                     "kubelet": entry["kubelet"],
                 }
         panel["pods"] = [
-            p for p in snapshot.get("problem_pods") or [] if node_key(p["node"]) == name
+            {**p, "severity": pod_severity(p)}
+            for p in snapshot.get("problem_pods") or []
+            if node_key(p["node"]) == name
+        ]
+        # Healthy pods are [name, node, restarts, age_s] by namespace (agent caps apply).
+        panel["ok_pods"] = [
+            {"ns": ns, "name": row[0], "restarts": row[2]}
+            for ns, rows in sorted((snapshot.get("ok_pods") or {}).items())
+            for row in rows
+            if node_key(row[1]) == name
         ]
     return panel
 
