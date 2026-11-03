@@ -141,7 +141,7 @@ def test_offline_unit_has_an_unlit_lamp_and_no_status_icon(alice_client: Client,
     make_silent_host(alice, "edge-pi")
 
     html = alice_client.get("/").content.decode()
-    unit = html[html.index('<a class="rack-unit card-press rack-unit--offline"') :]
+    unit = html[html.index('<a class="rack-unit card-press legacy-only rack-unit--offline"') :]
     unit = unit[: unit.index("</a>")]
 
     assert "lamp--off" in unit
@@ -157,7 +157,7 @@ def test_waiting_unit_has_an_unlit_lamp_and_the_waiting_icon(alice_client: Clien
     host = Host.objects.create(owner=alice, name="new-box")  # no report yet
 
     html = alice_client.get("/").content.decode()
-    unit = html[html.index('<a class="rack-unit card-press" href="/hosts/') :]
+    unit = html[html.index('<a class="rack-unit card-press legacy-only" href="/hosts/') :]
     unit = unit[: unit.index("</a>")]
     detail = alice_client.get(f"/hosts/{host.pk}/").content.decode()
     header = detail[detail.index('<header class="host-rack rack-chassis surface">') :]
@@ -214,7 +214,9 @@ def test_template_copy_holds_no_host_data(alice_client: Client, alice):
 
     assert "secret-box" not in blank
     assert "href=" not in blank
-    assert "data-" not in blank
+    # The only data- attribute is the fixed action name of the Glass "Check now" form;
+    # overview.js adds data-unit / data-id / data-status-url from the validated id.
+    assert re.findall(r'data-[\w-]+="[^"]*"', blank) == ['data-action="check-host"']
 
 
 # --- shared sample data ----------------------------------------------------------------

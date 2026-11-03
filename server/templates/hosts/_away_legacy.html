@@ -1,0 +1,17 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  Legacy "While you were away" (hosts/overview.html): the newest 3 entries, right of the rack
+  from 1200px. Hidden in Glass (.legacy-only; Glass has its own box in .g-duo). overview.js
+  refreshes it with the newest 3 too. blank=True: the shell in <template id="away-template">.
+{% endcomment %}
+<section class="away legacy-only" id="away" aria-labelledby="away-title">
+  <div class="section-head">
+    <h2 class="section-title" id="away-title">While you were away</h2>
+    <a class="section-link" href="/activity/">See all</a>
+  </div>
+  <ul class="surface activity rows" id="away-list">
+    {% if not blank %}{% for entry in activity|slice:":3" %}
+      {% include "components/activity_row.html" with entry=entry %}
+    {% endfor %}{% endif %}
+  </ul>
+</section>

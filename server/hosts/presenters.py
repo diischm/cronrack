@@ -42,7 +42,8 @@ STATUS_LABELS = {
     "maintenance": "Maintenance",
 }
 NEEDS_ATTENTION = frozenset({"red", "yellow", "offline"})
-OVERVIEW_ACTIVITY = 3
+# "While you were away": Glass shows up to 10 (its list scrolls); Legacy shows the newest 3.
+OVERVIEW_ACTIVITY = 10
 
 
 class OwnerData:

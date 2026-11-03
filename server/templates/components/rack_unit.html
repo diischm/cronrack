@@ -1,26 +1,32 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% comment %}
-  One server unit in the overview rack (components.css "Rack"). Three ways to include it:
+  One server unit in the overview rack (components.css "Rack", glass.css "Rack"). Three ways
+  to include it:
     {% include "components/rack_unit.html" with host=host %}       a real host
     {% include "components/rack_unit.html" with example=True %}    the Welcome example (0 hosts)
     {% include "components/rack_unit.html" with blank=True %}      the empty copy inside
                                                                    <template id="rack-unit-template">
-  The blank copy has every optional piece (status icon AND offline line); overview.js clones
-  it, removes what a host doesn't need and fills the rest with textContent / setAttribute
-  only (its status icon is swapped for a clone from <template id="status-icons">).
-  Keep the class names in sync with overview.js.
+  The blank copy has every optional piece (status icon AND offline line, the Check now form
+  AND its offline stand-in); overview.js clones it, removes what a host doesn't need and
+  fills the rest with textContent / setAttribute only. Keep the class names in sync with
+  overview.js.
+
+  A real host's unit has TWO controls with the same face (components/rack_unit_face.html):
+    - Legacy: <a class="rack-unit legacy-only"> to the host page. A plain click opens the
+      host preview dialog (host-preview.js); without JS it's a plain link.
+    - Glass: <button class="rack-unit g-unit g-only" aria-expanded aria-controls> that opens
+      the unit inline (glass.js): .g-unit-more below it, a separate region with its own
+      controls (Check now, Open host). Several can be open; overview.js keeps them open
+      across refreshes.
+  Exactly one of the two is displayed per skin; the other is display: none (out of the
+  accessibility tree). The Welcome example is a plain link in both skins.
 
   Everything in `host` comes from agent reports or user input: plain {{ }} output only, so
   Django escapes it. The visually-hidden ", " pieces and the status icon's visually-hidden
-  words make the link's accessible name read "homeserver, Needs you, 3 security updates"
-  (status by icon shape + words, never colour only).
-  Lamp, vents: decorative, aria-hidden. Front panel: desktop only (>= 900px, .desk-only);
-  its disk meter is aria-hidden too, the percentage next to it says the same in text.
-  Offline: unlit lamp, no status icon; the "Offline · last report …" line is the text label.
-  Kubernetes node: a role label after the status ("k8s server" / "k8s worker", icon + word),
-  read as part of the link ("nas, All good, k8s server, …"). The blank copy has one too;
-  overview.js relabels it or removes it.
-  Waiting (no report yet): unlit lamp too, plus the hourglass icon ("Waiting").
+  words make the control's accessible name read "homeserver, Needs you, 3 security updates"
+  (status by icon shape + words in Legacy, dot + words in Glass, never colour only).
+  Offline: unlit lamp, no status icon; "Offline · last report …" is the text label, and the
+  Check now key is a focusable aria-disabled stand-in with a note (like the host page).
 {% endcomment %}
 {% if example %}
 <li class="rack__slot">
@@ -34,22 +40,37 @@
   </a>
 </li>
 {% else %}
-<li class="rack__slot">
-  <a class="rack-unit card-press{% if host.status == 'offline' %} rack-unit--offline{% endif %}"{% if not blank %} href="{{ host.url }}"{% endif %}>
-    <span class="rack-unit__lamp" aria-hidden="true">{% if blank %}{% elif host.status == "offline" or host.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=host.status %}{% endif %}</span>
-    <span class="rack-unit__body">
-      <span class="rack-unit__head"><span class="rack-unit__name">{{ host.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif host.status != "offline" %}{% include "components/status_icon.html" with status=host.status label=host.status_label %}{% endif %}{% if blank or host.status == "offline" %}<span class="offline-note rack-unit__offline"><strong>Offline</strong><span class="offline-note__sep"> · </span>last report {{ host.last_seen_human }}</span>{% endif %}{% if blank or host.k8s_role %}<span class="visually-hidden">, </span>{% include "components/role_label.html" with role=host.k8s_role blank=blank extra_class="rack-unit__role" %}{% endif %}</span>
-      {# Offline with no issues: no line here, the "Offline · last report …" line says it. #}
-      {% if blank or host.issues or host.status != "offline" %}
-        <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text">{% if host.issues %}{% for issue in host.issues|slice:":3" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif host.status == "waiting" %}Waiting for the first report{% elif not blank %}Nothing needs you{% endif %}</span></span>
-      {% endif %}
-    </span>
-    <span class="rack-unit__panel well desk-only">
-      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Updates</span> <span class="readout__value rack-unit__updates">{% if blank %}{% elif host.updates is None %}n/a{% else %}{{ host.updates.total }}{% if host.updates.security %} ({{ host.updates.security }} security){% endif %}{% endif %}</span></span>
-      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Containers</span> <span class="readout__value rack-unit__containers">{% if blank %}{% elif host.containers is None %}n/a{% elif host.containers.failing %}{{ host.containers.total }} · {{ host.containers.failing }} failing{% else %}{{ host.containers.running }} running{% endif %}</span></span>
-      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Disk</span> <span class="readout__value"><span class="rack-unit__disk">{% if blank %}{% elif host.disk_max_percent is None %}n/a{% else %}{{ host.disk_max_percent }}%{% endif %}</span>{% if blank or host.disk_max_percent is not None %}<span class="readout__meter" aria-hidden="true">{% include "components/meter.html" with percent=host.disk_max_percent|default:0 label="Largest disk" %}</span>{% endif %}</span></span>
-    </span>
-    <span class="rack-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+<li class="rack__slot"{% if not blank %} data-unit="host" data-id="{{ host.id }}"{% endif %}>
+  <a class="rack-unit card-press legacy-only{% if host.status == 'offline' %} rack-unit--offline{% endif %}"{% if not blank %} href="{{ host.url }}"{% endif %}>
+    {% include "components/rack_unit_face.html" with unit=host kind="host" blank=blank %}
   </a>
+  <button type="button" class="rack-unit g-unit g-only{% if host.status == 'offline' %} rack-unit--offline{% endif %}" aria-expanded="false"{% if not blank %} aria-controls="unit-more-host-{{ host.id }}"{% endif %}>
+    {% include "components/rack_unit_face.html" with unit=host kind="host" blank=blank %}
+    {% include "components/unit_chevron.html" %}
+  </button>
+  <div class="g-unit-more g-only"{% if not blank %} id="unit-more-host-{{ host.id }}"{% endif %}>
+    <div class="g-unit-more__in">
+      <div class="g-unit-more__body">
+        {% if blank or host.issues %}<ul class="g-unit-more__issues">{% for issue in host.issues %}{% include "components/issue_line.html" with issue=issue %}{% endfor %}</ul>{% endif %}
+        {% if blank or not host.issues %}<p class="g-unit-more__note">{% if blank %}{% elif host.status == "offline" %}No report since {{ host.last_seen_human }}.{% elif host.status == "waiting" %}Waiting for the first report.{% else %}No issues. Every check passed.{% endif %}</p>{% endif %}
+        <dl class="g-unit-more__facts">
+          <div class="g-unit-more__fact"><dt>Last report</dt><dd class="g-unit-more__seen">{{ host.last_seen_human }}</dd></div>
+        </dl>
+        <div class="g-unit-more__keys">
+          {% if blank or host.status != "offline" %}
+          <form class="js-fetch-action g-unit-more__check" method="post"{% if not blank %} action="{% url 'host-collect' host.id %}" data-status-url="{% url 'host-status-json' host.id %}"{% endif %} data-action="check-host">
+            {% csrf_token %}
+            <button type="submit" class="btn btn--sm">Check now</button>
+          </form>
+          {% endif %}
+          {% if blank or host.status == "offline" %}
+          <button type="button" class="btn btn--sm g-unit-more__check-off" aria-disabled="true"{% if not blank %} aria-describedby="unit-off-host-{{ host.id }}"{% endif %}>Check now</button>
+          <p class="g-unit-more__off-note"{% if not blank %} id="unit-off-host-{{ host.id }}"{% endif %}>Check now needs the agent online</p>
+          {% endif %}
+          <a class="btn btn--sm g-unit-more__open"{% if not blank %} href="{{ host.url }}"{% endif %}>Open host</a>
+        </div>
+      </div>
+    </div>
+  </div>
 </li>
 {% endif %}

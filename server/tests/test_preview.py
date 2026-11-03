@@ -94,7 +94,7 @@ def test_preview_renders_with_debug(client: Client) -> None:
 
     assert response.status_code == 200
     html = response.content.decode()
-    assert "2 things need you" in html
+    assert "3 things need you" in html  # 2 hosts + the yellow cluster
     for name in ("homeserver", "pi-01", "nas"):
         assert name in html
     assert "While you were away" in html

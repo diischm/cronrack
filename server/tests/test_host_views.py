@@ -338,10 +338,17 @@ def test_silent_host_is_offline_everywhere(alice_client: Client, alice):
             '<strong>Offline</strong><span class="offline-note__sep"> · </span>last report 28 h ago'
             in html
         )
-        # No status icon (issue rows on the detail page keep their severity icons).
+        # No status icon (issue rows on the detail page keep their severity icons). Glass's
+        # attention card says "Offline" in words next to its grey dot: that one is expected.
+        without_card = re.sub(
+            r'<span class="g-attn__offline">.*?<span class="visually-hidden">Offline</span></span>',
+            "",
+            shown(html),
+            flags=re.DOTALL,
+        )
         assert not re.search(
             r'<span class="visually-hidden">(All good|Needs you|Heads up|Offline)</span>',
-            shown(html),
+            without_card,
         )
     assert Host.objects.get(pk=host.pk).status == "green"  # reading never writes
 
@@ -438,14 +445,16 @@ def test_overview_html_and_json_agree_on_offline(alice_client: Client, alice):
 
     statuses = {h["name"]: h["status"] for h in data["hosts"]}
     assert statuses == {"edge-pi": "offline", "nas": "green"}
-    # edge-pi's card only: the "Hosts online" tile is a summary and uses an icon, not a lamp.
-    assert html.count("lamp--off") == 1
+    # edge-pi only: its unit's two faces (Legacy link, Glass button) and its Glass attention
+    # card. The "Hosts online" tile is a summary and uses an icon, not a lamp.
+    assert html.count("lamp--off") == 3
     assert (
         '<strong>Offline</strong><span class="offline-note__sep"> · </span>last report 28 h ago'
         in html
     )
     assert "<strong>Offline</strong> · 1 host" in html
-    assert len(re.findall(status_icon("good", "All good"), shown(html))) == 1  # nas keeps its icon
+    # nas keeps its icon, once per face (Legacy link and Glass button).
+    assert len(re.findall(status_icon("good", "All good"), shown(html))) == 2
 
 
 def test_waiting_and_maintenance_win_over_offline(alice_client: Client, alice):
@@ -484,7 +493,7 @@ def test_overview_has_phone_and_desktop_pieces(alice_client: Client, alice):
     assert 'class="bottom-nav seg-track well"' in html
     assert "While you were away" in html
     # The rack: one unit per host, and the <template> overview.js clones
-    assert '<ul class="rack well" id="rack" aria-label="Hosts">' in html
+    assert '<ul class="rack well" id="rack" aria-labelledby="hosts-title">' in html
     assert html.count('<a class="rack-unit card-press') == 3 + 1  # + the blank template copy
     assert '<template id="rack-unit-template">' in html
     # Desktop: header actions, tiles, the units' front-panel readouts

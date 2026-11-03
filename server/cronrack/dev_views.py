@@ -7,7 +7,7 @@ from django.contrib.staticfiles.views import serve
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import render
 
-from hosts.samples import PREVIEW_CONTEXT
+from hosts.samples import PREVIEW_CONTEXT, PREVIEW_STATES
 
 XSS_SCRIPT = "<script>alert(1)</script>"
 XSS_IMG = '"><img src=x onerror=alert(1)>'
@@ -16,7 +16,8 @@ XSS_IMG = '"><img src=x onerror=alert(1)>'
 def preview(request: HttpRequest) -> HttpResponse:
     """Render the overview with sample data, so the design can be checked without hosts.
 
-    ?state=empty shows the 0-hosts page, ?state=xss puts hostile text into the data.
+    ?state=empty shows the 0-hosts page, ?state=xss puts hostile text into the data,
+    ?state=one | small | busy | healthy show other amounts of data (hosts.samples).
     The URL always exists, but answers 404 unless DEBUG is on, so a production
     server shows nothing here.
     """
@@ -31,6 +32,8 @@ def preview(request: HttpRequest) -> HttpResponse:
         context["hosts"][0]["issues"][0]["text"] = XSS_IMG
         context["hosts"][1]["name"] = XSS_IMG
         context["hosts"][1]["issues"][0]["text"] = XSS_SCRIPT
+    elif state in PREVIEW_STATES:
+        context.update(PREVIEW_STATES[state]())
     elif state == "empty":
         context.update(
             attention_count=0,
@@ -38,6 +41,7 @@ def preview(request: HttpRequest) -> HttpResponse:
             hosts_online=0,
             shell_hosts={"connected": 0, "total": 0},
             hosts=[],
+            clusters=[],
             activity=[],
         )
     return render(request, "hosts/overview.html", context)

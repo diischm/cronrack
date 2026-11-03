@@ -1,0 +1,11 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  One row of "While you were away" (overview, both skins). entry = overview_context()'s
+  activity entry {text, time_human, status}. blank=True: the empty copy in
+  <template id="activity-row-template">; overview.js fills it with textContent and adds the
+  lamp (a span with fixed classes). The lamp is decorative: the text says what happened.
+{% endcomment %}
+<li class="activity__row">
+  <span class="activity__text lamp-label"><span class="activity__lamp">{% if not blank %}{% include "components/lamp.html" with status=entry.status %}{% endif %}</span><span class="activity__words">{{ entry.text }}</span></span>
+  <span class="activity__time">{{ entry.time_human }}</span>
+</li>

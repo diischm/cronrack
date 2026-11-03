@@ -12,8 +12,8 @@
   <link rel="apple-touch-icon" href="{% static 'cronrack/apple-touch-icon.png' %}">
   {# Only the dev styleguide fills this (a <meta> that forces the Legacy shell). #}
   {% block skin_override %}{% endblock %}
-  {# Must stay first and must not be deferred: sets data-skin, data-theme, data-motion and #}
-  {# data-labels before first paint. #}
+  {# Must stay first and must not be deferred: sets data-skin, data-theme, data-motion, #}
+  {# data-labels and data-entrance before first paint. #}
   <script src="{% static 'cronrack/js/theme-init.js' %}"></script>
   <link rel="stylesheet" href="{% static 'cronrack/css/tokens.css' %}">
   <link rel="stylesheet" href="{% static 'cronrack/css/components.css' %}">
@@ -32,24 +32,22 @@
 <body>
   {% comment %}
     Glass only (glass.css hides .g-only in Legacy; all of it is decorative, aria-hidden):
-    - the two orange background glows (drift and pulse unless data-motion="off" or reduced
-      motion asks for stillness),
-    - the progressive blur under the top bar (shown once the page scrolls, glass.js) and at
-      the bottom edge behind the phone nav,
-    - the Dynamic Island: the "Check all now" progress pill (glass.js, driven by actions.js
-      events). The toast and the loader's role="status" already tell screen readers.
+    - the progressive blur under the sticky top bar (shown once the page scrolls, glass.js)
+      and at the bottom edge behind the phone nav,
+    - the Dynamic Island: the "Check all now" progress pill, just below the top bar
+      (glass.js, driven by actions.js events). The toast and the loader's role="status"
+      already tell screen readers.
   {% endcomment %}
-  <div class="g-only g-backdrop" aria-hidden="true"><span class="g-glow g-glow--a"></span><span class="g-glow g-glow--b"></span></div>
   <div class="g-only g-edge g-edge--top" id="g-edge-top" aria-hidden="true"><span></span><span></span><span></span></div>
   {% if user.is_authenticated %}<div class="g-only g-edge g-edge--bottom" aria-hidden="true"><span></span><span></span></div>{% endif %}
-  <div class="g-only g-island" id="g-island" aria-hidden="true" hidden><span class="g-island__bars"><span></span><span></span><span></span></span><span class="g-island__text" id="g-island-text"></span><span class="g-island__count" id="g-island-count"></span></div>
+  <div class="g-only g-island" id="g-island" aria-hidden="true" hidden><span class="g-island__bars"><span></span><span></span><span></span></span><svg class="g-island__tick" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg><span class="g-island__text" id="g-island-text"></span><span class="g-island__count" id="g-island-count"></span></div>
   {% comment %}
     Toast area (handoff 5.0): flash messages from the server, and the results of the fetch
     actions (actions.js), which messages.js clones from #toast-template. Always rendered, so
     the aria-live region exists before anything is added to it. messages.js: auto-dismiss
     (4s, errors 8s), paused while hovered or focused, at most 3 at a time.
   {% endcomment %}
-  <div class="toasts" id="toasts" role="status" aria-live="polite">
+  <div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false">
     {% for message in messages %}
       {% if message.level_tag == "error" %}{% include "components/toast.html" with text=message error=True %}{% else %}{% include "components/toast.html" with text=message %}{% endif %}
     {% endfor %}
@@ -102,6 +100,8 @@
     {% endcomment %}
     <div class="nav-dock" id="nav-dock">
     <nav class="bottom-nav seg-track well" aria-label="Main">
+      {# Glass, desktop with a mouse (glass.js): the hover highlight and the sliding grey pill under the current item. #}
+      <span class="g-nav-hl g-only" aria-hidden="true"></span><span class="g-nav-pill g-only" aria-hidden="true"></span>
       <a class="seg" href="/" {% block nav_overview %}{% endblock %}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg>
         Overview

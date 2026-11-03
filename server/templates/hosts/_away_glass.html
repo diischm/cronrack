@@ -1,0 +1,14 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  Glass "While you were away" (hosts/overview.html .g-duo): the newest entries (up to
+  OVERVIEW_ACTIVITY, 10), in a box whose list scrolls inside it. "See all" sits in the
+  section header. blank=True: the empty shell in <template id="g-away-template">.
+{% endcomment %}
+<section class="g-side" id="g-away" aria-labelledby="g-away-title">
+  <div class="g-away">
+    <div class="section-head"><h2 class="section-title" id="g-away-title">While you were away</h2><a class="section-link" href="/activity/">See all</a></div>
+    <ol class="g-away__list activity" id="g-away-list">
+      {% if not blank %}{% for entry in activity %}{% include "components/activity_row.html" with entry=entry %}{% endfor %}{% endif %}
+    </ol>
+  </div>
+</section>
