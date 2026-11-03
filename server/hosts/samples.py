@@ -10,7 +10,7 @@ database or an agent, and none of it is ever counted anywhere.
 # two green hosts, plus three activity entries. homeserver and pi-01 are the k3s server and
 # worker of one sample cluster (the role chips and the Clusters rack).
 PREVIEW_CONTEXT = {
-    "attention_count": 2,
+    "attention_count": 3,  # 2 hosts + the yellow cluster: the same set as the cards
     "updated_human": "30s ago",
     "status_counts": {"red": 1, "yellow": 1, "green": 2, "offline": 0},
     "hosts_online": 4,
@@ -152,4 +152,115 @@ EXAMPLE_DETAIL_CONTEXT = {
         {"mount": "/", "percent": 87, "level": "yellow"},
         {"mount": "/srv/media", "percent": 48, "level": "green"},
     ],
+}
+
+
+# --- More preview states for the dev preview (cronrack.dev_views.preview, ?state=…) ----------
+# Generic names only. attention_count and status_counts are worked out from the rows, the
+# same way hosts.presenters.overview_context() does, so the headline and the cards agree.
+
+
+def _host(pk, name, status, issues=(), disk=50, role=None, containers=4, failing=0, seen="20s ago"):
+    labels = {"red": "Needs you", "yellow": "Heads up", "green": "All good", "offline": "Offline"}
+    severity = "red" if status == "red" else "yellow"
+    return {
+        "id": pk,
+        "name": name,
+        "status": status,
+        "status_label": labels[status],
+        "issues": [{"text": text, "severity": severity} for text in issues],
+        "last_seen_human": seen,
+        "url": f"/hosts/{pk}/",
+        "k8s_role": role,
+        "updates": {"total": 2, "security": 1 if status == "yellow" else 0},
+        "containers": {"total": containers, "running": containers - failing, "failing": failing},
+        "disk_max_percent": disk,
+    }
+
+
+def _cluster(pk, name, status, issues=(), ready=3, total=3, problems=0):
+    labels = {"red": "Needs you", "yellow": "Heads up", "green": "All good", "offline": "Offline"}
+    return {
+        "id": pk,
+        "name": name,
+        "status": status,
+        "status_label": labels[status],
+        "issues": [{"text": text, "severity": status} for text in issues],
+        "last_seen_human": "30s ago",
+        "url": f"/clusters/{pk}/",
+        "nodes": {"ready": ready, "total": total},
+        "problem_pods": problems,
+        "version": "v1.31.2+k3s1",
+    }
+
+
+def _context(hosts, clusters, activity):
+    statuses = [h["status"] for h in hosts]
+    needs = {"red", "yellow", "offline"}
+    return {
+        "attention_count": sum(1 for h in hosts if h["status"] in needs)
+        + sum(1 for c in clusters if c["status"] in needs),
+        "updated_human": "30s ago",
+        "status_counts": {s: statuses.count(s) for s in ("red", "yellow", "green", "offline")},
+        "hosts_online": sum(1 for s in statuses if s != "offline"),
+        "shell_hosts": {
+            "connected": sum(1 for s in statuses if s != "offline"),
+            "total": len(hosts),
+        },
+        "hosts": hosts,
+        "clusters": clusters,
+        "activity": activity,
+    }
+
+
+def _events(n):
+    names = ["host-a", "host-b", "host-c", "host-d"]
+    statuses = ["red", "green", "yellow", "green", "offline"]
+    return [
+        {
+            "text": f"{names[i % 4]} went {statuses[i % 5]}",
+            "time_human": f"{(23 - i) % 24:02d}:{(i * 7) % 60:02d}",
+            "status": statuses[i % 5],
+        }
+        for i in range(n)
+    ]
+
+
+PREVIEW_STATES = {
+    # 1 host only: no attention, no activity, no clusters.
+    "one": lambda: _context([_host(1, "host-a", "green")], [], []),
+    # 3 hosts + 1 cluster + 2 findings.
+    "small": lambda: _context(
+        [
+            _host(1, "host-a", "red", ["web container exited (137)"], disk=91, failing=1),
+            _host(2, "host-b", "yellow", ["2 security updates"], role="server"),
+            _host(3, "host-c", "green", role="agent"),
+        ],
+        [_cluster(1, "cluster-a", "green")],
+        _events(3),
+    ),
+    # 7 hosts + 3 clusters + 4 things needing you + the longest activity list.
+    "busy": lambda: _context(
+        [
+            _host(1, "host-a", "red", ["backup.service failed", "disk / at 94%"], disk=94),
+            _host(2, "host-b", "yellow", ["Reboot required"], role="server"),
+            _host(3, "host-c", "offline", seen="3 days ago"),
+            _host(4, "host-d", "green", role="agent"),
+            _host(5, "host-e", "green", containers=12),
+            _host(6, "host-f", "green", disk=67),
+            _host(7, "host-g", "green", containers=0),
+        ],
+        [
+            _cluster(1, "cluster-a", "red", ["2 pods crash-looping"], problems=2),
+            _cluster(2, "cluster-b", "green"),
+            _cluster(3, "cluster-c", "green", ready=1, total=1),
+        ],
+        _events(10),  # the most overview_context() sends (OVERVIEW_ACTIVITY)
+    ),
+    # Everything healthy: no attention, no activity.
+    "healthy": lambda: _context(
+        [_host(i, f"host-{c}", "green") for i, c in enumerate("abcd", start=1)],
+        [_cluster(1, "cluster-a", "green")],
+        [],
+    ),
 }

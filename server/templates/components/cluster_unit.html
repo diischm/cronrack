@@ -1,27 +1,47 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% comment %}
-  One cluster in the overview's "Clusters" rack, in the same rack style as a host
-  (components/rack_unit.html, components.css "Rack"). Two ways to include it:
+  One cluster in a rack (the overview's "Clusters" rack and the Clusters page), in the same
+  rack style as a host (components/rack_unit.html, components.css "Rack"). Two ways to
+  include it:
     {% include "components/cluster_unit.html" with cluster=cluster %}  a real cluster
     {% include "components/cluster_unit.html" with blank=True %}       the empty copy inside
                                                                        <template id="cluster-unit-template">
   overview.js clones the blank copy and fills it with textContent / setAttribute only. Keep
   the class names in sync with overview.js.
 
+  Like a host unit, TWO controls with the same face (components/rack_unit_face.html):
+  Legacy's <a class="rack-unit legacy-only"> link to the cluster page, looking exactly as
+  before (lamp, name + status icon, the issue line, then "Nodes 2/2 ready · 1 problem pod"),
+  and Glass's <button class="rack-unit g-unit g-only" aria-expanded aria-controls> that opens
+  .g-unit-more inline (facts + "Open cluster"). One of the two is display: none per skin.
+
   Status: lamp (decorative) + status icon with its words, never colour alone. Offline: unlit
   lamp, no icon, "Offline · last data …" says it. Waiting (no snapshot yet): unlit lamp and
-  the hourglass. Two lines under the name: the top issues, then the counts ("Nodes 2/2
-  ready · 1 problem pod"). Both show at every width (no desktop-only front panel), so a
-  phone sees the counts too. Everything in `cluster` is agent data or user input: plain {{ }}.
+  the hourglass. Everything in `cluster` is agent data or user input: plain {{ }}.
 {% endcomment %}
-<li class="rack__slot">
-  <a class="rack-unit card-press{% if cluster.status == 'offline' %} rack-unit--offline{% endif %}"{% if not blank %} href="{{ cluster.url }}"{% endif %}>
-    <span class="rack-unit__lamp" aria-hidden="true">{% if blank %}{% elif cluster.status == "offline" or cluster.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=cluster.status %}{% endif %}</span>
-    <span class="rack-unit__body">
-      <span class="rack-unit__head"><span class="rack-unit__name">{{ cluster.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif cluster.status != "offline" %}{% include "components/status_icon.html" with status=cluster.status label=cluster.status_label %}{% endif %}{% if blank or cluster.status == "offline" %}<span class="offline-note rack-unit__offline"><strong>Offline</strong><span class="offline-note__sep"> · </span>last data {{ cluster.last_seen_human }}</span>{% endif %}</span>
-      <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text cluster-unit__issues">{% if cluster.issues %}{% for issue in cluster.issues|slice:":3" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif cluster.status == "waiting" %}Waiting for the first report{% elif cluster.status == "offline" %}No current data{% elif not blank %}Nothing needs you{% endif %}</span></span>
-      <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text cluster-unit__facts">{% if not blank %}Nodes {{ cluster.nodes.ready }}/{{ cluster.nodes.total }} ready · {{ cluster.problem_pods }} problem pod{{ cluster.problem_pods|pluralize }}{% endif %}</span></span>
-    </span>
-    <span class="rack-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+<li class="rack__slot"{% if not blank %} data-unit="cluster" data-id="{{ cluster.id }}"{% endif %}>
+  <a class="rack-unit card-press legacy-only{% if cluster.status == 'offline' %} rack-unit--offline{% endif %}"{% if not blank %} href="{{ cluster.url }}"{% endif %}>
+    {% include "components/rack_unit_face.html" with unit=cluster kind="cluster" blank=blank %}
   </a>
+  <button type="button" class="rack-unit g-unit g-only{% if cluster.status == 'offline' %} rack-unit--offline{% endif %}" aria-expanded="false"{% if not blank %} aria-controls="unit-more-cluster-{{ cluster.id }}"{% endif %}>
+    {% include "components/rack_unit_face.html" with unit=cluster kind="cluster" blank=blank %}
+    {% include "components/unit_chevron.html" %}
+  </button>
+  <div class="g-unit-more g-only"{% if not blank %} id="unit-more-cluster-{{ cluster.id }}"{% endif %}>
+    <div class="g-unit-more__in">
+      <div class="g-unit-more__body">
+        {% if blank or cluster.issues %}<ul class="g-unit-more__issues">{% for issue in cluster.issues %}{% include "components/issue_line.html" with issue=issue %}{% endfor %}</ul>{% endif %}
+        {% if blank or not cluster.issues %}<p class="g-unit-more__note">{% if blank %}{% elif cluster.status == "offline" %}No current data since {{ cluster.last_seen_human }}.{% elif cluster.status == "waiting" %}Waiting for the first report.{% else %}No issues. Every check passed.{% endif %}</p>{% endif %}
+        <dl class="g-unit-more__facts">
+          <div class="g-unit-more__fact"><dt>Nodes</dt><dd class="cluster-more__nodes">{% if not blank %}{{ cluster.nodes.ready }}/{{ cluster.nodes.total }} ready{% endif %}</dd></div>
+          <div class="g-unit-more__fact"><dt>Problem pods</dt><dd class="cluster-more__pods">{% if not blank %}{{ cluster.problem_pods }}{% endif %}</dd></div>
+          <div class="g-unit-more__fact"><dt>Version</dt><dd class="cluster-more__version">{% if not blank %}{{ cluster.version|default:"n/a" }}{% endif %}</dd></div>
+          <div class="g-unit-more__fact"><dt>Last data</dt><dd class="g-unit-more__seen">{{ cluster.last_seen_human }}</dd></div>
+        </dl>
+        <div class="g-unit-more__keys">
+          <a class="btn btn--sm g-unit-more__open"{% if not blank %} href="{{ cluster.url }}"{% endif %}>Open cluster</a>
+        </div>
+      </div>
+    </div>
+  </div>
 </li>

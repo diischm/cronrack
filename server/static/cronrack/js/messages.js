@@ -14,11 +14,16 @@
 // Each toast closes with its × key, or by itself after 4s (errors: 8s). Hovering it or
 // focusing inside it pauses that timer, which resumes with the time that was left (WCAG
 // 2.2.1 timing adjustable). At most 3 are shown: a 4th removes the oldest. Loaded with defer.
+// Glass: a closing toast gets .is-leaving first and is removed after its exit animation
+// (glass.css); with motion off (Reduce animations, reduced motion) or in Legacy it goes at once.
 (function () {
   "use strict";
   const SUCCESS_MS = 4000;
   const ERROR_MS = 8000;
   const MAX_VISIBLE = 3;
+  const LEAVE_MS = 350; // glass.css .toast.is-leaving
+  const root = document.documentElement;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const region = document.getElementById("toasts");
   const template = document.getElementById("toast-template");
@@ -26,8 +31,19 @@
     return;
   }
 
+  function animated() {
+    return root.getAttribute("data-skin") === "glass"
+      && root.getAttribute("data-motion") !== "off"
+      && !reducedMotion.matches;
+  }
+
   function close(toast) {
-    toast.remove();
+    if (!animated() || toast.classList.contains("is-leaving")) {
+      toast.remove();
+      return;
+    }
+    toast.classList.add("is-leaving");
+    window.setTimeout(() => toast.remove(), LEAVE_MS);
   }
 
   function arm(toast) {
@@ -84,7 +100,7 @@
 
   // Oldest first in the DOM, so the extra ones at the front go.
   function limit() {
-    const toasts = region.querySelectorAll(".toast");
+    const toasts = region.querySelectorAll(".toast:not(.is-leaving)");
     for (let i = 0; i < toasts.length - MAX_VISIBLE; i += 1) {
       toasts[i].remove();
     }

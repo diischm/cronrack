@@ -83,7 +83,10 @@ def test_host_card_without_kubernetes_has_no_role_label(alice_client: Client, ho
 def test_overview_shows_a_cluster_card_in_its_own_rack(alice_client: Client, live):  # noqa: F811
     html = page(alice_client, "/")
 
-    assert '<h2 class="section-title" id="clusters-title">Clusters</h2>' in html
+    assert (
+        '<h2 class="section-title" id="clusters-title">Clusters'
+        '<span class="section-count g-only" id="clusters-count"> 1</span></h2>' in html
+    )
     rack = section(html, '<ul class="rack well" id="cluster-rack"', "</ul>")
     assert f'href="/clusters/{live.pk}/"' in rack
     assert '<span class="rack-unit__name">nas-cluster</span>' in rack
@@ -110,8 +113,11 @@ def test_offline_cluster_card_has_an_unlit_lamp_and_the_offline_line(
     Cluster.objects.filter(pk=live.pk).update(status="offline")
 
     rack = section(page(alice_client, "/"), 'id="cluster-rack"', "</ul>")
-    assert "lamp--off" in rack
-    assert "status-icon" not in rack
+    # The unit's face (the Legacy link; the Glass button has the same face). Its expand
+    # region below lists the issues, each with its severity icon.
+    face = section(rack, '<a class="rack-unit card-press legacy-only rack-unit--offline"', "</a>")
+    assert "lamp--off" in face
+    assert "status-icon" not in face
     assert '<strong>Offline</strong><span class="offline-note__sep"> · </span>last data' in rack
 
 

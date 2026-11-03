@@ -25,7 +25,7 @@ def test_overview_has_one_preview_dialog_and_its_script(alice_client: Client, al
     assert '<template id="host-preview-template">' in html
     assert '<script src="/static/cronrack/js/host-preview.js" defer></script>' in html
     # Units stay real links, so the page works without JavaScript.
-    assert re.search(r'<a class="rack-unit card-press" href="/hosts/\d+/">', html)
+    assert re.search(r'<a class="rack-unit card-press legacy-only" href="/hosts/\d+/">', html)
 
     page = scan(html)
     assert all(script.get("src") for script in page.scripts)

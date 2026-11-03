@@ -1,0 +1,48 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  The front of one rack unit: lamp, name + status, issue line, front-panel readouts, vents.
+  Shared by the two controls of every unit (components/rack_unit.html, cluster_unit.html):
+    - the Legacy <a class="rack-unit"> (a link to the page; the overview's preview dialog),
+    - the Glass <button class="rack-unit g-unit"> (expands the unit inline).
+  Only one of them is ever displayed (glass.css hides .legacy-only in Glass, .g-only is hidden
+  in Legacy), so the other is out of the accessibility tree. No ids in here: it's rendered
+  twice per unit. overview.js fills both copies the same way.
+
+    {% include "components/rack_unit_face.html" with unit=host kind="host" %}
+    {% include "components/rack_unit_face.html" with unit=cluster kind="cluster" %}
+    blank=True   the empty copy inside the overview's <template>s (overview.js fills it)
+
+  Everything in `unit` is agent data or user input: plain {{ }} output only.
+  Hosts: Legacy and Glass show the same pieces. Clusters: Legacy shows the issue line and the
+  facts line under the name, exactly as before; Glass hides the facts line and shows the
+  Nodes / Pods / k3s readouts instead (.g-only, so Legacy never draws them).
+  Disk: Legacy's native <meter>; Glass hides it and draws .g-meter (glass.js sets its width
+  from data-percent through a CSS custom property (CSSOM), so it can fill on load with no inline style).
+{% endcomment %}
+<span class="rack-unit__lamp" aria-hidden="true">{% if blank %}{% elif unit.status == "offline" or unit.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=unit.status %}{% endif %}</span>
+{% if kind == "cluster" %}
+    <span class="rack-unit__body">
+      <span class="rack-unit__head"><span class="rack-unit__name">{{ unit.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif unit.status != "offline" %}{% include "components/status_icon.html" with status=unit.status label=unit.status_label %}{% endif %}{% if blank or unit.status == "offline" %}<span class="offline-note rack-unit__offline"><strong>Offline</strong><span class="offline-note__sep"> · </span>last data {{ unit.last_seen_human }}</span>{% endif %}</span>
+      <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text cluster-unit__issues">{% if unit.issues %}{% for issue in unit.issues|slice:":3" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif unit.status == "waiting" %}Waiting for the first report{% elif unit.status == "offline" %}No current data{% elif not blank %}Nothing needs you{% endif %}</span></span>
+      <span class="rack-unit__issues cluster-unit__facts-line"><span class="visually-hidden">, </span><span class="rack-unit__issue-text cluster-unit__facts">{% if not blank %}Nodes {{ unit.nodes.ready }}/{{ unit.nodes.total }} ready · {{ unit.problem_pods }} problem pod{{ unit.problem_pods|pluralize }}{% endif %}</span></span>
+    </span>
+    <span class="rack-unit__panel well g-only">
+      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Nodes</span> <span class="readout__value cluster-unit__nodes">{% if not blank %}{{ unit.nodes.ready }}/{{ unit.nodes.total }} ready{% endif %}</span></span>
+      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Pods</span> <span class="readout__value cluster-unit__pods">{% if not blank %}{{ unit.problem_pods }} problem{{ unit.problem_pods|pluralize }}{% endif %}</span></span>
+      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">k3s</span> <span class="readout__value cluster-unit__version">{% if not blank %}{{ unit.version|default:"n/a" }}{% endif %}</span></span>
+    </span>
+{% else %}
+    <span class="rack-unit__body">
+      <span class="rack-unit__head"><span class="rack-unit__name">{{ unit.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif unit.status != "offline" %}{% include "components/status_icon.html" with status=unit.status label=unit.status_label %}{% endif %}{% if blank or unit.status == "offline" %}<span class="offline-note rack-unit__offline"><strong>Offline</strong><span class="offline-note__sep"> · </span>last report {{ unit.last_seen_human }}</span>{% endif %}{% if blank or unit.k8s_role %}<span class="visually-hidden">, </span>{% include "components/role_label.html" with role=unit.k8s_role blank=blank extra_class="rack-unit__role" %}{% endif %}</span>
+      {# Offline with no issues: no line here, the "Offline · last report …" line says it. #}
+      {% if blank or unit.issues or unit.status != "offline" %}
+        <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text">{% if unit.issues %}{% for issue in unit.issues|slice:":3" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif unit.status == "waiting" %}Waiting for the first report{% elif not blank %}Nothing needs you{% endif %}</span></span>
+      {% endif %}
+    </span>
+    <span class="rack-unit__panel well desk-only">
+      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Updates</span> <span class="readout__value rack-unit__updates">{% if blank %}{% elif unit.updates is None %}n/a{% else %}{{ unit.updates.total }}{% if unit.updates.security %} ({{ unit.updates.security }} security){% endif %}{% endif %}</span></span>
+      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Containers</span> <span class="readout__value rack-unit__containers">{% if blank %}{% elif unit.containers is None %}n/a{% elif unit.containers.failing %}{{ unit.containers.total }} · {{ unit.containers.failing }} failing{% else %}{{ unit.containers.running }} running{% endif %}</span></span>
+      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Disk</span> <span class="readout__value"><span class="rack-unit__disk">{% if blank %}{% elif unit.disk_max_percent is None %}n/a{% else %}{{ unit.disk_max_percent }}%{% endif %}</span>{% if blank or unit.disk_max_percent is not None %}<span class="readout__meter" aria-hidden="true">{% include "components/meter.html" with percent=unit.disk_max_percent|default:0 label="Largest disk" %}<span class="g-meter g-only{% if unit.disk_max_percent >= 85 %} g-meter--hot{% endif %}"{% if not blank %} data-percent="{{ unit.disk_max_percent|default:0 }}"{% endif %}><span class="g-meter__fill"></span></span></span>{% endif %}</span></span>
+    </span>
+{% endif %}
+    <span class="rack-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>

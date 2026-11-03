@@ -1,24 +1,27 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% comment %}
-  One card in the Glass overview's "Needs attention" grid (hosts/overview.html), for a red or
-  yellow host. Glass only: the section is .g-only, so Legacy never shows it.
-    {% include "components/attention_card.html" with host=host %}   a real host
+  One card in the Glass overview's "Needs attention" grid (hosts/overview.html): a host or a
+  cluster whose status is red, yellow or offline (hosts.presenters.NEEDS_ATTENTION, the same
+  set the headline's "N things need you" counts, so the cards and the count always agree).
+  Glass only: the section is .g-only, so Legacy never shows it.
+    {% include "components/attention_card.html" with unit=host kind="host" %}        a host
+    {% include "components/attention_card.html" with unit=cluster kind="cluster" %}  a cluster
     {% include "components/attention_card.html" with blank=True %}  the empty copy inside
                                                                     <template id="attention-card-template">
   overview.js clones the blank copy every refresh and fills it with textContent /
-  setAttribute only (its status icon is swapped for a clone from <template id="status-icons">).
-  Keep the class names in sync with overview.js.
+  setAttribute only (its status icon is swapped for a clone from <template id="status-icons">,
+  or, offline, for the grey lamp). Keep the class names in sync with overview.js.
 
-  A plain link to the host page (the host preview opens from the host grid below). Status:
-  the dot (status icon) with its visually-hidden words; the issue text says why in plain
-  words. Red cards get the Border Beam (glass.css). Everything in `host` is agent data or
-  user input: plain {{ }} output, escaped. The ", " pieces make the link read
+  A plain link to the host or cluster page. Status: the dot (status icon, or the grey lamp
+  when offline) with its words; the issue text says why in plain words. Neutral surface: no
+  tint, no coloured border, no beam. Everything in `unit` is agent data or user input:
+  plain {{ }} output, escaped. The ", " pieces make the link read
   "nas-01, Needs you, immich-server exited …, 2 containers · disk 71% · report 18s ago".
 {% endcomment %}
-<li class="g-attention__slot">
-  <a class="g-attn{% if host.status == 'red' %} g-attn--red{% elif host.status == 'yellow' %} g-attn--yellow{% endif %}"{% if not blank %} href="{{ host.url }}"{% endif %}>
-    <span class="g-attn__head"><span class="g-attn__name">{{ host.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% else %}{% include "components/status_icon.html" with status=host.status label=host.status_label %}{% endif %}</span>
-    <span class="g-attn__issue"><span class="visually-hidden">, </span><span class="g-attn__issue-text">{% for issue in host.issues|slice:":2" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}</span></span>
-    <span class="g-attn__meta"><span class="visually-hidden">, </span><span class="g-attn__meta-text">{% if not blank %}{% if host.k8s_role == "server" %}k8s server · {% elif host.k8s_role == "agent" %}k8s worker · {% elif host.k8s_role == "node" %}k8s node · {% endif %}{% if host.containers %}{{ host.containers.total }} container{{ host.containers.total|pluralize }} · {% endif %}{% if host.disk_max_percent is not None %}disk {{ host.disk_max_percent }}% · {% endif %}report {{ host.last_seen_human }}{% endif %}</span></span>
+<li class="g-attention__slot"{% if not blank %} data-unit="{{ kind }}" data-id="{{ unit.id }}"{% endif %}>
+  <a class="g-attn"{% if not blank %} href="{{ unit.url }}"{% endif %}>
+    <span class="g-attn__head"><span class="g-attn__name">{{ unit.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif unit.status == "offline" %}<span class="g-attn__offline">{% include "components/lamp.html" with status="off" %}<span class="visually-hidden">Offline</span></span>{% else %}{% include "components/status_icon.html" with status=unit.status label=unit.status_label %}{% endif %}</span>
+    <span class="g-attn__issue"><span class="visually-hidden">, </span><span class="g-attn__issue-text">{% if unit.issues %}{% for issue in unit.issues|slice:":2" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif unit.status == "offline" %}{% if kind == "cluster" %}No current data{% else %}Offline · last report {{ unit.last_seen_human }}{% endif %}{% endif %}</span></span>
+    <span class="g-attn__meta"><span class="visually-hidden">, </span><span class="g-attn__meta-text">{% if blank %}{% elif kind == "cluster" %}cluster · nodes {{ unit.nodes.ready }}/{{ unit.nodes.total }} ready · {{ unit.problem_pods }} problem pod{{ unit.problem_pods|pluralize }}{% else %}{% if unit.k8s_role == "server" %}k8s server · {% elif unit.k8s_role == "agent" %}k8s worker · {% elif unit.k8s_role == "node" %}k8s node · {% endif %}{% if unit.containers %}{{ unit.containers.total }} container{{ unit.containers.total|pluralize }} · {% endif %}{% if unit.disk_max_percent is not None %}disk {{ unit.disk_max_percent }}% · {% endif %}report {{ unit.last_seen_human }}{% endif %}</span></span>
   </a>
 </li>

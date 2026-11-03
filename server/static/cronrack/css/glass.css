@@ -1,28 +1,37 @@
-/* Glass theme. Components adapted from SmoothUI (https://github.com/educlopez/smoothui),
+/* Glass theme (calm). Components adapted from SmoothUI (https://github.com/educlopez/smoothui),
    MIT License, Copyright (c) 2024 Eduardo Calvo; rebuilt in plain CSS. See THIRD_PARTY_NOTICES.md.
 
-   Glass is the default look: dark graphite (#0b0c0f), frosted-glass surfaces, an orange
-   accent (#f26b2e) and two slow orange background glows. Legacy (tokens.css, components.css,
-   pages.css) is untouched: EVERY rule here starts at [data-skin="glass"], which theme-init.js
-   puts on <html> (and the dev styleguide on its Glass island). The only exceptions are the
-   rule that hides the Glass-only pieces (.g-only) everywhere else, and two [data-skin="legacy"]
-   rules for NEW elements only (the styleguide's font, the new Theme picker's width).
-   tests/test_glass_theme.py checks that.
+   Glass is the default look: neutral graphite (#0b0c0f) with quiet translucent surfaces and
+   no glows anywhere (no background glows, no Border Beam, no glare, no coloured shadows, no
+   status-tinted cards or borders). Colour has two jobs only:
+   - status: the small dot (red #ff453a, yellow #ffd60a, green #32d74b, grey #8e8e93), and the
+     disk meter from 85% (yellow);
+   - orange #f26b2e: the logo bars, the primary key (Add host), "See all" links, the focus
+     ring and the island's loader bars. Nothing else: the current nav item is a grey pill.
+   Legacy (tokens.css, components.css, pages.css) is untouched: EVERY rule here starts at
+   [data-skin="glass"], which theme-init.js puts on <html> (and the dev styleguide on its
+   Glass island). The only exceptions are the rule that hides the Glass-only pieces (.g-only)
+   everywhere else, and two [data-skin="legacy"] rules for NEW elements only (the
+   styleguide's font, the Theme picker's width). tests/test_glass_theme.py checks that.
 
    Loaded last (base.html), so a Glass rule with the same selector as a Legacy one plus the
    [data-skin] prefix always wins, without !important.
 
-   Values come from design-ref/glass (Main, Phone, Motion, AddHost, HostDetail). Motion:
-   - the glows drift and pulse (34s / 42s) unless data-motion="off" or reduced motion;
-   - tilt + glare on overview cards (glass.js), pointer devices only, never with reduced motion;
-   - the Border Beam on red cards only; still with reduced motion;
-   - Number Flow digits roll (700ms), the loader's accordion bars, the island pop-in.
-   prefers-reduced-motion stops all of them (last sections).
+   Design reference: design-ref/glass/overview-glass-v3.html (look and motion; not code).
+   Motion (glass.js, overview.js and messages.js only set classes and CSS custom properties;
+   this file animates): tilt on the tiles and attention cards (mouse only, 8° max, no
+   glare), Number Flow, the nav's hover highlight and sliding pill, rack units sliding out on
+   hover and expanding inline, the status ring, the Animated List, the per-word headline,
+   the Dynamic Island, toasts, press scale, meters filling, the progressive blur, view
+   transitions on refresh and the first-load entrance. Only transform and opacity animate
+   (the inline expand's grid-template-rows is the one exception).
+   Decorative motion is off with prefers-reduced-motion (always) or Settings > Appearance >
+   "Reduce animations" (data-motion="off"); then the functional transitions (expand /
+   collapse, toasts) happen instantly. See "Motion off" at the end.
 
-   Performance: backdrop-filter is expensive on phones. Below 900px only the pieces content
-   scrolls under get a blur (nav, top/bottom edges, dialogs, toasts); cards are a translucent
-   fill over the glows, which are already soft. Browsers without backdrop-filter get solid
-   fills (@supports block at the end). */
+   Performance: no backdrop-filter on cards (with nothing coloured behind them there is
+   nothing to blur); only the sticky top band, the phone nav, dialogs and toasts blur.
+   Browsers without backdrop-filter get solid fills (@supports block at the end). */
 
 /* --- Font: Inter 4.1 (self-hosted, OFL; fonts/OFL-Inter.txt). Only Glass uses it, so
        Legacy visitors never download it. --------------------------------------------------- */
@@ -34,69 +43,73 @@
   src: url("../fonts/InterVariable.woff2") format("woff2");
 }
 
-/* The Border Beam's angle, animated by @keyframes g-beam (registered so it can animate). */
-@property --g-beam {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-/* --- Glass-only pieces stay out of Legacy -------------------------------------------------
-   .g-only: the glows, edges, island (base.html), the attention cards, the Offline tile and
-   the Number Flow digits. The styleguide's Glass island sits in a Legacy page, so its
-   pieces are exempt. */
+/* --- Glass-only pieces stay out of Legacy, Legacy-only pieces out of Glass -----------------
+   .g-only: the edges, island and nav highlight (base.html), the overview's attention and
+   activity boxes, the units' expand buttons and regions, the Offline tile and the Number
+   Flow digits. .legacy-only: the units' Legacy links and Legacy's "While you were away"
+   box. Hidden = display: none, so the hidden copy is out of the accessibility tree too.
+   The styleguide's Glass island sits in a Legacy page, so its pieces are exempt. */
 :root:not([data-skin="glass"]) .g-only:not([data-skin="glass"] *) { display: none !important; }
+[data-skin="glass"] .legacy-only { display: none !important; }
 
 /* --- Tokens ------------------------------------------------------------------------------
-   Legacy tokens are overridden too, so a Legacy component without a Glass rule still comes
-   out readable (light text on graphite, no neumorphic shadows). */
+   Surfaces from the design reference's :root (neutral graphite, white at low alpha). Text
+   stays a touch brighter than the reference's .66 / .46, so muted and faint text keep
+   >= 4.5:1 on every surface. Legacy tokens are overridden too, so a Legacy component
+   without a Glass rule still comes out readable (light text on graphite, no neumorphic
+   shadows). */
 [data-skin="glass"] {
   color-scheme: dark;
   --g-ground: #0b0c0f;
   --g-text: #f5f5f7;
-  /* Muted / faint text, a touch brighter than the mockups' rgba(235,235,245,.72 / .62), and
-     the red text lighter than the mockups' #ff8a80, so all three stay >= 4.5:1 even on a
-     yellow card over the brightest glow at its peak (worst case 5.33 / 4.76 / 4.66; see the
-     PR notes). */
   --g-text-2: rgba(235, 235, 245, 0.74);
   --g-text-3: rgba(235, 235, 245, 0.68);
   --g-accent: #f26b2e;
-  --g-accent-hover: #f47b42;
-  --g-on-accent: #1a0d05;
-  --g-accent-text: #ffb08a;   /* links on graphite */
-  --g-accent-soft: #ffc4a6;   /* current nav item */
+  --g-accent-hover: #ff7a3d;
+  --g-on-accent: #111111;
+  --g-accent-text: #f26b2e;   /* "See all" links: the same orange, 5.9:1 on the ground */
   --g-red: #ff453a;  --g-yellow: #ffd60a;  --g-green: #32d74b;  --g-grey: #8e8e93;
-  --g-red-text: #ff968c;  --g-yellow-text: #ffe066;  --g-green-text: #7ee28f;
-  /* Glass surfaces */
-  --g-fill: rgba(255, 255, 255, 0.055);
-  --g-fill-2: rgba(255, 255, 255, 0.08);
-  --g-fill-3: rgba(255, 255, 255, 0.12);
-  --g-edge: rgba(255, 255, 255, 0.10);
-  --g-edge-2: rgba(255, 255, 255, 0.14);
+  --g-red-text: #ff968c;
+  /* Surfaces (design reference :root) */
+  --g-fill: rgba(255, 255, 255, 0.035);     /* --surface */
+  --g-fill-hi: rgba(255, 255, 255, 0.06);   /* --surface-hi: hover, the nav pill */
+  --g-fill-2: rgba(255, 255, 255, 0.06);
+  --g-fill-3: rgba(255, 255, 255, 0.09);
+  --g-edge: rgba(255, 255, 255, 0.08);      /* --line */
+  --g-edge-2: rgba(255, 255, 255, 0.14);    /* --line-hi */
   --g-edge-3: rgba(255, 255, 255, 0.16);
-  --g-hi: inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  --g-hi-2: inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  --g-drop: 0 30px 60px -30px rgba(0, 0, 0, 0.7);
-  --g-blur: blur(18px) saturate(150%);
-  --g-blur-strong: blur(24px) saturate(170%);
-  --g-well: rgba(0, 0, 0, 0.35);
+  --g-well: rgba(0, 0, 0, 0.35);            /* --well */
   --g-well-shade: inset 0 1px 3px rgba(0, 0, 0, 0.5);
-  --g-ease: cubic-bezier(0.2, 0.9, 0.25, 1);
-  --g-radius: 22px;
+  --g-unit: #15161a;                        /* a rack unit's face */
+  --g-float: #17181d;                       /* island, toasts */
+  --g-float-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+  --g-hi-2: inset 0 1px 0 rgba(255, 255, 255, 0.10);   /* a neutral top edge on dialogs */
+  --g-blur: blur(14px);
+  --g-blur-strong: blur(24px) saturate(140%);
+  --g-radius: 16px;
+  /* Spacing: one gap between cards, one between sections, everywhere. */
+  --g-gap: 16px;
+  --g-section: 32px;
+  /* Height of the sticky top bar (phone: the header; desktop: the shell grid's first row). */
+  --g-bar-h: 72px;
+  /* Motion */
+  --g-ease: cubic-bezier(0.22, 1, 0.36, 1);       /* smooth out */
+  --g-spring: cubic-bezier(0.34, 1.56, 0.64, 1);  /* gentle overshoot */
 
   /* Legacy tokens, Glass values */
   --ground: var(--g-ground);
   --surface-hi: #17181c;  --surface-lo: #101115;
   --well: var(--g-well);  --well-pressed: rgba(0, 0, 0, 0.45);
   --text: var(--g-text);  --text-muted: var(--g-text-2);  --text-faint: var(--g-text-3);
-  --accent: var(--g-accent);  --accent-text: var(--g-accent-text);
+  /* --accent-text: neutral, so no Legacy rule turns something orange in Glass by accident. */
+  --accent: var(--g-accent);  --accent-text: var(--g-text);
   --accent-hi: var(--g-accent);  --accent-mid: var(--g-accent);  --accent-lo: var(--g-accent);
   --accent-pressed: #e05f25;  --on-accent: var(--g-on-accent);
-  --focus: #f5f5f7;
+  --focus: var(--g-accent);
   --code-bg: rgba(10, 11, 14, 0.92);  --code-text: #e6e6eb;
   --red: var(--g-red);  --red-chip-text: var(--g-red-text);
-  --amber: var(--g-yellow);  --amber-chip-bg: rgba(255, 214, 10, 0.10);  --amber-chip-text: var(--g-yellow-text);
-  --green: var(--g-green);  --green-chip-text: var(--g-green-text);
+  --amber: var(--g-yellow);  --amber-chip-bg: var(--g-fill-hi);  --amber-chip-text: var(--g-text);
+  --green: var(--g-green);  --green-chip-text: var(--g-text);
   --status-good: var(--g-green);  --status-warn: var(--g-yellow);  --status-bad: var(--g-red);  --status-muted: var(--g-grey);
   --shadow-dark: transparent;  --shadow-light: transparent;
   --rim-light: rgba(255, 255, 255, 0.07);  --rim-dark: transparent;
@@ -105,22 +118,28 @@
   --primary-rim-light: rgba(255, 255, 255, 0.3);  --primary-rim-dark: transparent;
   --primary-lip: rgba(0, 0, 0, 0.25);  --primary-lip-side: transparent;  --primary-catch-in: transparent;
   --code-shade: transparent;  --code-rim: transparent;
-  --meter-fill: rgba(235, 235, 245, 0.45);  --meter-amber: var(--g-yellow);  --meter-red: var(--g-red);
+  /* Disk meters: neutral, yellow from 85% (Glass has no red meter: colour = status dot only). */
+  --meter-fill: rgba(235, 235, 245, 0.55);  --meter-amber: var(--g-yellow);  --meter-red: var(--g-yellow);
   --fill-hi: transparent;  --fill-shade: transparent;  --fill-rim: transparent;
   --backdrop: rgba(5, 6, 8, 0.45);
   --radius-card: var(--g-radius);  --radius-key: 999px;
   --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --screw-slot: transparent;
 }
+@media (min-width: 900px) {
+  [data-skin="glass"] { --g-bar-h: 84px; }
+}
 
 /* --- Base -------------------------------------------------------------------------------- */
-/* Keyboard focus never lands under the progressive-blur edges (top 64px; bottom: the
-   phone nav and its blur). */
-[data-skin="glass"] { scroll-padding-top: 72px; scroll-padding-bottom: 24px; }
+/* Keyboard focus never lands under the sticky top bar (or, on phones, the floating nav). */
+[data-skin="glass"] { scroll-padding-top: calc(var(--g-bar-h) + 16px); scroll-padding-bottom: 24px; }
 @media (max-width: 899.98px) {
   [data-skin="glass"] { scroll-padding-bottom: 140px; }
 }
+/* pages.css sets overflow-x: hidden on html AND body, which makes <body> a scroll container
+   and breaks position: sticky. clip cuts the same sideways overflow without that. */
 [data-skin="glass"] body {
+  overflow-x: clip;
   background: var(--g-ground);
   color: var(--g-text);
   font-family: var(--font-ui);
@@ -128,9 +147,12 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-[data-skin="glass"] a { color: var(--g-accent-text); }
-[data-skin="glass"] a:hover { color: #ffc7a8; }
-/* Focus: a 2px light ring (the mockups'), visible on graphite, glass and orange alike. */
+/* Links: neutral (orange is for "See all" only), underlined inside running text. */
+[data-skin="glass"] a { color: var(--g-text); }
+[data-skin="glass"] a:hover { color: var(--g-text); }
+[data-skin="glass"] :where(p, li, dd) > a:where(:not(.btn, .rack-unit, .g-attn, .section-link)) {
+  text-decoration: underline; text-decoration-color: rgba(235, 235, 245, 0.45); text-underline-offset: 3px; }
+/* Focus: a 2px orange ring, visible on graphite, glass and the light keys alike. */
 [data-skin="glass"] a:focus-visible, [data-skin="glass"] button:focus-visible,
 [data-skin="glass"] summary:focus-visible, [data-skin="glass"] input:focus-visible,
 [data-skin="glass"] select:focus-visible, [data-skin="glass"] textarea:focus-visible,
@@ -139,107 +161,114 @@
 }
 [data-skin="glass"] .page-title { font-size: 28px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.15; }
 [data-skin="glass"] .page-sub { font-size: 13px; color: var(--g-text-2); }
-[data-skin="glass"] .section-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
-[data-skin="glass"] .section-link { font-size: 13px; font-weight: 600; color: var(--g-accent-text); text-decoration: none; }
-[data-skin="glass"] .section-link:hover { text-decoration: underline; }
+[data-skin="glass"] .section-title { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+/* "See all": orange, an underline that draws in on hover (transform only). Always inside a
+   .section-head, next to the heading. */
+[data-skin="glass"] .section-link { position: relative; font-size: 13px; font-weight: 600; color: var(--g-accent-text);
+  text-decoration: none; }
+[data-skin="glass"] .section-link:hover { color: var(--g-accent-text); }
+[data-skin="glass"] .section-link::after { content: ""; position: absolute; left: 0; right: 0; bottom: 12px; height: 1px;
+  background: currentColor; transform: scaleX(0); transform-origin: left; transition: transform 350ms var(--g-ease); }
+[data-skin="glass"] .section-link:hover::after { transform: scaleX(1); }
+[data-skin="glass"] .section-count { margin-left: 6px; color: var(--g-text-3); font-size: 14px; font-weight: 500;
+  font-variant-numeric: tabular-nums; }
 [data-skin="glass"] .muted, [data-skin="glass"] .field__help, [data-skin="glass"] .page-loader__text { color: var(--g-text-2); }
 [data-skin="glass"] .mono { font-family: var(--font-code); }
 
-/* --- Background glows -----------------------------------------------------------------------
-   Two soft orange glows, fixed behind everything. Drawn as radial gradients instead of the
-   mockup's filter: blur(120px), which looks the same and costs far less. Only transform and
-   opacity animate (compositor only). */
-[data-skin="glass"] .g-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden;
-  pointer-events: none; contain: strict; }
-[data-skin="glass"] .g-glow { position: absolute; border-radius: 50%; opacity: 0.28;
-  will-change: transform, opacity; }
-[data-skin="glass"] .g-glow--a { width: 820px; height: 820px; left: -290px; top: -330px;
-  background: radial-gradient(closest-side, rgba(242, 107, 46, 0.95), rgba(242, 107, 46, 0.45) 45%, rgba(242, 107, 46, 0) 100%);
-  animation: g-orb-a 34s ease-in-out infinite; }
-[data-skin="glass"] .g-glow--b { width: 740px; height: 740px; left: calc(40% - 130px); bottom: -370px;
-  background: radial-gradient(closest-side, rgba(184, 64, 26, 0.95), rgba(184, 64, 26, 0.45) 45%, rgba(184, 64, 26, 0) 100%);
-  animation: g-orb-b 42s ease-in-out infinite; }
-/* Peak opacity .33, not the mockups' .36: at .36 a red or grey status dot on a card right
-   over a glow's core drops below 3:1 (WCAG 1.4.11); at .33 the worst case is 3.04:1. */
-@keyframes g-orb-a {
-  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.22; }
-  50% { transform: translate(80px, 60px) scale(1.14); opacity: 0.33; }
-}
-@keyframes g-orb-b {
-  0%, 100% { transform: translate(0, 0) scale(1.04); opacity: 0.22; }
-  50% { transform: translate(-90px, -50px) scale(0.92); opacity: 0.33; }
-}
-/* "Moving background" off: the glows stay, still. */
-[data-skin="glass"][data-motion="off"] .g-glow { animation: none; }
-@media (max-width: 599.98px) {
-  [data-skin="glass"] .g-glow--a { width: 560px; height: 560px; left: -220px; top: -190px; opacity: 0.33; }
-  [data-skin="glass"] .g-glow--b { width: 480px; height: 480px; left: -60px; bottom: -240px; opacity: 0.32; }
-}
-
-/* --- Shell: top bar, logo, keys ------------------------------------------------------------ */
-[data-skin="glass"] .topbar { padding: var(--space-4) var(--space-4) var(--space-2); }
-[data-skin="glass"] .brand { gap: 10px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--g-text); }
+/* --- Shell: the sticky top bar, logo, keys -------------------------------------------------
+   The top bar stays at the top while the page scrolls (Legacy's scrolls away). Phone: the
+   <header> itself is sticky. Desktop: pages.css makes the header display: contents inside the
+   .app grid, so its three cells (logo, nav, version) are sticky one by one in a first row of
+   fixed height (--g-bar-h). The blur band behind them is .g-edge--top (below), shown once the
+   page has scrolled. */
+[data-skin="glass"] .topbar { position: sticky; top: 0; z-index: 9; min-height: var(--g-bar-h);
+  padding: 12px var(--space-4); }
+[data-skin="glass"] .brand { gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: var(--g-text); }
 /* Logo: the same three bars (base.html), orange at 1 / .6 / .35. */
 [data-skin="glass"] .brand__bars { gap: 3px; }
 [data-skin="glass"] .brand__bars span { width: 20px; height: 4px; border-radius: 2px; background: var(--g-accent); }
-[data-skin="glass"] .app:not(.app--bare) .brand { font-size: 17px; gap: 11px; }
-[data-skin="glass"] .app:not(.app--bare) .brand__bars { gap: 3px; }
-[data-skin="glass"] .app:not(.app--bare) .brand__bars span { width: 20px; height: 4px; }
+[data-skin="glass"] .brand__bars span:nth-child(2) { opacity: 0.6; }
+[data-skin="glass"] .brand__bars span:nth-child(3) { opacity: 0.35; }
 /* Glass is dark only: no light/dark key. */
 [data-skin="glass"] .theme-toggle { display: none; }
 [data-skin="glass"] .side-version { color: var(--g-text-3); font-size: 12px; }
-/* Phone top bar: Check all now = the orange round key, Add host = a glass round key. */
-[data-skin="glass"] .topbar__form .btn--icon { background: var(--g-accent); border-color: rgba(255, 190, 150, 0.35);
-  color: var(--g-on-accent); box-shadow: var(--g-hi-2), 0 10px 22px -10px rgba(242, 107, 46, 0.9); }
-[data-skin="glass"] .topbar__form .btn--icon:hover { background: var(--g-accent-hover); }
+/* Phone top bar: Add host is the orange round key (the primary action), Check all now a
+   glass one. */
+[data-skin="glass"] .add-key.btn--icon { background: var(--g-accent); border-color: var(--g-accent); color: var(--g-on-accent); }
+[data-skin="glass"] .add-key.btn--icon:hover { background: var(--g-accent-hover); color: var(--g-on-accent); }
+@media (min-width: 900px) {
+  [data-skin="glass"] .app:not(.app--bare) { grid-template-rows: var(--g-bar-h) 1fr; }
+  [data-skin="glass"] .app:not(.app--bare) .brand,
+  [data-skin="glass"] .app:not(.app--bare) .topbar__actions { position: sticky; top: 0; z-index: 9;
+    align-self: stretch; margin-block: 0; }
+  [data-skin="glass"] .app:not(.app--bare) .brand { font-size: 18px; }
+  /* The nav keeps its own 54px height, centred in the bar while it sticks. */
+  [data-skin="glass"] .app:not(.app--bare) .bottom-nav { position: sticky; z-index: 9; align-self: start;
+    top: calc((var(--g-bar-h) - 54px) / 2); margin-top: calc((var(--g-bar-h) - 54px) / 2); height: 54px; }
+}
 
 /* --- Main nav --------------------------------------------------------------------------------
-   Phone: a floating glass bar at the bottom (one blur layer). Desktop: a glass pill track in
-   the top bar. The current item: orange tint + light orange text. */
-[data-skin="glass"] .bottom-nav.well { background: transparent; box-shadow: none; border: 0; }
+   Phone: a floating glass bar at the bottom. Desktop: a glass pill track in the top bar. The
+   current item is a grey pill with white text, on both: no orange, no dot.
+   Desktop with a mouse (glass.js, Fluid Hover Highlight adapted from SmoothUI): a soft
+   highlight (.g-nav-hl) follows the pointer across the items, and the pill (.g-nav-pill)
+   slides to the clicked item. Both move with transform only (translateX + scaleX of a
+   100px-wide box; glass.js sets --g-nav-x and --g-nav-s). Until glass.js has placed the pill
+   (.g-nav--live), the current item draws its own grey background. */
+[data-skin="glass"] .bottom-nav.well { position: relative; background: transparent; box-shadow: none; border: 0; }
 [data-skin="glass"] .seg { color: var(--g-text-2); font-weight: 600; }
-[data-skin="glass"] .bottom-nav .seg { border-radius: 20px; font-size: 11px; gap: 3px;
+[data-skin="glass"] .bottom-nav .seg { position: relative; z-index: 1; border-radius: 20px; font-size: 11px; gap: 3px;
   transition: background-color 180ms ease, color 180ms ease; }
 [data-skin="glass"] .bottom-nav .seg svg { width: 20px; height: 20px; stroke-width: 1.8; }
-[data-skin="glass"] .seg[aria-current="page"] { color: var(--g-accent-soft); background: rgba(242, 107, 46, 0.24);
-  box-shadow: inset 0 1px 0 rgba(255, 180, 140, 0.28); }
-[data-skin="glass"] .bottom-nav .seg:hover { color: var(--g-text); }
-[data-skin="glass"] .bottom-nav .seg[aria-current="page"]:hover { color: var(--g-accent-soft); }
+[data-skin="glass"] .seg[aria-current="page"] { color: var(--g-text); background: var(--g-fill-hi);
+  box-shadow: inset 0 0 0 1px var(--g-edge-2); }
+[data-skin="glass"] .bottom-nav .seg:hover, [data-skin="glass"] .bottom-nav .seg[aria-current="page"]:hover { color: var(--g-text); }
+[data-skin="glass"] .bottom-nav.g-nav--live .seg[aria-current="page"] { background: transparent; box-shadow: none; }
+[data-skin="glass"] .g-nav-hl, [data-skin="glass"] .g-nav-pill { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 0;
+  width: 100px; border-radius: 12px; pointer-events: none; transform-origin: left center;
+  transform: translateX(var(--g-nav-x, 0)) scaleX(var(--g-nav-s, 1)); }
+[data-skin="glass"] .g-nav-pill { opacity: 0; background: var(--g-fill-hi); box-shadow: inset 0 0 0 1px var(--g-edge-2); }
+[data-skin="glass"] .g-nav--live .g-nav-pill { opacity: 1; }
+[data-skin="glass"] .g-nav-hl { opacity: 0; background: rgba(255, 255, 255, 0.04); }
+[data-skin="glass"] .g-nav-hl.is-on { opacity: 1; }
+[data-skin="glass"] .g-nav--ready .g-nav-hl, [data-skin="glass"] .g-nav--ready .g-nav-pill {
+  transition: transform 450ms var(--g-ease), opacity 250ms ease; }
 @media (max-width: 899.98px) {
-  [data-skin="glass"] .nav-dock { padding: 6px; border-radius: 26px; background: rgba(30, 31, 36, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: var(--g-hi-2), 0 20px 40px -18px rgba(0, 0, 0, 0.8);
+  [data-skin="glass"] .nav-dock { padding: 6px; border-radius: 26px; background: rgba(23, 24, 29, 0.72);
+    border: 1px solid var(--g-edge-2); box-shadow: var(--g-float-shadow);
     -webkit-backdrop-filter: var(--g-blur-strong); backdrop-filter: var(--g-blur-strong); }
   /* One row, however many items (Legacy's 3-column grid wraps a 4th item, e.g. Clusters). */
   [data-skin="glass"] .bottom-nav { gap: 4px; padding: 0; grid-auto-flow: column; grid-template-columns: none;
     grid-auto-columns: minmax(0, 1fr); }
+  [data-skin="glass"] .g-nav-hl, [data-skin="glass"] .g-nav-pill { display: none; }
 }
 @media (min-width: 900px) {
-  [data-skin="glass"] .bottom-nav.well { padding: 4px; gap: 4px; border-radius: 16px; background: var(--g-fill);
-    border: 1px solid var(--g-edge); box-shadow: var(--g-hi);
-    -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); }
-  [data-skin="glass"] .bottom-nav .seg { min-height: 44px; border-radius: 12px; font-size: 14px; font-weight: 500; }
+  [data-skin="glass"] .bottom-nav.well { padding: 4px; gap: 2px; border-radius: 14px; background: var(--g-fill);
+    border: 1px solid var(--g-edge); box-shadow: none; }
+  [data-skin="glass"] .bottom-nav .seg { min-height: 44px; border-radius: 10px; font-size: 14px; font-weight: 500; }
   [data-skin="glass"] .bottom-nav .seg[aria-current="page"] { font-weight: 600; }
   [data-skin="glass"] .bottom-nav .seg svg { width: 18px; height: 18px; }
+  [data-skin="glass"] .bottom-nav .seg[aria-current="page"], [data-skin="glass"] .g-nav-pill, [data-skin="glass"] .g-nav-hl { border-radius: 10px; }
 }
 
-/* --- Progressive Blur: the scroll edges -----------------------------------------------------
-   Top: fixed at the top of the screen, shown once the page scrolls (glass.js adds .is-on),
-   so content fades and blurs as it slides under the top edge. Bottom (phones): behind the
-   floating nav. Stacked layers with growing blur, each masked to a band. */
+/* --- Progressive Blur: under the sticky top bar, and behind the phone nav ---------------------
+   Top: fixed behind the top bar, a little taller than it, shown once the page has scrolled
+   (glass.js adds .is-on), so content fades and blurs as it slides under the bar. Stacked
+   layers with growing blur, each masked to a band. Bottom (phones): behind the floating nav. */
 [data-skin="glass"] .g-edge { position: fixed; left: 0; right: 0; z-index: 8; pointer-events: none; }
 [data-skin="glass"] .g-edge > span { position: absolute; inset: 0; }
-[data-skin="glass"] .g-edge--top { top: 0; height: 64px; opacity: 0; transition: opacity 260ms ease; }
+[data-skin="glass"] .g-edge--top { top: 0; height: calc(var(--g-bar-h) + 24px); opacity: 0; transition: opacity 300ms var(--g-ease); }
 [data-skin="glass"] .g-edge--top.is-on { opacity: 1; }
 [data-skin="glass"] .g-edge--top::after { content: ""; position: absolute; inset: 0;
-  background: linear-gradient(to top, rgba(11, 12, 15, 0), rgba(11, 12, 15, 0.7)); }
-[data-skin="glass"] .g-edge--top > span:nth-child(1) { -webkit-backdrop-filter: blur(1px); backdrop-filter: blur(1px);
+  background: linear-gradient(to bottom, rgba(11, 12, 15, 0.92), rgba(11, 12, 15, 0.6) 70%, rgba(11, 12, 15, 0));
+  -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); mask-image: linear-gradient(to bottom, #000 60%, transparent); }
+[data-skin="glass"] .g-edge--top > span:nth-child(1) { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
   -webkit-mask-image: linear-gradient(to top, transparent 0%, #000 30%, #000 60%, transparent 75%);
   mask-image: linear-gradient(to top, transparent 0%, #000 30%, #000 60%, transparent 75%); }
-[data-skin="glass"] .g-edge--top > span:nth-child(2) { -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+[data-skin="glass"] .g-edge--top > span:nth-child(2) { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   -webkit-mask-image: linear-gradient(to top, transparent 35%, #000 65%, #000 100%);
   mask-image: linear-gradient(to top, transparent 35%, #000 65%, #000 100%); }
-[data-skin="glass"] .g-edge--top > span:nth-child(3) { -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+[data-skin="glass"] .g-edge--top > span:nth-child(3) { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   -webkit-mask-image: linear-gradient(to top, transparent 65%, #000 100%);
   mask-image: linear-gradient(to top, transparent 65%, #000 100%); }
 [data-skin="glass"] .g-edge--bottom { bottom: 0; height: 120px; display: none; }
@@ -262,60 +291,56 @@
   background: var(--g-fill);
   border: 1px solid var(--g-edge);
   border-radius: var(--g-radius);
-  box-shadow: var(--g-hi), var(--g-drop);
+  box-shadow: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
 }
 [data-skin="glass"] .panel { padding: 20px; }
 @media (min-width: 900px) {
-  /* "While you were away" becomes one card from 900px (on phones its list is the card). */
-  [data-skin="glass"] .away { background: var(--g-fill); border: 1px solid var(--g-edge);
-    box-shadow: var(--g-hi), var(--g-drop); }
-  /* Desktop: the frosted blur (the mockups' 18px, saturate 150%). */
-  [data-skin="glass"] .surface, [data-skin="glass"] .away {
-    -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); }
   [data-skin="glass"] .panel { padding: 22px; }
   [data-skin="glass"] .page-title { font-size: 34px; }
   [data-skin="glass"] .page-sub { font-size: 14px; }
 }
-/* Small glass blocks inside a card (readouts): a lighter fill, no border. */
+/* Small blocks inside a card (readouts): a lighter fill, no border. */
 [data-skin="glass"] .readout-well, [data-skin="glass"] .hp-readout {
-  background: rgba(255, 255, 255, 0.05); box-shadow: none; border: 0; border-radius: 14px; }
+  background: var(--g-fill-hi); box-shadow: none; border: 0; border-radius: 12px; }
 [data-skin="glass"] .readout-well__label, [data-skin="glass"] .readout__label { color: var(--g-text-3); font-weight: 500; font-size: 12px; }
 [data-skin="glass"] .readout-well__value { font-size: 18px; font-weight: 600; }
 
-/* --- Keys (buttons) -------------------------------------------------------------------------- */
+/* --- Keys (buttons) --------------------------------------------------------------------------
+   Smooth Button (SmoothUI): a press scales the key down a little (transform only). */
 [data-skin="glass"] .btn {
   min-height: 44px; padding: 0 18px; border-radius: 999px;
-  border: 1px solid var(--g-edge-3); background: var(--g-fill-2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--g-edge-2); background: var(--g-fill);
+  box-shadow: none;
   color: var(--g-text); font: 600 14px/1.2 var(--font-ui);
-  transition: transform 180ms var(--g-ease), background-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
+  transition: transform 180ms var(--g-ease), background-color 200ms ease, border-color 200ms ease, color 180ms ease;
 }
-[data-skin="glass"] .btn:hover, [data-skin="glass"] .btn.is-hover { transform: translateY(-1px);
-  background: var(--g-fill-3); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16); }
-[data-skin="glass"] .btn:active, [data-skin="glass"] .btn.is-pressed { transform: scale(0.97);
-  background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35); }
-[data-skin="glass"] .btn[disabled] { opacity: 0.5; transform: none; box-shadow: none; }
-[data-skin="glass"] .btn[aria-disabled="true"] { opacity: 1; color: var(--g-text-3); transform: none;
-  background: rgba(255, 255, 255, 0.04); box-shadow: none; }
-[data-skin="glass"] .btn--primary { background: var(--g-accent); border-color: rgba(255, 190, 150, 0.35);
-  color: var(--g-on-accent); font-size: 14px; font-weight: 700;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 16px 30px -14px rgba(242, 107, 46, 0.85); }
+[data-skin="glass"] .btn:hover, [data-skin="glass"] .btn.is-hover { background: var(--g-fill-hi); color: var(--g-text); }
+[data-skin="glass"] .btn:active, [data-skin="glass"] .btn.is-pressed { transform: scale(0.96); background: var(--g-fill-hi); box-shadow: none; }
+[data-skin="glass"] .btn[disabled] { opacity: 0.5; transform: none; }
+[data-skin="glass"] .btn[aria-disabled="true"] { opacity: 1; color: var(--g-text-3); transform: none; background: transparent; }
+[data-skin="glass"] .btn--primary { background: var(--g-accent); border-color: var(--g-accent); color: var(--g-on-accent);
+  font-size: 14px; font-weight: 700; box-shadow: none; }
 [data-skin="glass"] .btn--primary:hover, [data-skin="glass"] .btn--primary.is-hover {
-  background: var(--g-accent-hover); color: var(--g-on-accent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 18px 32px -14px rgba(242, 107, 46, 0.95); }
+  background: var(--g-accent-hover); border-color: var(--g-accent-hover); color: var(--g-on-accent); }
 [data-skin="glass"] .btn--primary:active, [data-skin="glass"] .btn--primary.is-pressed {
-  background: var(--accent-pressed); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25); }
+  background: var(--accent-pressed); border-color: var(--accent-pressed); box-shadow: none; }
 [data-skin="glass"] .btn--danger { color: var(--g-red-text); }
 [data-skin="glass"] .btn--sm { min-width: 0; padding: 0 14px; font-size: 13px; }
 [data-skin="glass"] .btn--icon { width: 44px; height: 44px; padding: 0; border-radius: 50%; }
-[data-skin="glass"] .btn--head { min-height: 46px; padding: 0 20px; }
+[data-skin="glass"] .btn--head { min-height: 44px; padding: 0 18px; }
 [data-skin="glass"] .btn--head:not(.btn--primary) { font-size: 14px; }
-[data-skin="glass"] .btn--primary.btn--head { padding: 0 20px; font-size: 14px; }
+[data-skin="glass"] .btn--primary.btn--head { padding: 0 18px; font-size: 14px; }
+/* "Check all now" while a round runs: its icon turns (actions.js disables the key). */
+[data-skin="glass"] .js-fetch-action[data-action="check-all"] .btn[disabled] svg { animation: g-spin 1s linear infinite; }
+@keyframes g-spin { to { transform: rotate(360deg); } }
 
-/* --- Inputs, wells, segmented control, switch, checkbox -------------------------------------- */
+/* --- Inputs, wells, segmented control, switch, checkbox --------------------------------------
+   All neutral: the chosen segment is the grey pill (like the nav), a switch that is on and a
+   ticked box are light on graphite. */
 [data-skin="glass"] .well { background: rgba(0, 0, 0, 0.25); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45); }
 [data-skin="glass"] input.well, [data-skin="glass"] select.well, [data-skin="glass"] textarea.well {
-  min-height: 48px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--g-edge-2);
+  min-height: 48px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--g-edge-2);
   background: var(--g-well); box-shadow: var(--g-well-shade); color: var(--g-text);
   font: 500 16px var(--font-ui); }
 [data-skin="glass"] textarea.well { padding: 12px 16px; }
@@ -324,27 +349,27 @@
 [data-skin="glass"] .field__help { font-size: 13px; }
 [data-skin="glass"] .field__error, [data-skin="glass"] .form-error { color: var(--g-red-text); font-weight: 600; }
 
-/* Segmented control (Settings > Appearance): a recessed track, the chosen segment orange. */
+/* Segmented control (Settings > Appearance): a recessed track, the chosen segment the grey pill. */
 [data-skin="glass"] .seg-track.well:not(.bottom-nav) { padding: 4px; gap: 4px; border-radius: 14px;
   background: var(--g-well); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.06); }
 [data-skin="glass"] .seg--radio { min-height: 44px; border-radius: 10px; font-size: 13px; font-weight: 500;
   color: var(--g-text-2); transition: background-color 180ms ease, color 180ms ease; }
 [data-skin="glass"] .seg--radio:hover { color: var(--g-text); }
-[data-skin="glass"] .seg--radio:has(input:checked) { background: var(--g-accent); color: var(--g-on-accent);
-  font-weight: 700; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+[data-skin="glass"] .seg--radio:has(input:checked) { background: var(--g-fill-3); color: var(--g-text);
+  font-weight: 600; box-shadow: inset 0 0 0 1px var(--g-edge-2); }
 [data-skin="glass"] .seg--radio:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; }
 [data-skin="glass"] .skin-seg { max-width: 280px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-/* Switch: the mockups' 46 × 28 track, orange when on, white knob. Label left, switch right. */
+/* Switch: a 46 × 28 track. Off: dark track, light knob. On: light track, dark knob. Label
+   left, switch right. */
 [data-skin="glass"] .switch { width: 100%; justify-content: space-between; flex-direction: row-reverse;
   min-height: 48px; font-size: 14px; font-weight: 500; }
 [data-skin="glass"] .switch__track { width: 46px; height: 28px; background: rgba(255, 255, 255, 0.16);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5); transition: background-color 260ms ease; }
 [data-skin="glass"] .switch__thumb { top: 3px; left: 3px; width: 22px; height: 22px; background: #f5f5f7;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); transition: transform 260ms var(--g-ease); }
-[data-skin="glass"] .switch__input:checked + .switch__track { background: var(--g-accent);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3); }
-[data-skin="glass"] .switch__input:checked + .switch__track .switch__thumb { transform: translateX(18px); }
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); transition: transform 260ms var(--g-ease), background-color 260ms ease; }
+[data-skin="glass"] .switch__input:checked + .switch__track { background: rgba(245, 245, 247, 0.9); box-shadow: none; }
+[data-skin="glass"] .switch__input:checked + .switch__track .switch__thumb { transform: translateX(18px); background: var(--g-ground); }
 [data-skin="glass"] .switch__input:focus-visible + .switch__track, [data-skin="glass"] .switch__track.is-focus {
   outline: 2px solid var(--focus); outline-offset: 3px; }
 [data-skin="glass"] .glass-prefs { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -352,11 +377,11 @@
 [data-skin="glass"] .glass-prefs .field { gap: 2px; }
 
 /* A native checkbox inside its label (Settings > Update checks): the whole label is a 44px
-   target, the box 20px and orange when ticked. */
+   target, the box 20px and light when ticked. */
 [data-skin="glass"] .field__label:has(> input[type="checkbox"]) { display: flex; align-items: center; gap: 10px;
   min-height: 44px; cursor: pointer; }
 [data-skin="glass"] .field__label > input[type="checkbox"] { flex: none; width: 20px; height: 20px; margin: 0;
-  accent-color: var(--g-accent); }
+  accent-color: #f5f5f7; }
 /* Links inside running text (e.g. "… (Settings)."): a 44px tall tap area through vertical
    padding, which doesn't move the text around them. */
 [data-skin="glass"] :where(p, li) > a:where(:not(.btn, .rack-unit, .g-attn)) { padding-block: 13px; }
@@ -365,13 +390,14 @@
 [data-skin="glass"] .check { font-size: 15px; font-weight: 600; }
 [data-skin="glass"] .check__box { border-radius: 8px; border: 1px solid var(--g-edge-3); background: var(--g-well);
   box-shadow: var(--g-well-shade); }
-[data-skin="glass"] .check__input:checked + .check__box { color: var(--g-on-accent); background: var(--g-accent);
-  border-color: rgba(255, 190, 150, 0.35); }
+[data-skin="glass"] .check__input:checked + .check__box { color: var(--g-ground); background: #f5f5f7;
+  border-color: #f5f5f7; }
 [data-skin="glass"] .check__input:focus-visible + .check__box { outline: 2px solid var(--focus); outline-offset: 3px; }
 
 /* --- Status: a flat round dot ------------------------------------------------------------------
    Glass shows status as a flat dot only: red #ff453a, yellow #ffd60a, green #32d74b, grey
-   #8e8e93. No glow, no coloured pill or background behind words.
+   #8e8e93. No glow, no coloured pill or background behind words; the words themselves are
+   neutral text.
 
    WCAG 1.4.1 (Use of Color), a conscious choice: by default the dot's colour alone tells a
    sighted user the status (Legacy's icons also differ in SHAPE). Mitigations:
@@ -385,26 +411,42 @@
 [data-skin="glass"] .status-icon { width: auto; height: auto; min-width: 10px; min-height: 10px; gap: 7px;
   font-size: 12px; font-weight: 600; color: var(--g-text-2); --dot: var(--g-grey); }
 [data-skin="glass"] .status-icon svg { display: none; }
-[data-skin="glass"] .status-icon::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%;
+[data-skin="glass"] .status-icon::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 50%;
   background: var(--dot); }
-[data-skin="glass"] .status-icon--good { --dot: var(--g-green); color: var(--g-green-text); }
-[data-skin="glass"] .status-icon--warn { --dot: var(--g-yellow); color: var(--g-yellow-text); }
-[data-skin="glass"] .status-icon--bad { --dot: var(--g-red); color: var(--g-red-text); }
-[data-skin="glass"] .status-icon--waiting, [data-skin="glass"] .status-icon--info { --dot: var(--g-grey); color: var(--g-text-2); }
+[data-skin="glass"] .status-icon--good { --dot: var(--g-green); }
+[data-skin="glass"] .status-icon--warn { --dot: var(--g-yellow); }
+[data-skin="glass"] .status-icon--bad { --dot: var(--g-red); }
+[data-skin="glass"] .status-icon--waiting, [data-skin="glass"] .status-icon--info { --dot: var(--g-grey); }
 /* "Show status labels": the hidden words become visible, left of the dot. */
 [data-skin="glass"][data-labels="on"] .status-icon, [data-skin="glass"] [data-labels="on"] .status-icon { flex-direction: row-reverse; }
 [data-skin="glass"][data-labels="on"] .status-icon > .visually-hidden,
 [data-skin="glass"] [data-labels="on"] .status-icon > .visually-hidden {
   position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; clip-path: none; }
 
-/* Lamps become the same flat dot, no bezel, no glow (activity rows, offline units). */
-[data-skin="glass"] .lamp { width: 10px; height: 10px; min-width: 10px; min-height: 10px; box-shadow: none;
+/* Lamps become the same flat dot: no bezel, no glow (rack LEDs, activity rows, offline). */
+[data-skin="glass"] .lamp { width: 9px; height: 9px; min-width: 9px; min-height: 9px; box-shadow: none;
   background: var(--g-grey); }
 [data-skin="glass"] .lamp--red { background: var(--g-red); }
 [data-skin="glass"] .lamp--amber { background: var(--g-yellow); }
 [data-skin="glass"] .lamp--green { background: var(--g-green); }
 [data-skin="glass"] .lamp--off { background: var(--g-grey); }
-[data-skin="glass"] .lamp-label { gap: 12px; }
+[data-skin="glass"] .lamp-label { gap: 10px; }
+
+/* Status ring (overview.js adds .g-ring when a status changed on a refresh): one soft outline
+   that expands and fades, twice, then stops. One-shot, not a glow. The dot's own colour
+   change crossfades (.g-dot-fade). */
+[data-skin="glass"] .lamp.g-ring, [data-skin="glass"] .status-icon.g-ring { position: relative; }
+[data-skin="glass"] .lamp.g-ring::after, [data-skin="glass"] .status-icon.g-ring::after { content: ""; position: absolute;
+  width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--g-ring, var(--g-grey)); pointer-events: none;
+  animation: g-ring 1.4s var(--g-ease) 2 both; }
+[data-skin="glass"] .lamp.g-ring::after { left: 0; top: 0; box-sizing: border-box; }
+[data-skin="glass"] .status-icon.g-ring::after { left: 0; top: 50%; margin-top: -4.5px; box-sizing: border-box; }
+[data-skin="glass"][data-labels="on"] .status-icon.g-ring::after { left: auto; right: 0; }
+[data-skin="glass"] .lamp--red.g-ring, [data-skin="glass"] .status-icon--bad.g-ring { --g-ring: var(--g-red); }
+[data-skin="glass"] .lamp--amber.g-ring, [data-skin="glass"] .status-icon--warn.g-ring { --g-ring: var(--g-yellow); }
+[data-skin="glass"] .lamp--green.g-ring, [data-skin="glass"] .status-icon--good.g-ring { --g-ring: var(--g-green); }
+@keyframes g-ring { from { transform: scale(1); opacity: 0.9; } to { transform: scale(3.2); opacity: 0; } }
+[data-skin="glass"] .lamp.g-dot-fade { transition: background-color 600ms var(--g-ease); }
 
 /* "Offline · last report 3 days ago": the word (and its separator) only for screen readers,
    unless "Show status labels" is on; the grey dot says it. */
@@ -417,29 +459,40 @@
    visible there, after the grey dot. */
 [data-skin="glass"]:not([data-labels="on"]) .settings-head__offline > strong { position: static; width: auto; height: auto;
   margin: 0; overflow: visible; clip: auto; clip-path: none; }
-[data-skin="glass"] .settings-head__offline::before { content: ""; display: inline-block; width: 10px; height: 10px;
+[data-skin="glass"] .settings-head__offline::before { content: ""; display: inline-block; width: 9px; height: 9px;
   margin-right: 8px; border-radius: 50%; background: var(--g-grey); }
-[data-skin="glass"] .issue-icon { color: var(--g-red-text); }
-[data-skin="glass"] .role-label { font: 600 12px var(--font-ui); color: rgba(235, 235, 245, 0.82); }
-[data-skin="glass"] .role-label__icon { color: var(--g-accent-text); }
+[data-skin="glass"] .issue-icon { color: var(--g-text-2); }
+[data-skin="glass"] .role-label { display: inline-flex; align-items: center; gap: 5px; font: 500 12px var(--font-ui);
+  color: var(--g-text-2); }
+[data-skin="glass"] .role-label__icon { width: 12px; height: 12px; color: var(--g-text-2); }
 
 /* --- Summary tiles + Number Flow -------------------------------------------------------------
    The only place status words always show. Fourth tile: Offline (the Legacy "Hosts online"
-   tile is hidden). Number Flow: glass.js puts a column of 0–9 per digit next to the real
-   number (.g-flow, kept for screen readers and overview.js) and rolls it to the value. */
-[data-skin="glass"] .summary { gap: 16px; }
-[data-skin="glass"] .tile { padding: 18px 20px; border-radius: 20px; gap: 10px; }
+   tile is hidden). 2 × 2 on phones (Legacy hides them there), 4 across from 900px.
+   Number Flow (SmoothUI): glass.js puts a column of 0–9 per digit next to the real number
+   (.g-flow, kept for screen readers and overview.js) and rolls it to the value: a plain
+   ease-out, no overshoot (an overshoot would flash the next digit). */
+[data-skin="glass"] .summary.desk-only { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--g-gap); }
+@media (min-width: 900px) {
+  [data-skin="glass"] .summary.desk-only { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+[data-skin="glass"] .tile { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; border-radius: var(--g-radius); }
 [data-skin="glass"] .tile--online { display: none; }
-[data-skin="glass"] .tile__label { gap: 8px; font-size: 13px; font-weight: 500; color: rgba(235, 235, 245, 0.76); }
+[data-skin="glass"] .tile__label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--g-text-2); }
 [data-skin="glass"] .tile__icon { display: none; }
-[data-skin="glass"] .tile__label::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%;
+[data-skin="glass"] .tile__label::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 50%;
   background: var(--g-grey); }
 [data-skin="glass"] .tile--red .tile__label::before { background: var(--g-red); }
 [data-skin="glass"] .tile--yellow .tile__label::before { background: var(--g-yellow); }
 [data-skin="glass"] .tile--green .tile__label::before { background: var(--g-green); }
-[data-skin="glass"] .tile__value { display: flex; align-items: baseline; gap: 8px; font-size: 34px; font-weight: 700;
+[data-skin="glass"] .tile__value { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 34px; font-weight: 700;
   letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
 [data-skin="glass"] .tile__unit { font-size: 13px; font-weight: 500; color: var(--g-text-3); letter-spacing: 0; }
+@media (max-width: 899.98px) {
+  [data-skin="glass"] .tile { padding: 14px 16px; }
+  [data-skin="glass"] .tile__value { font-size: 28px; }
+}
 /* With JS (glass.js adds .g-flowing): the digits show, the plain number is for screen readers. */
 [data-skin="glass"] .g-flowing > .g-flow { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden;
   clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
@@ -448,165 +501,282 @@
 [data-skin="glass"] .g-digit { display: block; height: 1em; overflow: hidden; }
 [data-skin="glass"] .g-digit__col { display: flex; flex-direction: column;
   transform: translateY(calc(var(--g-d, 0) * -1em)); }
-[data-skin="glass"] .g-digits--live .g-digit__col { transition: transform 700ms var(--g-ease); }
+[data-skin="glass"] .g-digits--live .g-digit__col { transition: transform 800ms var(--g-ease); }
 [data-skin="glass"] .g-digit__col > span { display: block; height: 1em; line-height: 1; }
 
 /* --- Overview layout --------------------------------------------------------------------------
-   Phone: headline, "Needs attention" cards, the host grid, clusters, activity.
-   Desktop: + tiles; attention cards 3 across; host grid (auto-fill) left, activity right. */
+   hero → 4 tiles → [Needs attention | While you were away] → Hosts rack → Clusters rack.
+   Every gap between sections is --g-section, every gap between cards --g-gap. A section with
+   nothing in it isn't rendered (hosts/overview.html), so it leaves no gap.
+   The duo (.g-duo): from 1200px the main column + 380px, both as tall as Needs attention
+   (at least 240px): the activity box is absolutely placed inside its column, so its list
+   scrolls inside it and never makes the row taller. Either one alone takes the full width.
+   Below 1200px one column. No sticky side column anywhere. */
+[data-skin="glass"] .app-main--wide { --stack-gap: var(--g-section); }
+[data-skin="glass"] .overview-head { margin: 0; }
 [data-skin="glass"] .overview-head__sub { color: var(--g-text-2); }
-[data-skin="glass"] .refresh-failed { color: var(--g-yellow-text); font-weight: 600; }
-[data-skin="glass"] .g-attention { display: flex; flex-direction: column; gap: 14px; }
-[data-skin="glass"] .g-attention[hidden] { display: none; }
+[data-skin="glass"] .refresh-failed { color: var(--g-text); font-weight: 600; }
+/* The headline changes word by word (overview.js wraps the words in .g-word). */
+[data-skin="glass"] .g-word { display: inline-block; animation: g-word-in 550ms var(--g-ease) both;
+  animation-delay: calc(var(--g-i, 0) * 60ms); }
+@keyframes g-word-in { from { opacity: 0; filter: blur(6px); transform: translateY(8px); } }
+
+[data-skin="glass"] .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 44px; margin: 0 0 4px; }
+[data-skin="glass"] .g-duo { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--g-section); }
+[data-skin="glass"] .g-attention, [data-skin="glass"] .g-side { display: flex; flex-direction: column; min-width: 0; }
 [data-skin="glass"] .g-attention__grid { margin: 0; padding: 0; list-style: none; display: grid;
-  grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: var(--g-gap); }
 [data-skin="glass"] .g-attention__slot { min-width: 0; display: flex; }
-@media (min-width: 600px) {
-  [data-skin="glass"] .g-attention__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @media (min-width: 1200px) {
-  [data-skin="glass"] .g-attention__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  [data-skin="glass"] .g-duo { grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; align-items: stretch; }
+  [data-skin="glass"] .g-duo > :only-child { grid-column: 1 / -1; }
+  [data-skin="glass"] .g-attention { min-height: 240px; }
+  [data-skin="glass"] .g-attention__grid { flex: 1 1 auto; grid-auto-rows: 1fr; }
+  [data-skin="glass"] .g-side { position: relative; min-height: 240px; }
+  [data-skin="glass"] .g-side > .g-away { position: absolute; inset: 0; }
+  /* Activity alone: its natural height, at most 440px (the list scrolls beyond that). */
+  [data-skin="glass"] .g-duo > .g-side:only-child { min-height: 0; }
+  [data-skin="glass"] .g-duo > .g-side:only-child > .g-away { position: static; max-height: 440px; }
 }
 
-/* Attention card (components/attention_card.html) */
-[data-skin="glass"] .g-attn { position: relative; flex: 1 1 auto; min-width: 0; min-height: 150px;
-  display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: var(--g-radius);
-  color: var(--g-text); text-decoration: none;
-  background: var(--g-fill); border: 1px solid var(--g-edge);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 24px 48px -30px rgba(0, 0, 0, 0.8); }
-[data-skin="glass"] .g-attn--red { background: rgba(255, 69, 58, 0.10); border-color: rgba(255, 69, 58, 0.30); }
-[data-skin="glass"] .g-attn--yellow { background: rgba(255, 214, 10, 0.07); border-color: rgba(255, 214, 10, 0.24); }
+/* Attention card (components/attention_card.html): a neutral surface; the dot carries the
+   status. Tilts towards the mouse (glass.js). */
+[data-skin="glass"] .g-attn { position: relative; flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; border-radius: var(--g-radius);
+  color: var(--g-text); text-decoration: none; background: var(--g-fill); border: 1px solid var(--g-edge); }
 [data-skin="glass"] .g-attn:hover { color: var(--g-text); }
 [data-skin="glass"] .g-attn__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
-[data-skin="glass"] .g-attn__name { min-width: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em;
-  overflow-wrap: anywhere; }
-[data-skin="glass"] .g-attn__issue { font-size: 14px; line-height: 1.45; color: rgba(245, 245, 247, 0.92);
-  overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-[data-skin="glass"] .g-attn__meta { margin-top: auto; font-size: 12px; color: var(--g-text-2); overflow-wrap: anywhere; }
-@media (min-width: 900px) {
-  [data-skin="glass"] .g-attn { -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); }
+[data-skin="glass"] .g-attn__name { min-width: 0; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+[data-skin="glass"] .g-attn__offline { display: inline-flex; align-items: center; }
+[data-skin="glass"] .g-attn__issue { font-size: 14px; line-height: 1.45; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+[data-skin="glass"] .g-attn__meta { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--g-text-3); overflow-wrap: anywhere; }
+
+/* Tilt Card (SmoothUI; glass.js sets --g-rx / --g-ry, max 8°, adds .g-tilting while the
+   mouse moves over it). Tiles and attention cards only, mouse only; no glare, no scale.
+   Leaving returns smoothly (the slower transition). Rack units slide instead. */
+[data-skin="glass"] .g-attn, [data-skin="glass"] .summary .tile {
+  transform: perspective(900px) rotateX(var(--g-rx, 0deg)) rotateY(var(--g-ry, 0deg));
+  transition: transform 600ms var(--g-ease), border-color 250ms ease, background-color 250ms ease; }
+[data-skin="glass"] .g-tilting { transition: transform 120ms linear, border-color 250ms ease, background-color 250ms ease; }
+[data-skin="glass"] .g-attn:hover, [data-skin="glass"] .summary .tile:hover { border-color: var(--g-edge-2); background: var(--g-fill-hi); }
+
+/* --- Rack (hosts AND clusters; components/rack_unit.html, cluster_unit.html) -------------------
+   Legacy's server rack in Glass materials: a chassis with two ears and their screws, a
+   recessed bay, one unit per host or cluster. Each unit: LED (the status dot), name + k8s
+   role, the issue line, the readout panel (Updates / Containers / Disk; clusters: Nodes /
+   Pods / k3s), vents and a chevron. Units slide out a little on hover (mouse only) and
+   further when open. The unit is a <button> (the Glass copy; the Legacy link is hidden): a
+   click opens .g-unit-more under it, which grows with the grid-template-rows 0fr → 1fr
+   technique (Expandable Cards / Collapsible, SmoothUI). Collapsed it is visibility: hidden,
+   so its keys are out of the tab order. */
+[data-skin="glass"] .rack-chassis { display: flex; gap: 10px; padding: 10px; border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--g-edge); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+[data-skin="glass"] .rack-ear { width: 14px; padding: 14px 0; }
+[data-skin="glass"] .rack-screw { width: 10px; height: 10px; background: #1b1c21; border: 1px solid var(--g-edge-2); box-shadow: none; }
+[data-skin="glass"] .rack-screw::after { top: 3.5px; left: 2px; width: 4px; height: 1.5px; background: rgba(255, 255, 255, 0.25);
+  transform: rotate(-30deg); }
+[data-skin="glass"] .rack.well { margin: 0; padding: 6px; gap: 6px; border-radius: 14px; background: var(--g-well);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.4); overflow: visible; display: flex; flex-direction: column; }
+[data-skin="glass"] .rack__slot { position: relative; border-radius: 10px; background: var(--g-unit); border: 1px solid var(--g-edge);
+  transition: transform 350ms var(--g-ease), border-color 250ms ease, box-shadow 350ms var(--g-ease); }
+@media (hover: hover) and (pointer: fine) {
+  [data-skin="glass"] .rack__slot:hover { transform: translateX(3px); border-color: var(--g-edge-2); }
+}
+[data-skin="glass"] .rack__slot.is-open { transform: translateX(6px); border-color: var(--g-edge-2);
+  box-shadow: -8px 10px 24px -14px rgba(0, 0, 0, 0.8); }
+[data-skin="glass"] .rack__slot--empty.well { min-height: 64px; padding: 12px; border: 1px dashed var(--g-edge-2);
+  background: transparent; box-shadow: none; }
+
+/* The unit row (the Glass button, and the Welcome example's link). */
+[data-skin="glass"] .rack-unit { width: 100%; min-height: 60px; margin: 0; padding: 10px 14px; display: grid;
+  grid-template-columns: 14px minmax(0, 1.1fr) minmax(0, 1.4fr) auto auto 18px; align-items: center;
+  column-gap: 18px; row-gap: 2px; border: 0; border-radius: 10px; background: none; box-shadow: none;
+  color: var(--g-text); font: inherit; text-align: left; text-decoration: none; cursor: pointer; transform: none; }
+[data-skin="glass"] .rack-unit:hover, [data-skin="glass"] .rack-unit:active { color: var(--g-text); transform: none;
+  background: none; box-shadow: none; }
+[data-skin="glass"] .rack-unit:focus-visible { outline-offset: -2px; border-radius: 10px; }
+[data-skin="glass"] .rack-unit .rack-unit__body { display: contents; }
+[data-skin="glass"] .rack-unit__lamp { grid-column: 1; grid-row: 1; display: flex; width: 14px; height: auto;
+  align-items: center; justify-content: center; }
+[data-skin="glass"] .rack-unit .rack-unit__head { grid-column: 2; grid-row: 1; min-width: 0; max-width: none; display: flex;
+  flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 3px; }
+[data-skin="glass"] .rack-unit .rack-unit__name { max-width: 100%; font-size: 15px; font-weight: 700; letter-spacing: -0.005em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The LED is the dot here: the status icon keeps only its words (visible with "Show status labels"). */
+[data-skin="glass"] .rack-unit__head > .status-icon { min-width: 0; min-height: 0; }
+[data-skin="glass"] .rack-unit__head > .status-icon::before { display: none; }
+[data-skin="glass"] .rack-unit .rack-unit__offline { font-size: 12px; }
+[data-skin="glass"] .rack-unit .rack-unit__issues { grid-column: 3; grid-row: 1; min-width: 0; font-size: 14px;
+  color: var(--g-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+[data-skin="glass"] .rack__slot:has(.lamp--red, .lamp--amber) .rack-unit__issues { color: var(--g-text); }
+[data-skin="glass"] .rack-unit--offline .rack-unit__name { color: var(--g-text-2); }
+/* Clusters: the Nodes / Pods / k3s readouts replace Legacy's facts line (also on phones,
+   whose rule below re-displays the issue lines, hence the extra class here). */
+[data-skin="glass"] .rack-unit .rack-unit__issues.cluster-unit__facts-line { display: none; }
+[data-skin="glass"] .rack-unit--example .rack-unit__issues { white-space: normal; }
+/* Readout panel. */
+[data-skin="glass"] .rack-unit__panel { grid-column: 4; grid-row: 1; display: grid; grid-template-columns: 112px 120px 128px;
+  column-gap: 14px; padding: 7px 12px; border-radius: 8px; background: var(--g-well); border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: none; font-size: 12px; }
+[data-skin="glass"] .readout { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+[data-skin="glass"] .rack-unit__panel .readout__label { font-size: 10px; font-weight: 500; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--g-text-3); }
+[data-skin="glass"] .rack-unit__panel .readout__value { display: flex; align-items: center; gap: 6px; min-width: 0;
+  font: 500 12px var(--font-code); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Meter: the native <meter> stays for Legacy; Glass draws .g-meter (width from --g-v, set by
+   glass.js from data-percent) and fills it on load (scaleX). Yellow from 85%. */
+[data-skin="glass"] .rack-unit .readout__meter { flex: 1 1 auto; min-width: 30px; }
+[data-skin="glass"] .rack-unit .readout__meter .meter { display: none; }
+[data-skin="glass"] .g-meter { display: block; width: 100%; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.08);
+  overflow: hidden; }
+[data-skin="glass"] .g-meter__fill { display: block; height: 100%; width: calc(var(--g-v, 0) * 1%);
+  background: rgba(235, 235, 245, 0.55); transform-origin: left center; }
+[data-skin="glass"] .g-meter--hot .g-meter__fill { background: var(--g-yellow); }
+[data-skin="glass"] .g-meter--fill .g-meter__fill { animation: g-fill 1.1s var(--g-ease) 200ms both; }
+@keyframes g-fill { from { transform: scaleX(0); } }
+/* Vents and chevron. */
+[data-skin="glass"] .rack-unit .rack-unit__vents { grid-column: 5; grid-row: 1; display: flex; gap: 3px; }
+[data-skin="glass"] .rack-unit__vents span { width: 3px; height: 22px; border-radius: 2px; background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04); }
+[data-skin="glass"] .g-unit__chev { grid-column: 6; grid-row: 1; justify-self: center; color: var(--g-text-3);
+  transition: transform 450ms var(--g-ease); }
+[data-skin="glass"] .rack__slot.is-open .g-unit__chev { transform: rotate(180deg); }
+
+/* The expanding part. */
+[data-skin="glass"] .g-unit-more { display: grid; grid-template-rows: 0fr; visibility: hidden;
+  transition: grid-template-rows 500ms var(--g-ease), visibility 0s linear 500ms; }
+[data-skin="glass"] .rack__slot.is-open > .g-unit-more { grid-template-rows: 1fr; visibility: visible;
+  transition: grid-template-rows 500ms var(--g-ease), visibility 0s linear 0s; }
+[data-skin="glass"] .g-unit-more__in { min-height: 0; overflow: hidden; }
+/* The issues (or the note) across the full width, then the facts left and the keys right. */
+[data-skin="glass"] .g-unit-more__body { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: 12px 24px; margin: 0 14px 12px 46px; padding-top: 12px; border-top: 1px solid var(--g-edge);
+  opacity: 0; transform: translateY(-6px); transition: opacity 350ms var(--g-ease), transform 450ms var(--g-ease); }
+[data-skin="glass"] .rack__slot.is-open .g-unit-more__body { opacity: 1; transform: none; transition-delay: 80ms; }
+[data-skin="glass"] .g-unit-more__issues, [data-skin="glass"] .g-unit-more__note { grid-column: 1 / -1; }
+[data-skin="glass"] .g-unit-more__issues { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+[data-skin="glass"] .g-unit-more__issues .issue-line { gap: 8px; font-size: 13.5px; }
+[data-skin="glass"] .g-unit-more__note { margin: 0; font-size: 13.5px; color: var(--g-text-2); }
+[data-skin="glass"] .g-unit-more__facts { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12px; color: var(--g-text-3); }
+[data-skin="glass"] .g-unit-more__facts dd { margin: 0; color: var(--g-text); font: 500 12px var(--font-code); }
+[data-skin="glass"] .g-unit-more__keys { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+[data-skin="glass"] .g-unit-more__check { display: flex; }
+[data-skin="glass"] .g-unit-more__off-note { margin: 0; font-size: 12px; color: var(--g-text-3); }
+
+/* Narrower rows (below 1500px): the issue line goes under the name. */
+@media (max-width: 1499.98px) {
+  [data-skin="glass"] .rack-unit { grid-template-columns: 14px minmax(0, 1fr) auto auto 18px; }
+  [data-skin="glass"] .rack-unit__lamp { grid-row: 1 / span 2; }
+  [data-skin="glass"] .rack-unit .rack-unit__issues { grid-column: 2; grid-row: 2; }
+  [data-skin="glass"] .rack-unit__panel { grid-column: 3; grid-row: 1 / span 2; }
+  [data-skin="glass"] .rack-unit .rack-unit__vents { grid-column: 4; grid-row: 1 / span 2; }
+  [data-skin="glass"] .g-unit__chev { grid-column: 5; grid-row: 1 / span 2; }
+}
+/* Phone (below 900px): ears, readout panel and vents hide; LED, name / role, issue, chevron. */
+@media (max-width: 899.98px) {
+  [data-skin="glass"] .rack-chassis { padding: 6px; }
+  [data-skin="glass"] .rack-ear, [data-skin="glass"] .rack-unit__panel, [data-skin="glass"] .rack-unit .rack-unit__vents { display: none; }
+  [data-skin="glass"] .rack-unit { grid-template-columns: 14px minmax(0, 1fr) 18px; column-gap: 14px; }
+  [data-skin="glass"] .g-unit__chev { grid-column: 3; }
+  [data-skin="glass"] .g-unit-more__body { margin-left: 14px; grid-template-columns: minmax(0, 1fr); }
+  [data-skin="glass"] .rack-unit .rack-unit__issues { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; }
 }
 
-/* Host grid: the rack becomes a grid of small glass cards. Chassis, ears, screws and vents
-   are Legacy hardware: gone. The bay keeps overflow visible, so tilted cards aren't clipped. */
-[data-skin="glass"] .rack-chassis { padding: 0; gap: 0; background: none; border: 0; box-shadow: none;
-  border-radius: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
-[data-skin="glass"] .rack-ear, [data-skin="glass"] .rack-unit__vents { display: none; }
-[data-skin="glass"] .rack.well { padding: 0; background: none; box-shadow: none; border-radius: 0; overflow: visible;
-  display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-@media (min-width: 600px) {
-  [data-skin="glass"] .rack.well { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
-}
-[data-skin="glass"] .overview-hosts { gap: 14px; }
-/* "Hosts" heading: screen-reader only in Legacy, visible in Glass. */
-[data-skin="glass"] .overview-hosts > h2.visually-hidden { position: static; width: auto; height: auto; margin: 0;
-  overflow: visible; clip: auto; clip-path: none; white-space: normal; font-size: 17px; font-weight: 600; }
-[data-skin="glass"] .rack > li { display: flex; }
-[data-skin="glass"] .rack__slot--empty.well { padding: 16px; border-radius: 18px; border: 1px dashed var(--g-edge-3);
-  background: rgba(255, 255, 255, 0.03); }
+/* The overview's racks: the Hosts heading (Legacy: screen-reader only) is a visible section
+   heading here; the Clusters rack is its own full-width section after the hosts. */
+/* pages.css gives Legacy's split body align-items: start; here every section takes the full width. */
+[data-skin="glass"] .overview-body, [data-skin="glass"] .overview-body--split { display: flex; flex-direction: column;
+  align-items: stretch; gap: var(--g-section); }
+[data-skin="glass"] .overview-hosts { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+[data-skin="glass"] .overview-hosts > h2.visually-hidden { position: static; width: auto; height: auto; margin: 0 0 4px;
+  overflow: visible; clip: auto; clip-path: none; white-space: normal; display: flex; align-items: center; min-height: 44px;
+  font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+[data-skin="glass"] .overview-clusters__head { margin-top: var(--g-section); }
 
-/* Host / cluster card (components/rack_unit.html, cluster_unit.html) */
-[data-skin="glass"] .rack-unit { position: relative; flex: 1 1 auto; display: grid;
-  grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "body lamp"; align-items: start;
-  gap: 8px; min-height: 0; padding: 16px; border-radius: 18px; color: var(--g-text);
-  background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
-@media (min-width: 900px) {
-  [data-skin="glass"] .rack-unit { padding: 16px 18px; -webkit-backdrop-filter: blur(16px) saturate(150%);
-    backdrop-filter: blur(16px) saturate(150%); }
-  [data-skin="glass"] .rack-unit .rack-unit__body { flex-direction: column; align-items: stretch; gap: 6px; }
-  [data-skin="glass"] .rack-unit .rack-unit__head { max-width: none; flex-wrap: wrap; }
-  [data-skin="glass"] .rack-unit .rack-unit__name { font-size: 15px; white-space: normal; overflow-wrap: anywhere; }
-  [data-skin="glass"] .rack-unit .rack-unit__issues { flex: none; white-space: normal; overflow: hidden; }
-}
-[data-skin="glass"] .rack-unit--example { border-style: dashed; }
-/* Hover and press: no Legacy slide or recess (the tilt below takes over). */
-[data-skin="glass"] a.rack-unit:hover:not(:active) { transform: var(--g-tilt, none);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 30px 50px -28px rgba(0, 0, 0, 0.9); }
-[data-skin="glass"] .card-press:active, [data-skin="glass"] .card-press.is-pressed {
-  transform: scale(0.98); background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04); }
-/* The lamp column shows only an offline unit's grey dot (others have their status dot in
-   the head row); the front panel readouts are Legacy rack hardware. */
-[data-skin="glass"] .rack-unit__lamp { grid-area: lamp; width: auto; height: 22px; display: none; }
-[data-skin="glass"] .rack-unit--offline .rack-unit__lamp { display: flex; }
-[data-skin="glass"] .rack-unit__panel { display: none; }
-[data-skin="glass"] .rack-unit__body { grid-area: body; gap: 6px; }
-[data-skin="glass"] .rack-unit__head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
-[data-skin="glass"] .rack-unit__name { flex: 1 1 auto; order: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
-[data-skin="glass"] .rack-unit__head > .status-icon { order: 1; margin-left: auto; height: 22px; }
-[data-skin="glass"] .rack-unit__head > .role-label, [data-skin="glass"] .rack-unit__head > .rack-unit__offline { order: 2; flex: 1 0 100%; }
-[data-skin="glass"] .rack-unit__head > .visually-hidden { order: 3; }
-[data-skin="glass"] .rack-unit__issues { font-size: 13px; line-height: 1.4; color: rgba(245, 245, 247, 0.86);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-[data-skin="glass"] .rack-unit--offline .rack-unit__issues { color: var(--g-text-3); }
-[data-skin="glass"] .cluster-unit__facts { color: var(--g-text-2); font-size: 12px; }
+/* First page load only: the tiles, cards and units come in one after another (staggered).
+   theme-init.js sets data-entrance="on" before the first paint; glass.js removes it once the
+   entrance is over, so anything a refresh adds later never animates in this way. */
+[data-skin="glass"][data-entrance="on"] .summary > .tile,
+[data-skin="glass"][data-entrance="on"] .g-attention__slot,
+[data-skin="glass"][data-entrance="on"] .g-away,
+[data-skin="glass"][data-entrance="on"] .rack > .rack__slot { animation: g-enter 600ms var(--g-ease) both;
+  animation-delay: calc(var(--g-i, 0) * 55ms); }
+[data-skin="glass"] .summary > :nth-child(2), [data-skin="glass"] .g-attention__slot:nth-child(2), [data-skin="glass"] .rack > :nth-child(2) { --g-i: 1; }
+[data-skin="glass"] .summary > :nth-child(3), [data-skin="glass"] .g-attention__slot:nth-child(3), [data-skin="glass"] .rack > :nth-child(3) { --g-i: 2; }
+[data-skin="glass"] .summary > :nth-child(4), [data-skin="glass"] .g-attention__slot:nth-child(4), [data-skin="glass"] .rack > :nth-child(4) { --g-i: 3; }
+[data-skin="glass"] .summary > :nth-child(5), [data-skin="glass"] .g-attention__slot:nth-child(5), [data-skin="glass"] .rack > :nth-child(5) { --g-i: 4; }
+[data-skin="glass"] .summary > :nth-child(n+6), [data-skin="glass"] .g-attention__slot:nth-child(n+6), [data-skin="glass"] .rack > :nth-child(n+6) { --g-i: 5; }
+@keyframes g-enter { from { opacity: 0; transform: translateY(10px); } }
 
-/* --- Tilt + glare (glass.js) ------------------------------------------------------------------
-   glass.js sets --g-rx / --g-ry (max 8°) and --g-gx / --g-gy (glare position) with
-   element.style.setProperty and adds .g-tilting while a mouse is over the card. Pointer
-   devices only; never with reduced motion. */
-[data-skin="glass"] .g-attn, [data-skin="glass"] .rack-unit {
-  --g-tilt: perspective(900px) rotateX(var(--g-rx, 0deg)) rotateY(var(--g-ry, 0deg)) scale(var(--g-scale, 1));
-  transform: var(--g-tilt);
-  transition: transform 260ms var(--g-ease), box-shadow 260ms ease, border-color 260ms ease, background-color 400ms ease; }
-[data-skin="glass"] .g-tilting { --g-scale: 1.02; transition: transform 90ms linear, box-shadow 260ms ease; }
-[data-skin="glass"] .g-attn::after, [data-skin="glass"] .rack-unit::after { content: ""; position: absolute; inset: 0;
-  border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity 260ms ease;
-  background-image: radial-gradient(circle at var(--g-gx, 50%) var(--g-gy, 50%), rgba(255, 255, 255, 0.18), transparent 60%); }
-[data-skin="glass"] .g-tilting::after { opacity: 1; }
-[data-skin="glass"] .g-attn:hover, [data-skin="glass"] .g-tilting {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 30px 50px -28px rgba(0, 0, 0, 0.9); }
+/* View transitions (overview.js, on a 60 s refresh that changed something): stable names per
+   host / cluster unit, attention card and section, set through the --g-vt custom property
+   (CSSOM, never a style attribute). Units and cards that appear, go or move morph instead of
+   jumping. Parts that animate by themselves (tiles' digits, headline words, the activity
+   list) show only their new state, so nothing is drawn twice. */
+[data-skin="glass"] .rack__slot, [data-skin="glass"] .g-attention__slot { view-transition-name: var(--g-vt, none); }
+[data-skin="glass"] #g-attention { view-transition-name: g-sec-attention; }
+[data-skin="glass"] #g-away { view-transition-name: g-sec-away; }
+[data-skin="glass"] #overview-hosts { view-transition-name: g-sec-hosts; }
+[data-skin="glass"] .summary { view-transition-name: g-tiles; }
+[data-skin="glass"] #overview-title { view-transition-name: g-title; }
+[data-skin="glass"] #g-away-list { view-transition-name: g-away-list; }
+[data-skin="glass"]::view-transition-old(root), [data-skin="glass"]::view-transition-new(root) {
+  animation-duration: 350ms; animation-timing-function: ease; }
+[data-skin="glass"]::view-transition-group(*) { animation-duration: 450ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+[data-skin="glass"]::view-transition-old(g-tiles), [data-skin="glass"]::view-transition-old(g-title),
+[data-skin="glass"]::view-transition-old(g-away-list) { animation: none; opacity: 0; }
+[data-skin="glass"]::view-transition-new(g-tiles), [data-skin="glass"]::view-transition-new(g-title),
+[data-skin="glass"]::view-transition-new(g-away-list) { animation: none; }
 
-/* --- Border Beam: red cards only, in red ------------------------------------------------------
-   A light running around the card edge: a conic gradient turned by --g-beam, masked to a
-   1.5px ring. Only red: attention cards, and host / cluster cards with a red status dot. */
-/* Two separate rules on purpose: a browser without :has() drops only the second. */
-[data-skin="glass"] .g-attn--red::before { content: ""; }
-[data-skin="glass"] .rack-unit:has(.rack-unit__head > .status-icon--bad)::before { content: ""; }
-[data-skin="glass"] .g-attn::before, [data-skin="glass"] .rack-unit::before {
-  position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none;
-  background: conic-gradient(from var(--g-beam), transparent 0deg, transparent 250deg, rgba(255, 69, 58, 0) 270deg,
-    #ff453a 320deg, #ffd1cc 345deg, transparent 360deg);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  animation: g-beam 4.5s linear infinite; }
-@keyframes g-beam { to { --g-beam: 360deg; } }
-
-/* --- "While you were away" / Activity --------------------------------------------------------- */
+/* --- "While you were away" / Activity ---------------------------------------------------------
+   Glass box (.g-away, overview) and the Activity page rows. Animated List (SmoothUI): a new
+   row slides and un-blurs in at the top (.g-new); the rows already there move down smoothly
+   (overview.js: FLIP, transform only). */
+[data-skin="glass"] .g-away { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; max-height: none;
+  padding: 16px 18px; border-radius: var(--g-radius); background: var(--g-fill); border: 1px solid var(--g-edge); }
+[data-skin="glass"] .g-away > .section-head { margin: -6px 0 4px; }
+[data-skin="glass"] .g-away .section-title { font-size: 15px; }
+[data-skin="glass"] .g-away__list.activity { flex: 1 1 auto; min-height: 0; margin: 0; padding: 0; overflow: auto;
+  scrollbar-width: thin; background: none; border: 0; box-shadow: none; }
 [data-skin="glass"] .activity { padding: 4px 20px; }
-[data-skin="glass"] .activity__row { padding: 12px 0; font-size: 14px; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+[data-skin="glass"] .activity__row { padding: 10px 0; gap: 10px; align-items: flex-start; font-size: 13.5px;
+  border-top: 1px solid var(--g-edge); }
 [data-skin="glass"] .activity__row:first-child { border-top: 0; }
-[data-skin="glass"] .activity__time { color: var(--g-text-3); font-size: 12px; }
-@media (min-width: 900px) {
-  [data-skin="glass"] .away { padding: 20px; border-radius: var(--g-radius); }
-  [data-skin="glass"] .away .section-title { font-size: 15px; }
-  [data-skin="glass"] .away .activity { padding: 0; gap: 0; background: none; border: 0; box-shadow: none;
-    -webkit-backdrop-filter: none; backdrop-filter: none; }
-  [data-skin="glass"] .away .activity__row { padding: 10px 0; }
-  [data-skin="glass"] .away .activity__time { font-size: 12px; color: var(--g-text-3); }
-}
+[data-skin="glass"] .activity__lamp { padding-top: 5px; }
+[data-skin="glass"] .activity__text { align-items: flex-start; }
+[data-skin="glass"] .activity__time { flex: none; color: var(--g-text-3); font: 12px var(--font-code); }
+[data-skin="glass"] .activity__row.g-new { animation: g-list-in 700ms var(--g-ease) both; }
+[data-skin="glass"] .activity__row.g-flip-from { transform: translateY(var(--g-flip-y, 0px)); }
+[data-skin="glass"] .activity__row.g-flip { transition: transform 450ms var(--g-ease); }
+@keyframes g-list-in { from { opacity: 0; transform: translateY(-14px); filter: blur(4px); } }
 
-/* --- Toast (messages.js; restyled, the same component) ----------------------------------------- */
-[data-skin="glass"] .toast { position: relative; gap: 12px; padding: 8px 8px 8px 16px; border-radius: 18px;
-  background: rgba(28, 29, 34, 0.72); border: 1px solid var(--g-edge-2);
-  box-shadow: var(--g-hi-2), 0 24px 50px -20px rgba(0, 0, 0, 0.9);
-  -webkit-backdrop-filter: var(--g-blur-strong); backdrop-filter: var(--g-blur-strong);
-  font-size: 14px; font-weight: 600; animation: g-toast-in 380ms var(--g-ease) both; }
-[data-skin="glass"] .toast::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%;
-  background: var(--g-accent); }
+
+/* --- Toast (messages.js; restyled, the same component) -----------------------------------------
+   A solid float with a status dot (green, errors red), the text and its × key. Comes in with
+   a gentle spring slide-up; messages.js adds .is-leaving before removing it (slides out to
+   the side). Desktop: bottom right. Phone: bottom, just above the floating nav. */
+[data-skin="glass"] .toast { position: relative; gap: 12px; padding: 8px 8px 8px 16px; border-radius: 16px;
+  background: var(--g-float); border: 1px solid var(--g-edge-2); box-shadow: var(--g-float-shadow);
+  font-size: 14px; font-weight: 600; animation: g-toast-in 500ms var(--g-spring) both; }
+[data-skin="glass"] .toast::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--g-green); }
 [data-skin="glass"] .toast--error::before { background: var(--g-red); }
 [data-skin="glass"] .toast__text { flex: 1 1 auto; }
 [data-skin="glass"] .toast--error .toast__text { color: var(--g-red-text); }
 [data-skin="glass"] .toast__close.btn--icon { flex: none; width: 44px; height: 44px; border-color: var(--g-edge-2); }
-@keyframes g-toast-in { from { opacity: 0; transform: translateY(-14px); } }
-@keyframes g-toast-up { from { opacity: 0; transform: translateY(24px); } }
-@media (min-width: 900px) {
-  /* Desktop: bottom right, like the mockup. */
-  [data-skin="glass"] .toasts { top: auto; bottom: 32px; right: 32px; left: auto; width: 360px; margin: 0; }
-  [data-skin="glass"] .toast { animation-name: g-toast-up; }
+[data-skin="glass"] .toast.is-leaving { animation: g-toast-out 350ms var(--g-ease) forwards; pointer-events: none; }
+@keyframes g-toast-in { from { opacity: 0; transform: translateY(16px) scale(0.96); } }
+@keyframes g-toast-out { to { opacity: 0; transform: translateX(24px); } }
+@media (max-width: 899.98px) {
+  [data-skin="glass"] .toasts { top: auto; bottom: calc(76px + var(--dock-bottom, 12px) + 8px); }
 }
-
+@media (min-width: 900px) {
+  [data-skin="glass"] .toasts { top: auto; bottom: 32px; right: 32px; left: auto; width: 360px; margin: 0; }
+}
 /* --- Dialogs (host preview, confirm) ------------------------------------------------------------ */
 [data-skin="glass"] .host-preview, [data-skin="glass"] .confirm-dialog {
   background: rgba(26, 27, 32, 0.74); border: 1px solid var(--g-edge-2); border-radius: 26px; color: var(--g-text);
@@ -623,19 +793,6 @@
 @media (max-width: 599.98px) {
   [data-skin="glass"] .host-preview { border-radius: 26px 26px 0 0; border-bottom: 0; }
 }
-
-/* --- Loader: the accordion bars on a glass card ------------------------------------------------- */
-[data-skin="glass"] .loader { gap: 5px; border-radius: 22px; background: rgba(255, 255, 255, 0.07);
-  border: 1px solid var(--g-edge-2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -1px 0 rgba(255, 255, 255, 0.06), 0 30px 60px -26px rgba(0, 0, 0, 0.85);
-  -webkit-backdrop-filter: blur(24px) saturate(165%); backdrop-filter: blur(24px) saturate(165%); }
-[data-skin="glass"] .loader span { width: 34px; height: 6px; border-radius: 4px; background: var(--g-accent);
-  transform-origin: center; animation: g-accordion 900ms cubic-bezier(0.45, 0, 0.2, 1) infinite; }
-[data-skin="glass"] .loader span:nth-child(2) { opacity: 0.6; animation-delay: 120ms; }
-[data-skin="glass"] .loader span:nth-child(3) { opacity: 0.35; animation-delay: 240ms; }
-[data-skin="glass"] .loader.loader--sm { width: 36px; height: 36px; gap: 2px; border-radius: 12px; }
-[data-skin="glass"] .loader--sm span { width: 16px; height: 3px; border-radius: 2px; }
-@keyframes g-accordion { 0%, 100% { transform: scaleX(1); } 35% { transform: scaleX(0.4); } 65% { transform: scaleX(1.12); } }
 
 /* --- Code + Mac Terminal (install command, agent commands) -----------------------------------
    A code-head (title + Copy key) directly above a code block becomes the terminal's title
@@ -660,20 +817,33 @@
   border-radius: 0 0 14px 14px; }
 [data-skin="glass"] .panel > .code-head + .code:not(.code--token) { margin-top: calc(-1 * var(--stack-gap)); }
 [data-skin="glass"] #install-command::before, [data-skin="glass"] #install-command-ca::before {
-  content: "$ "; color: var(--g-green-text); }
+  content: "$ "; color: var(--g-text-3); }
 [data-skin="glass"] .install-step--token.well { padding: 16px; border-radius: 18px; background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--g-edge); box-shadow: none; }
 [data-skin="glass"] .code--token { background: var(--g-well); box-shadow: var(--g-well-shade); border-color: var(--g-edge-2); }
 
-/* --- Stepper (Add host) -------------------------------------------------------------------------
-   Three dots on a track; the orange fill grows with the current step (CSS only, :has).
-   Done = orange with a check, current = orange with a soft ring, next = glass. The step
+
+/* --- Loader: neutral accordion bars on a quiet card ----------------------------------------------
+   Orange only in the island (below); everywhere else the bars are light grey. */
+[data-skin="glass"] .loader { gap: 5px; border-radius: 20px; background: var(--g-fill-hi); border: 1px solid var(--g-edge-2);
+  box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+[data-skin="glass"] .loader span { width: 34px; height: 6px; border-radius: 4px; background: rgba(235, 235, 245, 0.7);
+  transform-origin: center; animation: g-accordion 900ms cubic-bezier(0.45, 0, 0.2, 1) infinite; }
+[data-skin="glass"] .loader span:nth-child(2) { opacity: 0.6; animation-delay: 120ms; }
+[data-skin="glass"] .loader span:nth-child(3) { opacity: 0.35; animation-delay: 240ms; }
+[data-skin="glass"] .loader.loader--sm { width: 36px; height: 36px; gap: 2px; border-radius: 12px; }
+[data-skin="glass"] .loader--sm span { width: 16px; height: 3px; border-radius: 2px; }
+@keyframes g-accordion { 0%, 100% { transform: scaleX(1); } 35% { transform: scaleX(0.4); } 65% { transform: scaleX(1.12); } }
+
+/* --- Stepper (Add host) ---------------------------------------------------------------------------
+   Three dots on a track; a light fill grows with the current step (CSS only, :has). Done =
+   light with a check, current = light with a soft neutral ring, next = graphite. The step
    words ("Done / Now / Next") stay for screen readers; aria-current marks the current one. */
 [data-skin="glass"] .steps { position: relative; gap: 0; }
 [data-skin="glass"] .steps::before, [data-skin="glass"] .steps::after { content: ""; position: absolute; top: 17px;
   left: 16.66%; height: 3px; border-radius: 2px; }
 [data-skin="glass"] .steps::before { right: 16.66%; background: rgba(255, 255, 255, 0.12); }
-[data-skin="glass"] .steps::after { width: 0; background: var(--g-accent); transition: width 500ms var(--g-ease); }
+[data-skin="glass"] .steps::after { width: 0; background: rgba(245, 245, 247, 0.85); transition: width 500ms var(--g-ease); }
 [data-skin="glass"] .steps:has(#step-2.step--current, #step-2.step--done)::after { width: 33.34%; }
 [data-skin="glass"] .steps:has(#step-3.step--current, #step-3.step--done)::after { width: 66.68%; }
 [data-skin="glass"] .step { position: relative; z-index: 1; gap: 8px; color: var(--g-text-3); }
@@ -681,31 +851,32 @@
   background: #23242a; color: var(--g-text-2); border: 1px solid var(--g-edge-3); box-shadow: none;
   transition: background-color 300ms ease, box-shadow 300ms ease; }
 [data-skin="glass"] .step--current .step__well.well, [data-skin="glass"] .step--done .step__well.well {
-  background: var(--g-accent); color: var(--g-on-accent); border-color: rgba(255, 190, 150, 0.35); }
-[data-skin="glass"] .step--current .step__well.well { box-shadow: 0 0 0 6px rgba(242, 107, 46, 0.18); }
+  background: #f5f5f7; color: var(--g-ground); border-color: #f5f5f7; }
+[data-skin="glass"] .step--current .step__well.well { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.08); }
 [data-skin="glass"] .step__check { width: 18px; height: 18px; }
 [data-skin="glass"] .step__label { font-size: 13px; font-weight: 600; }
 [data-skin="glass"] .step--current { color: var(--g-text); }
-[data-skin="glass"] .step--current .step__label { font-weight: 600; }
 [data-skin="glass"] .step__state { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden;
   clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
-[data-skin="glass"] .once-warning { background: rgba(255, 214, 10, 0.08); border: 1px solid rgba(255, 214, 10, 0.22);
-  color: var(--g-yellow-text); font-weight: 600; }
+/* "Shown once" warning: a neutral box led by a yellow dot (the dot carries the colour). */
+[data-skin="glass"] .once-warning { background: var(--g-fill-hi); border: 1px solid var(--g-edge-2); color: var(--g-text);
+  font-weight: 600; }
+[data-skin="glass"] .once-warning::before { content: ""; display: inline-block; flex: none; width: 9px; height: 9px;
+  margin-right: 10px; border-radius: 50%; background: var(--g-yellow); vertical-align: 0.05em; }
 [data-skin="glass"] .install-step__title { font-size: 15px; font-weight: 600; }
 [data-skin="glass"] .install-step__title--sub { font-size: 14px; color: var(--g-text-2); }
 [data-skin="glass"] .connect__line { font-size: 17px; font-weight: 600; }
 [data-skin="glass"] .connect__stuck-text { font-weight: 600; }
 [data-skin="glass"] .connect__lamp .lamp { width: 14px; height: 14px; min-width: 14px; min-height: 14px; }
 
-/* --- Host detail --------------------------------------------------------------------------------
-   The header is one glass card (the Legacy mini rack's chassis and vents are gone). */
-[data-skin="glass"] .host-rack.rack-chassis { display: block; }
-[data-skin="glass"] .host-rack__bay.rack.well { display: block; }
+/* --- Host detail ----------------------------------------------------------------------------------
+   The header is one plain card: the Legacy mini rack's chassis padding, ears and vents are
+   gone here (the overview's rack keeps them). */
+[data-skin="glass"] .host-rack.rack-chassis { display: block; padding: 0; background: none; border: 0; border-radius: 0; }
+[data-skin="glass"] .host-rack > .rack-ear { display: none; }
+[data-skin="glass"] .host-rack__bay.rack.well { display: block; padding: 0; background: none; box-shadow: none; }
 [data-skin="glass"] .host-unit { border-radius: var(--g-radius); background: var(--g-fill); border: 1px solid var(--g-edge);
-  box-shadow: var(--g-hi), var(--g-drop); }
-@media (min-width: 900px) {
-  [data-skin="glass"] .host-unit { -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); }
-}
+  box-shadow: none; }
 [data-skin="glass"] .host-unit__vents, [data-skin="glass"] .host-unit__lamp { display: none; }
 /* Narrow header: no lamp column (Glass has no lamp there), so the name lines up with the keys. */
 @container host-unit (max-width: 599.98px) {
@@ -717,20 +888,24 @@
 [data-skin="glass"] .host-unit__meta { font-size: 13px; color: var(--g-text-2); }
 [data-skin="glass"] .host-unit__meta.offline-note { color: var(--g-text-3); }
 /* Offline host: no status icon there, so its meta line starts with the grey dot. */
-[data-skin="glass"] .host-unit__meta.offline-note::before { content: ""; display: inline-block; width: 10px; height: 10px;
+[data-skin="glass"] .host-unit__meta.offline-note::before { content: ""; display: inline-block; width: 9px; height: 9px;
   margin-right: 8px; border-radius: 50%; background: var(--g-grey); }
 [data-skin="glass"] .host-unit__note { color: var(--g-text-2); font-weight: 500; }
 [data-skin="glass"] .example-banner__text { font-weight: 600; }
 [data-skin="glass"] .issue-line { font-size: 15px; gap: 12px; }
 [data-skin="glass"] .issue-line--info { color: var(--g-text-2); }
-[data-skin="glass"] .app-panels { gap: 20px; }
-[data-skin="glass"] .app-panel__icon.well { border-radius: 12px; background: rgba(242, 107, 46, 0.14); box-shadow: none;
-  color: var(--g-accent-text); }
+/* Panels: one gap everywhere; an odd last panel spans both columns, so no empty cell is left. */
+[data-skin="glass"] .app-panels { gap: var(--g-gap); }
+@media (min-width: 900px) {
+  [data-skin="glass"] .app-panels > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+[data-skin="glass"] .app-panel__icon.well { border-radius: 12px; background: var(--g-fill-hi); box-shadow: none;
+  color: var(--g-text-2); }
 [data-skin="glass"] .app-panel__title { font-size: 17px; font-weight: 600; }
 [data-skin="glass"] .app-panel__facts { font-weight: 500; color: var(--g-text-2); }
 [data-skin="glass"] .app-panel__stale-note { font-weight: 500; }
 [data-skin="glass"] .app-panel__subtitle { font-weight: 600; }
-[data-skin="glass"] .item-list > .item-row { padding: 10px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+[data-skin="glass"] .item-list > .item-row { padding: 10px 0; border-top: 1px solid var(--g-edge); }
 [data-skin="glass"] .item-list > .item-row:first-child { border-top: 0; }
 [data-skin="glass"] .item-row__name { font-weight: 500; }
 [data-skin="glass"] .item-row__state { font-weight: 500; color: var(--g-text-2); }
@@ -742,22 +917,21 @@
 [data-skin="glass"] .meter.well { background: rgba(255, 255, 255, 0.10); box-shadow: none; }
 
 /* Tabs (glass-tabs.js builds them from the panels; Legacy never sees them): a recessed track
-   with a sliding orange indicator (--g-ind-x / --g-ind-w, set by glass-tabs.js). */
+   with the same sliding grey pill as the nav (--g-ind-x / --g-ind-w, set by glass-tabs.js);
+   the selected tab's text is white and bold, so it isn't told apart by the fill alone. */
 [data-skin="glass"] .g-tabs { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
-  padding: 5px; border-radius: 16px; background: var(--g-well); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
+  padding: 4px; border-radius: 14px; background: var(--g-well); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.06); }
-/* The selected tab: a tinted pill plus a solid orange underline (>= 3:1 against the track),
-   so it isn't told apart by a faint tint alone. Slides only once glass-tabs.js has placed it. */
-[data-skin="glass"] .g-tabs__ind { position: absolute; top: 5px; bottom: 5px; left: 0; width: var(--g-ind-w, 0);
-  transform: translateX(var(--g-ind-x, 0)); border-radius: 12px; background: rgba(242, 107, 46, 0.28);
-  box-shadow: inset 0 -2px 0 var(--g-accent), inset 0 1px 0 rgba(255, 180, 140, 0.32), 0 6px 18px -6px rgba(242, 107, 46, 0.6); }
+[data-skin="glass"] .g-tabs__ind { position: absolute; top: 4px; bottom: 4px; left: 0; width: var(--g-ind-w, 0);
+  transform: translateX(var(--g-ind-x, 0)); border-radius: 10px; background: var(--g-fill-3);
+  box-shadow: inset 0 0 0 1px var(--g-edge-2); }
 [data-skin="glass"] .g-tabs--live .g-tabs__ind { transition: transform 360ms var(--g-ease), width 360ms var(--g-ease); }
-[data-skin="glass"] .g-tab { position: relative; min-height: 44px; padding: 0 8px; border: 0; border-radius: 12px;
-  background: transparent; color: var(--g-text-2); font: 600 14px var(--font-ui); cursor: pointer;
+[data-skin="glass"] .g-tab { position: relative; min-height: 44px; padding: 0 8px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--g-text-2); font: 500 14px var(--font-ui); cursor: pointer;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-skin="glass"] .g-tab:hover { color: var(--g-text); }
 [data-skin="glass"] .g-tab[aria-selected="true"] { color: #fff; font-weight: 700; }
-[data-skin="glass"] .g-tabpanel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+[data-skin="glass"] .g-tabpanel { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--g-gap); }
 [data-skin="glass"] .g-tabpanel[hidden] { display: none; }
 [data-skin="glass"] .g-tabpanel:focus-visible { outline: 2px solid var(--focus); outline-offset: 6px; border-radius: 8px; }
 @media (max-width: 599.98px) {
@@ -765,79 +939,89 @@
 }
 @media (min-width: 900px) {
   [data-skin="glass"] .g-tabpanel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  [data-skin="glass"] .g-tabpanel > .attention, [data-skin="glass"] .g-tabpanel > :only-child { grid-column: 1 / -1; }
+  /* Full width: the attention list, a panel alone, and the last of an odd number of panels
+     (counted after the attention list when it leads), so no cell stays empty. */
+  [data-skin="glass"] .g-tabpanel > .attention, [data-skin="glass"] .g-tabpanel > :only-child,
+  [data-skin="glass"] .g-tabpanel:not(:has(> .attention:first-child)) > :last-child:nth-child(odd),
+  [data-skin="glass"] .g-tabpanel > .attention:first-child ~ :last-child:nth-child(even) { grid-column: 1 / -1; }
 }
 
-/* --- Settings, host settings, clusters, error pages ------------------------------------------ */
+/* --- Clusters list ---------------------------------------------------------------------------------
+   The Clusters page is the overview's rack (expandable units, glass.js); no rule of its own.
+   The cluster page keeps one column of sections (wide tables; no empty cells to fill). */
+
+/* --- Settings, host settings, error pages ----------------------------------------------------- */
 [data-skin="glass"] .subsection-title { font-weight: 600; }
 [data-skin="glass"] .danger-zone__title { color: var(--g-red-text); font-weight: 600; }
 [data-skin="glass"] .unit-row__unit { color: var(--g-text-2); font-weight: 500; }
-[data-skin="glass"] .warning { color: var(--g-yellow-text); font-weight: 600; }
-[data-skin="glass"] .finding + .finding { border-top-color: rgba(255, 255, 255, 0.07); }
+[data-skin="glass"] .warning { color: var(--g-text); font-weight: 600; }
+[data-skin="glass"] .finding + .finding { border-top-color: var(--g-edge); }
 [data-skin="glass"] .finding__why { color: var(--g-text-2); }
-[data-skin="glass"] .stack-table tr + tr { border-top-color: rgba(255, 255, 255, 0.07); }
+[data-skin="glass"] .stack-table tr + tr { border-top-color: var(--g-edge); }
 [data-skin="glass"] .state { font-weight: 500; }
 [data-skin="glass"] .empty__title { font-size: 20px; font-weight: 700; }
 [data-skin="glass"] .empty__text { color: var(--g-text-2); }
 
-/* --- Dynamic Island: the "Check all now" pill (glass.js, actions.js events) ------------------- */
-[data-skin="glass"] .g-island { position: fixed; z-index: 11; top: 76px; left: 50%; display: flex; align-items: center;
-  gap: 9px; height: 36px; padding: 0 16px 0 12px; border-radius: 999px; background: #000;
-  box-shadow: 0 10px 26px -10px rgba(0, 0, 0, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-  color: var(--g-text); font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none;
-  transform: translateX(-50%); animation: g-island-in 420ms var(--g-ease) both; }
-[data-skin="glass"] .g-island.is-leaving { animation: g-island-out 260ms ease both; }
-[data-skin="glass"] .g-island__bars { display: flex; flex-direction: column; gap: 2px; }
-[data-skin="glass"] .g-island__bars span { display: block; width: 14px; height: 3px; border-radius: 2px; background: var(--g-accent);
-  transform-origin: center; animation: g-accordion 900ms cubic-bezier(0.45, 0, 0.2, 1) infinite; }
-[data-skin="glass"] .g-island__bars span:nth-child(2) { opacity: 0.6; animation-delay: 120ms; }
-[data-skin="glass"] .g-island__bars span:nth-child(3) { opacity: 0.35; animation-delay: 240ms; }
-[data-skin="glass"] .g-island.is-done .g-island__bars span { animation: none; background: var(--g-green); }
+/* --- Dynamic Island: the "Check all now" pill (glass.js, driven by actions.js events) --------
+   Hangs just below the sticky top bar, never over the nav. .is-on springs it in (scale +
+   opacity, no width animation). Running: three vertical accordion bars (orange) + "Checking
+   N hosts…". Done (.is-done): a green tick that draws itself + "All N hosts reported" /
+   "X of N hosts reported"; then glass.js removes .is-on and it shrinks away. */
+[data-skin="glass"] .g-island { position: fixed; z-index: 11; top: calc(var(--g-bar-h) + 6px); left: 50%;
+  display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px; border-radius: 999px;
+  background: var(--g-float); border: 1px solid var(--g-edge-2); box-shadow: var(--g-float-shadow);
+  color: var(--g-text); font-size: 13.5px; font-weight: 500; white-space: nowrap; pointer-events: none;
+  opacity: 0; transform: translate(-50%, -14px) scale(0.6);
+  transition: transform 550ms var(--g-spring), opacity 300ms var(--g-ease); }
+[data-skin="glass"] .g-island.is-on { opacity: 1; transform: translate(-50%, 0) scale(1); }
+[data-skin="glass"] .g-island__bars { display: flex; align-items: center; gap: 3px; height: 14px; }
+[data-skin="glass"] .g-island__bars span { display: block; width: 3px; height: 100%; border-radius: 2px; background: var(--g-accent);
+  animation: g-acc 1s var(--g-ease) infinite; }
+[data-skin="glass"] .g-island__bars span:nth-child(2) { opacity: 0.7; animation-delay: 120ms; }
+[data-skin="glass"] .g-island__bars span:nth-child(3) { opacity: 0.45; animation-delay: 240ms; }
+@keyframes g-acc { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+[data-skin="glass"] .g-island__tick { display: none; width: 16px; height: 16px; stroke: var(--g-green); }
+[data-skin="glass"] .g-island.is-done .g-island__bars { display: none; }
+[data-skin="glass"] .g-island.is-done .g-island__tick { display: block; }
+[data-skin="glass"] .g-island.is-done .g-island__tick path { stroke-dasharray: 24; stroke-dashoffset: 24;
+  animation: g-draw 500ms var(--g-ease) 100ms forwards; }
+@keyframes g-draw { to { stroke-dashoffset: 0; } }
 [data-skin="glass"] .g-island.is-error .g-island__bars span { animation: none; background: var(--g-red); }
-[data-skin="glass"] .g-island__count { font-size: 11px; font-weight: 500; color: rgba(235, 235, 245, 0.66); }
+[data-skin="glass"] .g-island__count { font-size: 12px; font-weight: 500; color: var(--g-text-3); }
 [data-skin="glass"] .g-island__count:empty { display: none; }
-@keyframes g-island-in { from { opacity: 0; transform: translateX(-50%) scale(0.6, 0.8); } }
-@keyframes g-island-out { to { opacity: 0; transform: translateX(-50%) scale(0.7, 0.85); } }
-@media (min-width: 900px) {
-  [data-skin="glass"] .g-island { top: 92px; }
-}
 
-/* --- Dev styleguide: the Glass island and the Power Off Slide ---------------------------------
+/* --- Dev styleguide: the Glass island and the Power Off Slide ----------------------------------
    dev/_styleguide_glass.html: a section with data-skin="glass" inside the (Legacy) styleguide
-   page, so it paints its own graphite ground and a still glow. */
+   page, so it paints its own graphite ground (no glow). */
 [data-skin="glass"].sg-glass { position: relative; isolation: isolate; overflow: hidden; padding: 24px 20px;
   border-radius: var(--g-radius); background: var(--g-ground); color: var(--g-text); font-family: var(--font-ui);
   display: flex; flex-direction: column; gap: 24px; }
-[data-skin="glass"].sg-glass::before { content: ""; position: absolute; z-index: -1; width: 640px; height: 640px;
-  left: -260px; top: -280px; border-radius: 50%; opacity: 0.3;
-  background: radial-gradient(closest-side, rgba(242, 107, 46, 0.95), rgba(242, 107, 46, 0.4) 45%, rgba(242, 107, 46, 0) 100%); }
 [data-skin="glass"] .sg-label { color: var(--g-text-2); font-weight: 600; }
-[data-skin="glass"] .sg-glass-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px;
+[data-skin="glass"] .sg-glass-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--g-gap);
   margin: 0; padding: 0; list-style: none; }
 [data-skin="glass"] .sg-glass-cards > li { display: flex; }
 [data-skin="glass"] .g-island.sg-glass-island { position: relative; z-index: auto; top: auto; left: auto; transform: none;
-  animation: none; align-self: flex-start; }
+  opacity: 1; transition: none; align-self: flex-start; }
 [data-skin="glass"] .sg-glass-toasts { display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
 [data-skin="glass"] .sg-glass-loaders { display: flex; align-items: center; gap: 16px; }
-[data-skin="glass"] .sg-tabs-ind { --g-ind-w: calc((100% - 10px) / 3); --g-ind-x: 5px; }
-[data-skin="glass"] .g-tab.sg-tab--on { display: flex; align-items: center; justify-content: center; color: #ffd7c2; }
+[data-skin="glass"] .sg-tabs-ind { --g-ind-w: calc((100% - 8px) / 3); --g-ind-x: 4px; }
+[data-skin="glass"] .g-tab.sg-tab--on { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; }
 [data-skin="glass"] .g-tabs > span.g-tab { display: flex; align-items: center; justify-content: center; }
 [data-skin="glass"] .sg-dialog { max-width: 480px; }
-/* Power Off Slide (power-slide.js): drag the knob to the end, or focus it and press Enter. */
+/* Power Off Slide (power-slide.js): drag the knob to the end, or focus it and press Enter.
+   A destructive key, so its knob is the one red control (the status colour for "danger"). */
 [data-skin="glass"] .g-slide { position: relative; height: 60px; max-width: 420px; border-radius: 999px; overflow: hidden;
   background: rgba(0, 0, 0, 0.40); box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); }
 [data-skin="glass"] .g-slide__fill { position: absolute; left: 0; top: 0; bottom: 0; width: var(--g-slide-fill, 30px);
-  background: linear-gradient(90deg, rgba(255, 69, 58, 0.10), rgba(255, 69, 58, 0.32)); }
+  background: rgba(255, 255, 255, 0.06); }
 [data-skin="glass"] .g-slide__label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   padding-left: 40px; font-size: 14px; font-weight: 600; color: rgba(245, 245, 247, 0.86); opacity: var(--g-slide-label, 1);
   pointer-events: none; }
 [data-skin="glass"] .g-slide__knob { position: absolute; top: 3px; left: 3px; width: 52px; height: 52px; border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(255, 69, 58, 0.78); color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 20px -6px rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.22); background: var(--g-red); color: #fff; box-shadow: none;
   display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none;
   transform: translateX(var(--g-slide-x, 0)); transition: transform 360ms var(--g-ease); }
 [data-skin="glass"] .g-slide.is-dragging .g-slide__knob { transition: none; cursor: grabbing; }
-[data-skin="glass"] .g-slide.is-done .g-slide__knob { background: var(--g-red); }
 [data-skin="glass"] .g-slide__status { margin: 0; font-size: 13px; color: var(--g-text-2); }
 
 /* The styleguide's Legacy sets keep the Legacy font (the Glass island is next to them). */
@@ -846,49 +1030,55 @@
    own Light / Dark / System picker under it (.theme-seg). Only this new element. */
 [data-skin="legacy"] .skin-seg { max-width: 420px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-/* --- Reduced motion: no tilt, no beam motion, no drift, no rolling, no accordion ------------- */
+/* --- Motion off -----------------------------------------------------------------------------------
+   Settings > Appearance > "Reduce animations" (data-motion="off") or the device's
+   prefers-reduced-motion: every animation and transition in Glass takes no time, so
+   decorative motion (tilt, number roll, entrance, island spring, status ring, list slide,
+   headline words, meters) doesn't play and functional changes (expand / collapse, toasts,
+   the nav pill) happen instantly. glass.js and overview.js check the same two things and
+   skip the tilt and view transitions altogether. The loaders' bars stand still. */
+[data-skin="glass"][data-motion="off"] *, [data-skin="glass"][data-motion="off"] *::before,
+[data-skin="glass"][data-motion="off"] *::after {
+  animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
+  transition-duration: 0s !important; transition-delay: 0s !important; }
+[data-skin="glass"][data-motion="off"] .loader span, [data-skin="glass"][data-motion="off"] .g-island__bars span,
+[data-skin="glass"][data-motion="off"] .g-ring::after { animation: none !important; }
+[data-skin="glass"][data-motion="off"]::view-transition-group(*), [data-skin="glass"][data-motion="off"]::view-transition-old(*),
+[data-skin="glass"][data-motion="off"]::view-transition-new(*) { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  [data-skin="glass"] .g-glow { animation: none; }
-  [data-skin="glass"] .g-attn, [data-skin="glass"] .rack-unit, [data-skin="glass"] .btn,
-  [data-skin="glass"] .g-digits--live .g-digit__col, [data-skin="glass"] .switch__track,
-  [data-skin="glass"] .switch__thumb, [data-skin="glass"] .g-tabs--live .g-tabs__ind, [data-skin="glass"] .steps::after,
-  [data-skin="glass"] .step__well.well, [data-skin="glass"] .g-edge--top, [data-skin="glass"] .g-slide__knob,
-  [data-skin="glass"] .seg--radio, [data-skin="glass"] .bottom-nav .seg { transition: none; }
-  [data-skin="glass"] .btn:hover, [data-skin="glass"] .btn:active, [data-skin="glass"] .btn.is-hover,
-  [data-skin="glass"] .btn.is-pressed, [data-skin="glass"] .card-press:active,
-  [data-skin="glass"] a.rack-unit:hover:not(:active) { transform: none; }
-  [data-skin="glass"] .g-attn, [data-skin="glass"] .rack-unit { --g-tilt: none; }
-  [data-skin="glass"] .g-attn::after, [data-skin="glass"] .rack-unit::after { display: none; }
-  /* Beam: a still red edge instead of the running light. */
-  [data-skin="glass"] .g-attn::before, [data-skin="glass"] .rack-unit::before {
-    animation: none; background: rgba(255, 69, 58, 0.55); }
-  /* Loader: still bars. */
-  [data-skin="glass"] .loader span, [data-skin="glass"] .g-island__bars span { animation: none; }
-  [data-skin="glass"] .toast, [data-skin="glass"] .g-island, [data-skin="glass"] .g-island.is-leaving { animation: none; }
+  [data-skin="glass"] *, [data-skin="glass"] *::before, [data-skin="glass"] *::after {
+    animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
+    transition-duration: 0s !important; transition-delay: 0s !important; }
+  [data-skin="glass"] .loader span, [data-skin="glass"] .g-island__bars span,
+  [data-skin="glass"] .g-ring::after { animation: none !important; }
+  [data-skin="glass"]::view-transition-group(*), [data-skin="glass"]::view-transition-old(*),
+  [data-skin="glass"]::view-transition-new(*) { animation: none !important; }
+  [data-skin="glass"] .btn:active, [data-skin="glass"] .btn.is-pressed { transform: none; }
+  [data-skin="glass"] .g-attn, [data-skin="glass"] .summary .tile { transform: none; }
 }
+[data-skin="glass"][data-motion="off"] .btn:active, [data-skin="glass"][data-motion="off"] .btn.is-pressed,
+[data-skin="glass"][data-motion="off"] .g-attn, [data-skin="glass"][data-motion="off"] .summary .tile { transform: none; }
 
 /* --- Forced colours (Windows High Contrast): backgrounds are replaced by the system's, so
    dots, the switch and the selected segment / tab get borders or keep their own colours. */
 @media (forced-colors: active) {
-  [data-skin="glass"] .status-icon::before, [data-skin="glass"] .lamp, [data-skin="glass"] .tile__label::before {
+  [data-skin="glass"] .status-icon::before, [data-skin="glass"] .lamp, [data-skin="glass"] .tile__label::before,
+  [data-skin="glass"] .toast::before {
     forced-color-adjust: none; border: 1px solid CanvasText; }
   [data-skin="glass"] .switch__track { border: 1px solid CanvasText; }
   [data-skin="glass"] .switch__thumb { forced-color-adjust: none; background: CanvasText; }
   [data-skin="glass"] .switch__input:checked + .switch__track { background: Highlight; forced-color-adjust: none; }
   [data-skin="glass"] .seg--radio:has(input:checked), [data-skin="glass"] .seg[aria-current="page"],
   [data-skin="glass"] .g-tab[aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
-  [data-skin="glass"] .g-attn::before, [data-skin="glass"] .rack-unit::before, [data-skin="glass"] .g-backdrop,
-  [data-skin="glass"] .g-edge { display: none; }
+  [data-skin="glass"] .rack__slot { border: 1px solid CanvasText; }
+  [data-skin="glass"] .g-meter { border: 1px solid CanvasText; }
+  [data-skin="glass"] .g-meter__fill { forced-color-adjust: none; background: CanvasText; }
+  [data-skin="glass"] .g-edge, [data-skin="glass"] .g-nav-hl, [data-skin="glass"] .g-nav-pill { display: none; }
 }
 
-/* --- No backdrop-filter: solid fills, so text stays readable --------------------------------- */
+/* --- No backdrop-filter: solid fills, so text under the floats stays readable ------------------ */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  [data-skin="glass"] .surface, [data-skin="glass"] .away, [data-skin="glass"] .host-unit,
-  [data-skin="glass"] .g-attn, [data-skin="glass"] .rack-unit { background-color: #15161a; }
-  [data-skin="glass"] .g-attn--red { background-color: #2a1514; }
-  [data-skin="glass"] .g-attn--yellow { background-color: #26220f; }
-  [data-skin="glass"] .host-preview, [data-skin="glass"] .confirm-dialog, [data-skin="glass"] .toast,
-  [data-skin="glass"] .loader { background: #1c1d22; }
+  [data-skin="glass"] .host-preview, [data-skin="glass"] .confirm-dialog { background: #1c1d22; }
   [data-skin="glass"] .g-edge { display: none; }
-  [data-skin="glass"] .bottom-nav.well, [data-skin="glass"] .nav-dock { background: #1c1d22; }
+  [data-skin="glass"] .nav-dock { background: #1c1d22; }
 }

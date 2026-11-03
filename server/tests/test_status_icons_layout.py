@@ -293,10 +293,13 @@ def test_overview_splits_into_two_columns_only_with_activity(alice_client: Clien
 def test_overview_hosts_heading_is_for_screen_readers_only(alice_client: Client, alice):
     make_host(alice, "nas", "green", make_report())
     html = alice_client.get("/").content.decode()
-    hosts = html[html.index('<section class="overview-hosts">') :]
-    # The first thing in the section: an <h2> nobody sees, then the chassis.
+    hosts = html[html.index('<section class="overview-hosts"') :]
+    # The first thing in the section: an <h2> nobody sees in Legacy (Glass shows it, with
+    # the count, which is .g-only so Legacy never reads it), then the chassis.
     assert re.match(
-        r'<section class="overview-hosts">\s*<h2 class="visually-hidden">Hosts</h2>\s*'
+        r'<section class="overview-hosts" id="overview-hosts" aria-labelledby="hosts-title">\s*'
+        r'<h2 class="visually-hidden overview-hosts__title" id="hosts-title">Hosts'
+        r'<span class="section-count g-only" id="hosts-count"> 1</span></h2>\s*'
         r'<div class="rack-chassis surface">',
         hosts,
     )

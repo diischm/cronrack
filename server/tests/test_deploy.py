@@ -190,13 +190,16 @@ def test_server_and_agent_versions():
     assert AGENT_VERSION == "0.2.0"
 
 
+# The first "## [x.y.z]" heading is the newest release; "## [Unreleased]" doesn't match.
+NEWEST_VERSION_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
+
+
 def test_server_version_is_the_newest_changelog_version():
     """The footer must show the real version: bump SERVER_VERSION with every release."""
     from cronrack import SERVER_VERSION
 
     changelog = (SERVER_DIR.parent / "CHANGELOG.md").read_text(encoding="utf-8")
-    # The first "## [x.y.z]" heading is the newest release ("## [Unreleased]" wouldn't match).
-    newest = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.MULTILINE)
+    newest = NEWEST_VERSION_RE.search(changelog)
 
     assert newest is not None, "no '## [x.y.z]' heading in CHANGELOG.md"
     assert SERVER_VERSION == newest.group(1)
