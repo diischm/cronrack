@@ -5,7 +5,10 @@
 //   Legacy     Light / Dark saved as "cronrack-theme"; System removes the key and the page
 //              follows prefers-color-scheme, also when the device switches while it's open.
 //              Shown only while Legacy is chosen. Kept as it is while Glass is on.
-//   Moving background (Glass)  "cronrack-motion": "off" stops the glows drifting.
+//   Reduce animations (Glass)  "cronrack-reduce-motion": "on" turns decorative motion off
+//              (data-motion="off"). prefers-reduced-motion does the same, also when it
+//              changes while the page is open; the switch shows only the saved choice.
+//              The old "cronrack-motion" key is never read.
 //   Show status labels (Glass) "cronrack-labels": "on" shows the word next to each dot.
 // theme-init.js already set the <html> attributes before first paint; this file only reacts.
 // Storage can be blocked (private mode): every access is in try/catch, and a choice then
@@ -17,7 +20,7 @@
   const KEYS = {
     skin: "cronrack-skin",
     theme: "cronrack-theme",
-    motion: "cronrack-motion",
+    motion: "cronrack-reduce-motion",
     labels: "cronrack-labels",
   };
   const override = document.querySelector('meta[name="cronrack-skin-override"]');
@@ -27,9 +30,10 @@
   const glassPrefs = document.getElementById("glass-prefs");
   const skinRadios = skinPicker ? skinPicker.querySelectorAll("input[type=radio][name=skin]") : [];
   const themeRadios = themePicker ? themePicker.querySelectorAll("input[type=radio][name=theme]") : [];
-  const motionSwitch = document.getElementById("pref-motion");
+  const motionSwitch = document.getElementById("pref-reduce-motion");
   const labelsSwitch = document.getElementById("pref-labels");
   const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  const reduced = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
   const unsaved = {}; // the choices made while storage is blocked, for this page only
 
   function read(name) {
@@ -74,7 +78,9 @@
     const skin = savedSkin();
     const choice = savedTheme();
     const theme = skin === "glass" ? "dark" : choice || systemTheme();
-    const motion = read("motion") === "off" ? "off" : "on";
+    // "on" = reduce animations. The device's reduced-motion setting turns them off too.
+    const reduce = read("motion") === "on";
+    const motion = reduce || (reduced && reduced.matches) ? "off" : "on";
     const labels = read("labels") === "on" ? "on" : "off";
     const changed = root.getAttribute("data-skin") !== skin
       || root.getAttribute("data-motion") !== motion
@@ -100,7 +106,7 @@
       glassPrefs.hidden = skin !== "glass";
     }
     if (motionSwitch) {
-      motionSwitch.checked = motion === "on";
+      motionSwitch.checked = reduce; // the saved choice only, not the device's setting
     }
     if (labelsSwitch) {
       labelsSwitch.checked = labels === "on";
@@ -137,7 +143,7 @@
 
   if (motionSwitch) {
     motionSwitch.addEventListener("change", () => {
-      save("motion", motionSwitch.checked ? null : "off");
+      save("motion", motionSwitch.checked ? "on" : null);
       apply();
     });
   }
@@ -150,6 +156,9 @@
 
   if (media) {
     media.addEventListener("change", apply); // only changes the page while nothing is saved
+  }
+  if (reduced) {
+    reduced.addEventListener("change", apply);
   }
   // Another tab changed a choice.
   window.addEventListener("storage", (event) => {

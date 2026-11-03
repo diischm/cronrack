@@ -1,6 +1,6 @@
 // PLACEHOLDER — Apo owns the final version.
 // Loaded in <head> WITHOUT defer/async, so it runs before the page is drawn. It only sets
-// four attributes on <html>; the CSS does the rest. That's how the page never flashes the
+// five attributes on <html>; the CSS does the rest. That's how the page never flashes the
 // wrong look on load.
 //
 //   data-skin    "glass" (default, also for visitors with an older Light/Dark choice) or
@@ -8,8 +8,14 @@
 //   data-theme   Legacy: the saved "cronrack-theme" (light | dark), else the system setting.
 //                Glass is dark only, so it is always "dark" there; the saved Legacy choice
 //                stays untouched for when the visitor switches back.
-//   data-motion  "on" (default) | "off": Glass's drifting background glows.
-//                localStorage "cronrack-motion". prefers-reduced-motion is handled in CSS/JS.
+//   data-motion  "on" (default) | "off": Glass's animations on or off. "off" when Settings >
+//                Appearance > "Reduce animations" is on: localStorage "cronrack-reduce-motion"
+//                = "on", or when the device asks for reduced motion (prefers-reduced-motion
+//                always wins). The old "cronrack-motion" key ("Moving background", whose
+//                glows are gone) is ignored.
+//   data-entrance "on" for the first moments of each page load: Glass's staggered entrance
+//                plays once. glass.js removes it about 1.2 s later, so nothing a refresh
+//                adds afterwards ever animates in that way.
 //   data-labels  "off" (default) | "on": Glass shows the status word next to each dot.
 //                localStorage "cronrack-labels".
 //
@@ -50,6 +56,12 @@
 
   root.setAttribute("data-skin", skin);
   root.setAttribute("data-theme", theme);
-  root.setAttribute("data-motion", read("cronrack-motion") === "off" ? "off" : "on");
+  const reduced =
+    window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const motion = read("cronrack-reduce-motion") === "on" || reduced ? "off" : "on";
+  root.setAttribute("data-motion", motion);
+  if (skin === "glass" && motion === "on") {
+    root.setAttribute("data-entrance", "on");
+  }
   root.setAttribute("data-labels", read("cronrack-labels") === "on" ? "on" : "off");
 })();

@@ -262,12 +262,13 @@ def test_settings_page_has_the_appearance_controls(client: Client, alice):
         assert f'type="radio" name="skin" value="{value}"' in html
     for value in ("light", "dark", "system"):
         assert f'type="radio" name="theme" value="{value}"' in html
-    for name in ("pref-motion", "pref-labels"):
+    for name in ("pref-reduce-motion", "pref-labels"):
         tag = re.search(rf'<input[^>]*id="{name}"[^>]*>', html)
         assert tag, name
         assert 'type="checkbox"' in tag.group(0)
         assert 'role="switch"' in tag.group(0)
-    assert ">Moving background<" in html
+    assert ">Reduce animations<" in html
+    assert "Moving background" not in html
     assert ">Show status labels<" in html
     # "Send test alert" still posts to the real server action.
     assert 'form="test-alert-form">Send test alert</button>' in html
