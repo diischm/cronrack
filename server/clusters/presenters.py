@@ -13,7 +13,7 @@ from clusters.models import Cluster
 from clusters.services import effective_cluster_status, node_key
 from hosts.humanize import ago, duration
 from hosts.models import Host
-from hosts.presenters import STATUS_LABELS, OwnerData, iso_utc, issue_dict
+from hosts.presenters import STATUS_LABELS, OwnerData, finding_summary, iso_utc, issue_dict
 from rules.base import Finding
 from rules.engine import (
     CLUSTER_OFFLINE_RULE,
@@ -57,14 +57,16 @@ def cluster_summary(cluster: Cluster, now: datetime, data: OwnerData) -> dict[st
     snapshot = _snapshot(cluster)
     nodes = snapshot.get("nodes") or []
     counts = snapshot.get("pod_counts") or {}
+    status = cluster_status(cluster, now, data)
+    findings = active_cluster_findings(cluster, now, data)
+    # Every active issue, like hosts: Legacy shows the first 3, Glass's expand region all.
+    issues = top_issues(findings, n=len(findings))
     return {
         "id": cluster.pk,
         "name": cluster.name,
-        **cluster_status(cluster, now, data),
-        "issues": [
-            {"text": f.text, "severity": f.severity}
-            for f in top_issues(active_cluster_findings(cluster, now, data))
-        ],
+        **status,
+        "summary": finding_summary(status["status"], issues),
+        "issues": [{"text": f.text, "severity": f.severity} for f in issues],
         "last_seen_human": ago(cluster.last_seen_at, now),
         "url": reverse("cluster-detail", args=[cluster.pk]),
         "nodes": {"ready": sum(1 for n in nodes if n["ready"]), "total": len(nodes)},

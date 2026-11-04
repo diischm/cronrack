@@ -11,20 +11,26 @@
     {% include "components/rack_unit_face.html" with unit=host kind="host" %}
     {% include "components/rack_unit_face.html" with unit=cluster kind="cluster" %}
     blank=True   the empty copy inside the overview's <template>s (overview.js fills it)
+    glass=True   the Glass button's copy: no lamp (Glass shows the status as the unit's
+                 gradient and in words, never as an LED)
 
   Everything in `unit` is agent data or user input: plain {{ }} output only.
-  Hosts: Legacy and Glass show the same pieces. Clusters: Legacy shows the issue line and the
-  facts line under the name, exactly as before; Glass hides the facts line and shows the
-  Nodes / Pods / k3s readouts instead (.g-only, so Legacy never draws them).
+  Hosts: Legacy shows the lamp and the issue line (the first 3 issues); Glass hides both and
+  shows .rack-unit__summary instead, the one short line (hosts.presenters.short_summary).
+  Clusters: Legacy shows the issue line and the facts line under the name, exactly as
+  before; Glass shows the summary and the Nodes / Pods / k3s readouts instead (.g-only, so
+  Legacy never draws them).
   Disk: Legacy's native <meter>; Glass hides it and draws .g-meter (glass.js sets its width
   from data-percent through a CSS custom property (CSSOM), so it can fill on load with no inline style).
 {% endcomment %}
-<span class="rack-unit__lamp" aria-hidden="true">{% if blank %}{% elif unit.status == "offline" or unit.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=unit.status %}{% endif %}</span>
+{% if not glass %}<span class="rack-unit__lamp" aria-hidden="true">{% if blank %}{% elif unit.status == "offline" or unit.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=unit.status %}{% endif %}</span>{% endif %}
 {% if kind == "cluster" %}
     <span class="rack-unit__body">
       <span class="rack-unit__head"><span class="rack-unit__name">{{ unit.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif unit.status != "offline" %}{% include "components/status_icon.html" with status=unit.status label=unit.status_label %}{% endif %}{% if blank or unit.status == "offline" %}<span class="offline-note rack-unit__offline"><strong>Offline</strong><span class="offline-note__sep"> · </span>last data {{ unit.last_seen_human }}</span>{% endif %}</span>
       <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text cluster-unit__issues">{% if unit.issues %}{% for issue in unit.issues|slice:":3" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif unit.status == "waiting" %}Waiting for the first report{% elif unit.status == "offline" %}No current data{% elif not blank %}Nothing needs you{% endif %}</span></span>
       <span class="rack-unit__issues cluster-unit__facts-line"><span class="visually-hidden">, </span><span class="rack-unit__issue-text cluster-unit__facts">{% if not blank %}Nodes {{ unit.nodes.ready }}/{{ unit.nodes.total }} ready · {{ unit.problem_pods }} problem pod{{ unit.problem_pods|pluralize }}{% endif %}</span></span>
+      {# Glass only: the one short summary line (Legacy shows the issues above). #}
+      <span class="rack-unit__summary g-only"><span class="visually-hidden">, </span><span class="rack-unit__summary-text">{{ unit.summary }}</span></span>
     </span>
     <span class="rack-unit__panel well g-only">
       <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Nodes</span> <span class="readout__value cluster-unit__nodes">{% if not blank %}{{ unit.nodes.ready }}/{{ unit.nodes.total }} ready{% endif %}</span></span>
@@ -38,6 +44,8 @@
       {% if blank or unit.issues or unit.status != "offline" %}
         <span class="rack-unit__issues"><span class="visually-hidden">, </span><span class="rack-unit__issue-text">{% if unit.issues %}{% for issue in unit.issues|slice:":3" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif unit.status == "waiting" %}Waiting for the first report{% elif not blank %}Nothing needs you{% endif %}</span></span>
       {% endif %}
+      {# Glass only: the one short summary line (Legacy shows the issues above). #}
+      <span class="rack-unit__summary g-only"><span class="visually-hidden">, </span><span class="rack-unit__summary-text">{{ unit.summary }}</span></span>
     </span>
     <span class="rack-unit__panel well desk-only">
       <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Updates</span> <span class="readout__value rack-unit__updates">{% if blank %}{% elif unit.updates is None %}n/a{% else %}{{ unit.updates.total }}{% if unit.updates.security %} ({{ unit.updates.security }} security){% endif %}{% endif %}</span></span>

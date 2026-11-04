@@ -8,19 +8,20 @@
 // the `hidden` attribute, textContent of fixed strings or numbers, and CSS custom properties
 // through element.style.setProperty("--…") (CSSOM, allowed by the CSP; never a style attribute).
 //
-//   Tilt           the summary tiles and the "Needs attention" cards lean towards the mouse,
-//                  at most 8°, and return smoothly. No glare. Mouse/trackpad only ((hover:
-//                  hover) and (pointer: fine)), never on touch, never with motion off.
-//                  Rack units don't tilt (glass.css slides them).
+//   Tilt           the closed "Needs attention" cards lean towards the mouse, at most 8°, and
+//                  return smoothly. No glare. Mouse/trackpad only ((hover: hover) and
+//                  (pointer: fine)), never on touch, never with motion off. An open card
+//                  and the rack units don't tilt (glass.css slides the units).
 //   Nav            desktop with a mouse: a soft highlight follows the pointer across the top
 //                  nav items; the grey pill sits under the current item and slides to the
 //                  clicked one.
-//   Units          a rack unit's Glass <button> opens / closes its .g-unit-more region inline
-//                  (.is-open on the <li>, aria-expanded on the button). Delegated, so units
-//                  that overview.js builds on a refresh work too (overview and /clusters/).
+//   Units, cards   a rack unit's Glass <button> opens / closes its .g-unit-more region inline,
+//                  an attention card's header button its .g-attn-more region (.is-open on the
+//                  <li>, aria-expanded on the button). Delegated, so units and cards that
+//                  overview.js builds on a refresh work too (overview and /clusters/).
 //   Meters         .g-meter gets its width from data-percent and fills once on page load.
-//   Number Flow    each summary tile number (.g-flow) gets a column of 0–9 per digit that
-//                  rolls to the value. The real number stays (visually hidden) for screen
+//   Number Flow    each status count (.g-flow: the overview's filters) gets a column of
+//                  0–9 per digit that rolls to the value. The real number stays (visually hidden) for screen
 //                  readers; overview.js keeps updating it, and a MutationObserver rolls on.
 //   Scroll edge    the progressive blur under the sticky top bar shows once the page scrolled.
 //   Island         the "Check all now" pill, driven by actions.js's "cronrack:progress"
@@ -53,7 +54,7 @@
   }
 
   // --- Tilt -------------------------------------------------------------------------------------
-  const TILT_CARDS = "#g-attention-list .g-attn, .summary > .tile, .sg-glass-cards .g-attn";
+  const TILT_CARDS = "#g-attention-list .g-attention__slot:not(.is-open) > .g-attn, .sg-glass-cards .g-attn";
   let tilted = null; // the card currently tilted
   let pending = null; // the latest pointer event, applied once per frame
   let frame = 0;
@@ -172,17 +173,20 @@
     }
   }
 
-  // --- Rack units: expand inline ----------------------------------------------------------------
+  // --- Rack units and attention cards: expand inline --------------------------------------------
   document.addEventListener("click", (event) => {
-    const button = event.target instanceof Element ? event.target.closest("button.g-unit") : null;
+    const button = event.target instanceof Element ? event.target.closest("button.g-unit, button.g-attn__btn") : null;
     if (!button) {
       return;
     }
-    const slot = button.closest(".rack__slot");
+    const slot = button.closest(".rack__slot, .g-attention__slot");
     if (!slot) {
       return;
     }
     const open = !slot.classList.contains("is-open");
+    if (open) {
+      resetTilt(); // an open card doesn't tilt
+    }
     slot.classList.toggle("is-open", open);
     button.setAttribute("aria-expanded", open ? "true" : "false");
     // Closing: its keys leave the tab order at once, not after the 0.5 s height animation.

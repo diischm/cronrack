@@ -7,7 +7,7 @@ from django.contrib.staticfiles.views import serve
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import render
 
-from hosts.samples import PREVIEW_CONTEXT, PREVIEW_STATES
+from hosts.samples import PREVIEW_CONTEXT, PREVIEW_STATES, with_summaries
 
 XSS_SCRIPT = "<script>alert(1)</script>"
 XSS_IMG = '"><img src=x onerror=alert(1)>'
@@ -32,6 +32,8 @@ def preview(request: HttpRequest) -> HttpResponse:
         context["hosts"][0]["issues"][0]["text"] = XSS_IMG
         context["hosts"][1]["name"] = XSS_IMG
         context["hosts"][1]["issues"][0]["text"] = XSS_SCRIPT
+        context["hosts"][1]["issues"][1:] = []  # one issue: its text is the summary line
+        with_summaries(context)
     elif state in PREVIEW_STATES:
         context.update(PREVIEW_STATES[state]())
     elif state == "empty":

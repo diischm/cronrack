@@ -19,7 +19,9 @@ STATIC = Path(__file__).resolve().parent.parent / "static/cronrack"
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 
 # Every way a text chip used to be written.
-CHIP_RE = re.compile(r'class="[^"]*\bchip\b|chip--|chip-pick')
+# Status is never a coloured text chip (icon + words instead). The one chip component left is
+# Glass's overview filter (.g-chip: a <button aria-pressed> with a count), which is not a status.
+CHIP_RE = re.compile(r'class="(?![^"]*\bg-chip)[^"]*(?<!g-)\bchip\b|chip--|chip-pick')
 
 
 # --- the component -----------------------------------------------------------------------
@@ -82,7 +84,8 @@ def test_chip_components_and_css_are_gone():
         text = (STATIC / "css" / css).read_text()
         assert not re.search(r"\.chip\b|chip-pick", text), css
     for js in (STATIC / "js").glob("*.js"):
-        assert "chip" not in js.read_text(), js
+        if js.name != "overview.js":  # the Glass filter chips (.g-chip), see CHIP_RE
+            assert "chip" not in js.read_text(), js
 
 
 def test_no_text_chips_on_any_page(alice_client: Client, alice):
@@ -295,13 +298,17 @@ def test_overview_hosts_heading_is_for_screen_readers_only(alice_client: Client,
     html = alice_client.get("/").content.decode()
     hosts = html[html.index('<section class="overview-hosts"') :]
     # The first thing in the section: an <h2> nobody sees in Legacy (Glass shows it, with
-    # the count, which is .g-only so Legacy never reads it), then the chassis.
+    # the count, which is .g-only so Legacy never reads it), then Glass's filter chips and
+    # their announcer (.g-only: display none in Legacy), then the chassis.
     assert re.match(
         r'<section class="overview-hosts" id="overview-hosts" aria-labelledby="hosts-title">\s*'
         r'<h2 class="visually-hidden overview-hosts__title" id="hosts-title">Hosts'
         r'<span class="section-count g-only" id="hosts-count"> 1</span></h2>\s*'
-        r'<div class="rack-chassis surface">',
+        r'<div class="g-chips g-only" id="host-filter" role="group" aria-label="Filter hosts by status">'
+        r'.*?</div>\s*<p class="visually-hidden g-only" id="host-filter-status"[^>]*></p>\s*'
+        r'<div class="rack-chassis surface" id="hosts-rack-chassis">',
         hosts,
+        re.DOTALL,
     )
     assert '<h2 class="section-title desk-only">Hosts</h2>' not in html
 

@@ -5,6 +5,10 @@ user sees before adding a host (hosts.views.host_example). Nothing here comes fr
 database or an agent, and none of it is ever counted anywhere.
 """
 
+import re
+
+from hosts.presenters import short_summary
+
 # Sample context in the shape of hosts.presenters.overview_context(), with the
 # hosts from design-ref/cronrack-dashboard-desktop.html: one red, one yellow and
 # two green hosts, plus three activity entries. homeserver and pi-01 are the k3s server and
@@ -160,6 +164,26 @@ EXAMPLE_DETAIL_CONTEXT = {
 # same way hosts.presenters.overview_context() does, so the headline and the cards agree.
 
 
+_FAILED_SERVICE = re.compile(r"^(\S+\.service) failed$")
+
+
+def _summary_input(text: str) -> dict:
+    """An issue as short_summary() reads it: "x.service failed" is a failed systemd unit."""
+    match = _FAILED_SERVICE.match(text)
+    if match:
+        return {"text": text, "rule_id": "systemd.unit_failed", "subject": f"unit:{match[1]}"}
+    return {"text": text}
+
+
+def with_summaries(context: dict) -> dict:
+    """Fill each host's and cluster's "summary" the way the presenters do."""
+    for row in [*context["hosts"], *context["clusters"]]:
+        row["summary"] = short_summary(
+            row["status"], [_summary_input(i["text"]) for i in row["issues"]]
+        )
+    return context
+
+
 def _host(pk, name, status, issues=(), disk=50, role=None, containers=4, failing=0, seen="20s ago"):
     labels = {"red": "Needs you", "yellow": "Heads up", "green": "All good", "offline": "Offline"}
     severity = "red" if status == "red" else "yellow"
@@ -197,20 +221,22 @@ def _cluster(pk, name, status, issues=(), ready=3, total=3, problems=0):
 def _context(hosts, clusters, activity):
     statuses = [h["status"] for h in hosts]
     needs = {"red", "yellow", "offline"}
-    return {
-        "attention_count": sum(1 for h in hosts if h["status"] in needs)
-        + sum(1 for c in clusters if c["status"] in needs),
-        "updated_human": "30s ago",
-        "status_counts": {s: statuses.count(s) for s in ("red", "yellow", "green", "offline")},
-        "hosts_online": sum(1 for s in statuses if s != "offline"),
-        "shell_hosts": {
-            "connected": sum(1 for s in statuses if s != "offline"),
-            "total": len(hosts),
-        },
-        "hosts": hosts,
-        "clusters": clusters,
-        "activity": activity,
-    }
+    return with_summaries(
+        {
+            "attention_count": sum(1 for h in hosts if h["status"] in needs)
+            + sum(1 for c in clusters if c["status"] in needs),
+            "updated_human": "30s ago",
+            "status_counts": {s: statuses.count(s) for s in ("red", "yellow", "green", "offline")},
+            "hosts_online": sum(1 for s in statuses if s != "offline"),
+            "shell_hosts": {
+                "connected": sum(1 for s in statuses if s != "offline"),
+                "total": len(hosts),
+            },
+            "hosts": hosts,
+            "clusters": clusters,
+            "activity": activity,
+        }
+    )
 
 
 def _events(n):
@@ -264,3 +290,5 @@ PREVIEW_STATES = {
         [],
     ),
 }
+
+with_summaries(PREVIEW_CONTEXT)

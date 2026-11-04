@@ -19,12 +19,12 @@
   lamp, no icon, "Offline · last data …" says it. Waiting (no snapshot yet): unlit lamp and
   the hourglass. Everything in `cluster` is agent data or user input: plain {{ }}.
 {% endcomment %}
-<li class="rack__slot"{% if not blank %} data-unit="cluster" data-id="{{ cluster.id }}"{% endif %}>
+<li class="rack__slot{% if not blank %} rack__slot--st-{{ cluster.status }}{% endif %}"{% if not blank %} data-unit="cluster" data-id="{{ cluster.id }}"{% endif %}>
   <a class="rack-unit card-press legacy-only{% if cluster.status == 'offline' %} rack-unit--offline{% endif %}"{% if not blank %} href="{{ cluster.url }}"{% endif %}>
     {% include "components/rack_unit_face.html" with unit=cluster kind="cluster" blank=blank %}
   </a>
   <button type="button" class="rack-unit g-unit g-only{% if cluster.status == 'offline' %} rack-unit--offline{% endif %}" aria-expanded="false"{% if not blank %} aria-controls="unit-more-cluster-{{ cluster.id }}"{% endif %}>
-    {% include "components/rack_unit_face.html" with unit=cluster kind="cluster" blank=blank %}
+    {% include "components/rack_unit_face.html" with unit=cluster kind="cluster" blank=blank glass=True %}
     {% include "components/unit_chevron.html" %}
   </button>
   <div class="g-unit-more g-only"{% if not blank %} id="unit-more-cluster-{{ cluster.id }}"{% endif %}>

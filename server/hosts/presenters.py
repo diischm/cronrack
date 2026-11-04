@@ -7,6 +7,8 @@ Every value here may contain text from an agent (container names, unit names...)
 It is only ever output with {{ }} (auto-escaped) or as JSON, never marked safe.
 """
 
+import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -42,6 +44,9 @@ STATUS_LABELS = {
     "maintenance": "Maintenance",
 }
 NEEDS_ATTENTION = frozenset({"red", "yellow", "offline"})
+# A parenthesised technical detail in an issue text: "immich-server exited (code 137)".
+_DETAIL = re.compile(r"\s*\([^()]*\)")
+_FAILED_UNIT = "systemd.unit_failed"
 # "While you were away": Glass shows up to 10 (its list scrolls); Legacy shows the newest 3.
 OVERVIEW_ACTIVITY = 10
 
@@ -95,6 +100,47 @@ def issue_dict(finding: Finding) -> dict[str, Any]:
         "fix": finding.fix,
         "category": get_rule(finding.rule_id).category,
     }
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def _is_failed_service(issue: dict[str, Any]) -> bool:
+    return issue.get("rule_id") == _FAILED_UNIT and str(issue.get("subject", "")).endswith(
+        ".service"
+    )
+
+
+def short_summary(status: str, issues: Sequence[dict[str, Any]]) -> str:
+    """The one short line a Glass attention card and rack unit show (hosts and clusters).
+
+    The only implementation: the server templates print it and overview.js shows the
+    "summary" field from overview.json, so the two can't disagree. The details (every
+    issue) are in the card's or unit's expand region.
+    issues: {"text", "rule_id"?, "subject"?} dicts, the active ones (severity not "ignore").
+    """
+    if status == "offline":
+        return "Offline"
+    if status == "waiting":
+        return "Waiting for the first report"
+    if status == "maintenance":
+        return "Maintenance"
+    if not issues:
+        return "All good"
+    if len(issues) == 1:
+        text = issues[0]["text"]
+        return _DETAIL.sub("", text).strip() or text
+    if all(_is_failed_service(i) for i in issues):
+        return f"{_plural(len(issues), 'service')} failed"
+    return _plural(len(issues), "issue")
+
+
+def finding_summary(status: str, findings: Sequence[Finding]) -> str:
+    """short_summary() for a host's or cluster's active findings."""
+    return short_summary(
+        status, [{"text": f.text, "rule_id": f.rule_id, "subject": f.subject} for f in findings]
+    )
 
 
 def _problem_containers(findings: list[Finding]) -> set[str]:
@@ -156,12 +202,14 @@ def host_summary(host: Host, now: datetime, data: OwnerData) -> dict[str, Any]:
     """One host card on the overview."""
     status = data.status(host, now)
     findings = active_findings(host, now, data)
-    issues = top_issues(findings)
+    # Every active issue: Legacy's rack shows the first 3, Glass's expand regions all of them.
+    issues = top_issues(findings, n=len(findings))
     return {
         "id": host.pk,
         "name": host.name,
         "status": status,
         "status_label": STATUS_LABELS.get(status, status),
+        "summary": finding_summary(status, issues),
         "issues": [{"text": f.text, "severity": f.severity} for f in issues],
         "last_seen_human": ago(host.last_seen_at, now),
         "url": reverse("host-detail", args=[host.pk]),
