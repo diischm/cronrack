@@ -27,6 +27,11 @@
   (status by icon shape + words in Legacy, dot + words in Glass, never colour only).
   Offline: unlit lamp, no status icon; "Offline · last report …" is the text label, and the
   Check now key is a focusable aria-disabled stand-in with a note (like the host page).
+
+  Glass draws no lamp: rack__slot--st-<status> tints the unit with a short, soft gradient
+  from its left edge (glass.css), and the issue line is the short summary
+  (hosts.presenters.short_summary). The status stays in the button's accessible name (the
+  status icon's visually-hidden words; offline: the "Offline" of the offline note).
 {% endcomment %}
 {% if example %}
 <li class="rack__slot">
@@ -40,12 +45,12 @@
   </a>
 </li>
 {% else %}
-<li class="rack__slot"{% if not blank %} data-unit="host" data-id="{{ host.id }}"{% endif %}>
+<li class="rack__slot{% if not blank %} rack__slot--st-{{ host.status }}{% endif %}"{% if not blank %} data-unit="host" data-id="{{ host.id }}"{% endif %}>
   <a class="rack-unit card-press legacy-only{% if host.status == 'offline' %} rack-unit--offline{% endif %}"{% if not blank %} href="{{ host.url }}"{% endif %}>
     {% include "components/rack_unit_face.html" with unit=host kind="host" blank=blank %}
   </a>
   <button type="button" class="rack-unit g-unit g-only{% if host.status == 'offline' %} rack-unit--offline{% endif %}" aria-expanded="false"{% if not blank %} aria-controls="unit-more-host-{{ host.id }}"{% endif %}>
-    {% include "components/rack_unit_face.html" with unit=host kind="host" blank=blank %}
+    {% include "components/rack_unit_face.html" with unit=host kind="host" blank=blank glass=True %}
     {% include "components/unit_chevron.html" %}
   </button>
   <div class="g-unit-more g-only"{% if not blank %} id="unit-more-host-{{ host.id }}"{% endif %}>

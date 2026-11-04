@@ -24,25 +24,28 @@
 {% endblock %}
 
 {% comment %}
-  Phone (<900px) shows: headline, the host rack, "While you were away".
+  Legacy phone (<900px) shows: headline, the host rack, "While you were away".
   Everything marked desk-only (actions, tiles, the units' front panels) appears from 900px.
-  overview.js refreshes the headline, subline, tiles and rack every 60s (handoff 5.3);
-  the ids below are fixed hooks for it.
+  Glass (design-ref/glass/overview-glass-v8.html): headline + keys, Needs attention, then
+  [Hosts (filter chips + rack) | While you were away], then Clusters; no tiles.
+  overview.js refreshes the headline, subline, tiles, chips and racks every 60s (handoff
+  5.3); the ids below are fixed hooks for it.
 {% endcomment %}
 {% block content %}
   <div class="page-head overview-head">
     <div class="overview-head__text">
       <h1 class="page-title" id="overview-title">{% if not hosts %}No hosts yet{% elif attention_count %}{{ attention_count }} thing{{ attention_count|pluralize }} need{{ attention_count|pluralize:"s," }} you{% else %}All good{% endif %}</h1>
       <p class="page-sub overview-head__sub">
-        <span id="overview-sub">{{ hosts|length }} host{{ hosts|length|pluralize }}{% if hosts %} · updated {{ updated_human }}{% endif %}</span>
+        <span id="overview-sub">{{ hosts|length }} host{{ hosts|length|pluralize }}<span class="g-only" id="overview-sub-clusters">{% if clusters %} · {{ clusters|length }} cluster{{ clusters|length|pluralize }}{% endif %}</span>{% if hosts %} · updated {{ updated_human }}{% endif %}</span>
         {# Shown by overview.js while /api/v1/overview.json can't be reached; the page keeps its content. #}
         <span class="refresh-failed" id="refresh-failed" role="status" hidden>{% include "components/status_icon.html" with status="yellow" label="Warning" %}<span>Offline — retrying</span></span>
         <span class="loader loader--sm surface" role="status" aria-label="Checking all hosts" id="check-all-loader" hidden><span></span><span></span><span></span></span>
       </p>
     </div>
     {% comment %}
-      Desktop (>= 900px): "Check all now" + "Add host" next to the headline. On phones both
-      live in the top bar instead (topbar_keys above, and base.html's Add host key).
+      Desktop (>= 900px): "Check all now" + "Add host" next to the headline. On Legacy phones
+      both live in the top bar instead (topbar_keys above, and base.html's Add host key); on
+      Glass phones they sit under the headline and the top bar's copies are hidden.
       The result appears as a toast (actions.js), not under the keys.
     {% endcomment %}
     <div class="overview-head__actions desk-only">
@@ -60,18 +63,19 @@
     </div>
   </div>
 
-  <section class="summary desk-only" aria-label="Summary">
+  {# Legacy only: Glass shows these counts as the filter chips above the Hosts rack. #}
+  <section class="summary desk-only legacy-only" aria-label="Summary">
     <div class="surface tile tile--red">
       <div class="tile__label"><svg class="tile__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><span>Needs you</span></div>
-      <p class="tile__value"><span class="g-flow" id="tile-red">{{ status_counts.red }}</span> <span class="tile__unit" id="tile-red-unit">host{{ status_counts.red|pluralize }}</span></p>
+      <p class="tile__value"><span id="tile-red">{{ status_counts.red }}</span> <span class="tile__unit" id="tile-red-unit">host{{ status_counts.red|pluralize }}</span></p>
     </div>
     <div class="surface tile tile--yellow">
       <div class="tile__label"><svg class="tile__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span>Heads up</span></div>
-      <p class="tile__value"><span class="g-flow" id="tile-yellow">{{ status_counts.yellow }}</span> <span class="tile__unit" id="tile-yellow-unit">host{{ status_counts.yellow|pluralize }}</span></p>
+      <p class="tile__value"><span id="tile-yellow">{{ status_counts.yellow }}</span> <span class="tile__unit" id="tile-yellow-unit">host{{ status_counts.yellow|pluralize }}</span></p>
     </div>
     <div class="surface tile tile--green">
       <div class="tile__label"><svg class="tile__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg><span>All good</span></div>
-      <p class="tile__value"><span class="g-flow" id="tile-green">{{ status_counts.green }}</span> <span class="tile__unit" id="tile-green-unit">host{{ status_counts.green|pluralize }}</span></p>
+      <p class="tile__value"><span id="tile-green">{{ status_counts.green }}</span> <span class="tile__unit" id="tile-green-unit">host{{ status_counts.green|pluralize }}</span></p>
     </div>
     <div class="surface tile tile--online">
       <div class="tile__label">
@@ -82,37 +86,22 @@
       {# Always rendered (hidden at 0) so overview.js can show it after a refresh. #}
       <p class="offline-note tile__offline" id="tile-offline"{% if not status_counts.offline %} hidden{% endif %}><svg class="tile__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.77.04"></path></svg><span id="tile-offline-text"><strong>Offline</strong> · {{ status_counts.offline }} host{{ status_counts.offline|pluralize }}</span></p>
     </div>
-    {# Glass only: the fourth tile counts offline hosts (Legacy shows "Hosts online" above). #}
-    <div class="surface tile tile--offline g-only">
-      <div class="tile__label"><span>Offline</span></div>
-      <p class="tile__value"><span class="g-flow" id="tile-offline-count">{{ status_counts.offline }}</span> <span class="tile__unit" id="tile-offline-count-unit">host{{ status_counts.offline|pluralize }}</span></p>
-    </div>
   </section>
 
   {% comment %}
-    Glass only (.g-only): "Needs attention" + "While you were away" side by side (glass.css
-    .g-duo: the main column + 380px; one column below 1200px). The row's height comes from
-    Needs attention (at least 240px); the activity list scrolls inside its own box, so it
-    never makes the row taller. Either one alone takes the full width. A section with
-    nothing in it is not rendered at all (no gap); overview.js adds or removes them from the
-    <template>s below when a refresh changes that.
-    Needs attention: one card per host AND cluster whose status is red, yellow or offline, in
-    backend order (hosts first), the same set attention_count counts for the headline.
+    Glass only (.g-only): "Needs attention", full width. One short card per host AND cluster
+    whose status is red, yellow or offline, in backend order (hosts first), the same set
+    attention_count counts for the headline. Not rendered when empty (no gap); overview.js
+    adds or removes it from <template id="g-attention-template"> when a refresh changes that.
   {% endcomment %}
-  {% if attention_count or activity %}
-  <div class="g-duo g-only" id="g-duo">
-    {% if attention_count %}{% include "hosts/_attention.html" %}{% endif %}
-    {% if activity %}{% include "hosts/_away_glass.html" %}{% endif %}
-  </div>
-  {% endif %}
-  <template id="g-duo-template"><div class="g-duo g-only" id="g-duo"></div></template>
+  {% if attention_count %}{% include "hosts/_attention.html" %}{% endif %}
   <template id="g-attention-template">{% include "hosts/_attention.html" with blank=True %}</template>
   <template id="g-away-template">{% include "hosts/_away_glass.html" with blank=True %}</template>
   <template id="attention-card-template">{% include "components/attention_card.html" with blank=True %}</template>
   <template id="activity-row-template">{% include "components/activity_row.html" with blank=True %}</template>
 
   {# Legacy from 1200px (pages.css): rack left, "While you were away" right; DOM order = visual order. #}
-  {# Glass: one full-width column (the Hosts rack, then the Clusters rack); Legacy's away box is hidden. #}
+  {# Glass: everything is inside .overview-hosts (glass.css grid), Legacy's away box is hidden. #}
   <div class="overview-body{% if activity %} overview-body--split{% endif %}" id="overview-body">
     {% comment %}
       The rack (components.css "Rack", glass.css "Rack"): a raised chassis with two decorative
@@ -130,7 +119,24 @@
         Glass: a visible section heading with the count.
       {% endcomment %}
       <h2 class="visually-hidden overview-hosts__title" id="hosts-title">Hosts{% if hosts %}<span class="section-count g-only" id="hosts-count"> {{ hosts|length }}</span>{% endif %}</h2>
-      <div class="rack-chassis surface">
+      {% comment %}
+        Glass only: the status counts as filter chips (they replace Legacy's tiles). "All" is
+        pressed by default; overview.js applies a filter chosen earlier in this tab
+        (sessionStorage) and hides the other units. A chip with 0 hosts is aria-disabled
+        (still focusable and read, so its count is never lost). The counts roll (Number Flow,
+        glass.js: .g-flow). #host-filter-status announces the result of a click.
+      {% endcomment %}
+      {% if hosts %}
+      <div class="g-chips g-only" id="host-filter" role="group" aria-label="Filter hosts by status">
+        <button type="button" class="g-chip" data-filter="all" aria-pressed="true">All <span class="g-chip__count"><span class="g-flow" id="chip-all">{{ hosts|length }}</span></span></button>
+        <button type="button" class="g-chip" data-filter="red" aria-pressed="false"{% if not status_counts.red %} aria-disabled="true"{% endif %}><span class="g-chip__dot g-chip__dot--red" aria-hidden="true"></span>Needs you <span class="g-chip__count"><span class="g-flow" id="chip-red">{{ status_counts.red }}</span></span></button>
+        <button type="button" class="g-chip" data-filter="yellow" aria-pressed="false"{% if not status_counts.yellow %} aria-disabled="true"{% endif %}><span class="g-chip__dot g-chip__dot--yellow" aria-hidden="true"></span>Heads up <span class="g-chip__count"><span class="g-flow" id="chip-yellow">{{ status_counts.yellow }}</span></span></button>
+        <button type="button" class="g-chip" data-filter="green" aria-pressed="false"{% if not status_counts.green %} aria-disabled="true"{% endif %}><span class="g-chip__dot g-chip__dot--green" aria-hidden="true"></span>All good <span class="g-chip__count"><span class="g-flow" id="chip-green">{{ status_counts.green }}</span></span></button>
+        <button type="button" class="g-chip" data-filter="offline" aria-pressed="false"{% if not status_counts.offline %} aria-disabled="true"{% endif %}><span class="g-chip__dot g-chip__dot--offline" aria-hidden="true"></span>Offline <span class="g-chip__count"><span class="g-flow" id="chip-offline">{{ status_counts.offline }}</span></span></button>
+      </div>
+      <p class="visually-hidden g-only" id="host-filter-status" role="status" aria-live="polite"></p>
+      {% endif %}
+      <div class="rack-chassis surface" id="hosts-rack-chassis">
         <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
         <ul class="rack well" id="rack" aria-labelledby="hosts-title">
           {% for host in hosts %}
@@ -147,6 +153,14 @@
       <template id="rack-unit-template">{% include "components/rack_unit.html" with blank=True %}</template>
       {# Legacy: clicking a unit's link opens this preview (host-preview.js); without JS the unit is a plain link. #}
       {% include "components/host_preview.html" %}
+
+      {% comment %}
+        Glass's "While you were away" (Legacy has its own box, right of the rack, below):
+        from 1200px right of the Hosts rack, as tall as it (at least 240px), its list
+        scrolling inside; below 1200px under the rack, the newest 3. Not rendered without
+        activity, and then the rack takes the full width.
+      {% endcomment %}
+      {% if activity %}{% include "hosts/_away_glass.html" %}{% endif %}
 
       {% comment %}
         Clusters: their own rack under the hosts, same chassis, one unit per cluster

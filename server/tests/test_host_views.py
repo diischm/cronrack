@@ -183,6 +183,8 @@ HOST_KEYS = {
     "updates", "containers", "disk_max_percent",
     # Kubernetes: server | agent | node, or None.
     "k8s_role",
+    # Glass v8: the one short line (hosts.presenters.short_summary).
+    "summary",
 }  # fmt: skip
 OVERVIEW_KEYS = {
     "attention_count", "updated_human", "hosts", "activity",
@@ -445,9 +447,10 @@ def test_overview_html_and_json_agree_on_offline(alice_client: Client, alice):
 
     statuses = {h["name"]: h["status"] for h in data["hosts"]}
     assert statuses == {"edge-pi": "offline", "nas": "green"}
-    # edge-pi only: its unit's two faces (Legacy link, Glass button) and its Glass attention
-    # card. The "Hosts online" tile is a summary and uses an icon, not a lamp.
-    assert html.count("lamp--off") == 3
+    # edge-pi only: its unit's Legacy link and its Glass attention card (the Glass button has
+    # no lamp: the unit's gradient shows the status). The "Hosts online" tile is a summary
+    # and uses an icon, not a lamp.
+    assert html.count("lamp--off") == 2
     assert (
         '<strong>Offline</strong><span class="offline-note__sep"> · </span>last report 28 h ago'
         in html

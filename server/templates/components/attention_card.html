@@ -8,20 +8,64 @@
     {% include "components/attention_card.html" with unit=cluster kind="cluster" %}  a cluster
     {% include "components/attention_card.html" with blank=True %}  the empty copy inside
                                                                     <template id="attention-card-template">
-  overview.js clones the blank copy every refresh and fills it with textContent /
-  setAttribute only (its status icon is swapped for a clone from <template id="status-icons">,
-  or, offline, for the grey lamp). Keep the class names in sync with overview.js.
+  The blank copy has every optional piece (host AND cluster facts, the Check now form AND
+  its offline stand-in); overview.js clones it, removes what a card doesn't need and fills
+  the rest with textContent / setAttribute only. Keep the class names in sync with
+  overview.js.
 
-  A plain link to the host or cluster page. Status: the dot (status icon, or the grey lamp
-  when offline) with its words; the issue text says why in plain words. Neutral surface: no
-  tint, no coloured border, no beam. Everything in `unit` is agent data or user input:
-  plain {{ }} output, escaped. The ", " pieces make the link read
-  "nas-01, Needs you, immich-server exited …, 2 containers · disk 71% · report 18s ago".
+  Closed, a card shows only: the name, the status dot (status icon with its words, or the
+  grey lamp + "Offline" when offline), ONE short summary line (hosts.presenters.short_summary)
+  and the type ("k8s server", "host", "cluster") with a chevron. The header is a <button
+  aria-expanded aria-controls>; clicking it opens .g-attn-more in place (glass.js, the same
+  0fr → 1fr technique as the rack units): every issue, a few facts, Check now (online
+  hosts) and Open host / Open cluster, as separate controls. Several can be open; they stay
+  open across refreshes (overview.js). data-card, not data-unit: actions.js and the rack's
+  scripts look for rack units by data-unit, and a host has both.
+
+  Everything in `unit` is agent data or user input: plain {{ }} output, escaped. The ", "
+  pieces make the button read "nas-01, Needs you, immich-server exited, host".
 {% endcomment %}
-<li class="g-attention__slot"{% if not blank %} data-unit="{{ kind }}" data-id="{{ unit.id }}"{% endif %}>
-  <a class="g-attn"{% if not blank %} href="{{ unit.url }}"{% endif %}>
-    <span class="g-attn__head"><span class="g-attn__name">{{ unit.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif unit.status == "offline" %}<span class="g-attn__offline">{% include "components/lamp.html" with status="off" %}<span class="visually-hidden">Offline</span></span>{% else %}{% include "components/status_icon.html" with status=unit.status label=unit.status_label %}{% endif %}</span>
-    <span class="g-attn__issue"><span class="visually-hidden">, </span><span class="g-attn__issue-text">{% if unit.issues %}{% for issue in unit.issues|slice:":2" %}{% if not forloop.first %} · {% endif %}{{ issue.text }}{% endfor %}{% elif unit.status == "offline" %}{% if kind == "cluster" %}No current data{% else %}Offline · last report {{ unit.last_seen_human }}{% endif %}{% endif %}</span></span>
-    <span class="g-attn__meta"><span class="visually-hidden">, </span><span class="g-attn__meta-text">{% if blank %}{% elif kind == "cluster" %}cluster · nodes {{ unit.nodes.ready }}/{{ unit.nodes.total }} ready · {{ unit.problem_pods }} problem pod{{ unit.problem_pods|pluralize }}{% else %}{% if unit.k8s_role == "server" %}k8s server · {% elif unit.k8s_role == "agent" %}k8s worker · {% elif unit.k8s_role == "node" %}k8s node · {% endif %}{% if unit.containers %}{{ unit.containers.total }} container{{ unit.containers.total|pluralize }} · {% endif %}{% if unit.disk_max_percent is not None %}disk {{ unit.disk_max_percent }}% · {% endif %}report {{ unit.last_seen_human }}{% endif %}</span></span>
-  </a>
+<li class="g-attention__slot"{% if not blank %} data-card="{{ kind }}" data-id="{{ unit.id }}"{% endif %}>
+  <div class="g-attn">
+    <button type="button" class="g-attn__btn" aria-expanded="false"{% if not blank %} aria-controls="attn-more-{{ kind }}-{{ unit.id }}"{% endif %}>
+      <span class="g-attn__head"><span class="g-attn__name">{{ unit.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif unit.status == "offline" %}<span class="g-attn__offline">{% include "components/lamp.html" with status="off" %}<span class="visually-hidden">Offline</span></span>{% else %}{% include "components/status_icon.html" with status=unit.status label=unit.status_label %}{% endif %}</span>
+      <span class="g-attn__summary"><span class="visually-hidden">, </span><span class="g-attn__summary-text">{{ unit.summary }}</span></span>
+      <span class="g-attn__meta"><span class="visually-hidden">, </span><span class="g-attn__type">{% if blank %}{% elif kind == "cluster" %}cluster{% elif unit.k8s_role == "server" %}k8s server{% elif unit.k8s_role == "agent" %}k8s worker{% elif unit.k8s_role == "node" %}k8s node{% else %}host{% endif %}</span><svg class="g-attn__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"></path></svg></span>
+    </button>
+    <div class="g-attn-more"{% if not blank %} id="attn-more-{{ kind }}-{{ unit.id }}"{% endif %}>
+      <div class="g-attn-more__in">
+        <div class="g-attn-more__body">
+          {% if blank or unit.issues %}<ul class="g-attn-more__issues">{% for issue in unit.issues %}{% include "components/issue_line.html" with issue=issue %}{% endfor %}</ul>{% endif %}
+          {% if blank or not unit.issues %}<p class="g-attn-more__note">{% if blank %}{% elif unit.status != "offline" %}No issues. Every check passed.{% elif kind == "cluster" %}No current data since {{ unit.last_seen_human }}.{% else %}No report since {{ unit.last_seen_human }}.{% endif %}</p>{% endif %}
+          {% if blank or kind == "host" %}
+          <dl class="g-attn-more__facts g-attn-more__facts--host">
+            <div class="g-attn-more__fact"><dt>Disk</dt><dd class="g-attn-more__disk">{% if blank %}{% elif unit.disk_max_percent is None %}n/a{% else %}{{ unit.disk_max_percent }}%{% endif %}</dd></div>
+            <div class="g-attn-more__fact"><dt>Updates</dt><dd class="g-attn-more__updates">{% if blank %}{% elif unit.updates is None %}n/a{% else %}{{ unit.updates.total }}{% if unit.updates.security %} ({{ unit.updates.security }} security){% endif %}{% endif %}</dd></div>
+            <div class="g-attn-more__fact"><dt>Last report</dt><dd class="g-attn-more__seen">{{ unit.last_seen_human }}</dd></div>
+          </dl>
+          {% endif %}
+          {% if blank or kind == "cluster" %}
+          <dl class="g-attn-more__facts g-attn-more__facts--cluster">
+            <div class="g-attn-more__fact"><dt>Nodes</dt><dd class="g-attn-more__nodes">{% if not blank %}{{ unit.nodes.ready }}/{{ unit.nodes.total }} ready{% endif %}</dd></div>
+            <div class="g-attn-more__fact"><dt>Pods</dt><dd class="g-attn-more__pods">{% if not blank %}{{ unit.problem_pods }} problem{{ unit.problem_pods|pluralize }}{% endif %}</dd></div>
+            <div class="g-attn-more__fact"><dt>Version</dt><dd class="g-attn-more__version">{% if not blank %}{{ unit.version|default:"n/a" }}{% endif %}</dd></div>
+          </dl>
+          {% endif %}
+          <div class="g-attn-more__keys">
+            {% if blank or kind == "host" and unit.status != "offline" %}
+            <form class="js-fetch-action g-attn-more__check" method="post"{% if not blank %} action="{% url 'host-collect' unit.id %}" data-status-url="{% url 'host-status-json' unit.id %}"{% endif %} data-action="check-host">
+              {% csrf_token %}
+              <button type="submit" class="btn btn--sm">Check now</button>
+            </form>
+            {% endif %}
+            {% if blank or kind == "host" and unit.status == "offline" %}
+            <button type="button" class="btn btn--sm g-attn-more__check-off" aria-disabled="true"{% if not blank %} aria-describedby="attn-off-host-{{ unit.id }}"{% endif %}>Check now</button>
+            <p class="g-attn-more__off-note"{% if not blank %} id="attn-off-host-{{ unit.id }}"{% endif %}>Check now needs the agent online</p>
+            {% endif %}
+            <a class="btn btn--sm g-attn-more__open"{% if not blank %} href="{{ unit.url }}"{% endif %}>Open {% if kind == "cluster" %}cluster{% else %}host{% endif %}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </li>

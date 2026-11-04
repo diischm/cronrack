@@ -292,9 +292,9 @@
       return;
     }
     let target = focused.isConnected ? focused : null;
-    if (!target && slotSelector && /^li\[data-unit="(host|cluster)"\]\[data-id="\d+"\]$/.test(slotSelector)) {
+    if (!target && slotSelector && /^li\[data-(unit|card)="(host|cluster)"\]\[data-id="\d+"\]$/.test(slotSelector)) {
       const slot = document.querySelector(slotSelector);
-      target = slot && slot.querySelector(".g-unit-more__check button[type=submit]");
+      target = slot && slot.querySelector(".g-unit-more__check button[type=submit], .g-attn-more__check button[type=submit]");
     }
     if (target) {
       target.focus({ preventScroll: true });
@@ -323,9 +323,11 @@
     // Disabling the focused key drops keyboard focus to <body>, and on the overview a refresh
     // may rebuild the unit the form was in: remember where focus was, to put it back.
     const focused = form.contains(document.activeElement) ? document.activeElement : null;
-    const slot = form.closest("li[data-unit][data-id]");
+    // A rack unit (data-unit) or a Glass attention card (data-card): same host, two places.
+    const slot = form.closest("li[data-unit][data-id], li[data-card][data-id]");
+    const attr = slot && slot.hasAttribute("data-card") ? "data-card" : "data-unit";
     const slotSelector = slot
-      ? 'li[data-unit="' + slot.getAttribute("data-unit") + '"][data-id="' + slot.getAttribute("data-id") + '"]'
+      ? "li[" + attr + '="' + slot.getAttribute(attr) + '"][data-id="' + slot.getAttribute("data-id") + '"]'
       : null;
     const ui = controls(form);
     ui.busy(true);

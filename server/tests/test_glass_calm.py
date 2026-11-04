@@ -67,7 +67,6 @@ def add_events(host, n: int) -> None:
         "g-glow",
         "g-backdrop",
         "g-beam",
-        "@property",
         "g-orb",
         "g-attn--red",
         "g-attn--yellow",
@@ -156,7 +155,9 @@ def test_units_have_a_legacy_link_and_a_glass_button_with_its_region(alice_clien
     html = without_templates(page(alice_client))
 
     for kind, pk in (("host", host.pk), ("cluster", live.pk)):
-        start = html.index(f'<li class="rack__slot" data-unit="{kind}" data-id="{pk}">')
+        start = re.search(
+            rf'<li class="rack__slot rack__slot--st-\w+" data-unit="{kind}" data-id="{pk}">', html
+        ).start()
         slot = html[start : html.index("  </div>\n</li>", start)]  # the li ends after its region
         # Exactly one control per skin: the link is Legacy-only, the button Glass-only.
         assert slot.count('<a class="rack-unit card-press legacy-only') == 1
@@ -197,7 +198,7 @@ def test_online_unit_has_check_now_offline_unit_a_disabled_stand_in(alice_client
 
 def test_glass_js_expands_units_by_delegation():
     js = (JS / "glass.js").read_text(encoding="utf-8")
-    assert 'closest("button.g-unit")' in js
+    assert 'closest("button.g-unit, button.g-attn__btn")' in js
     assert 'setAttribute("aria-expanded"' in js
 
 
@@ -208,7 +209,6 @@ def test_empty_sections_render_nothing(alice_client, alice):
     make_host(alice, "nas", "green", make_report())  # all good, no activity, no cluster
     html = without_templates(page(alice_client))
     for absent in (
-        'id="g-duo"',
         'id="g-attention"',
         'id="g-away"',
         'id="away"',
@@ -224,7 +224,7 @@ def test_activity_alone_takes_the_row_without_needs_attention(alice_client, alic
     host = make_host(alice, "nas", "green", make_report())
     add_events(host, 1)
     html = without_templates(page(alice_client))
-    assert 'id="g-duo"' in html and 'id="g-away"' in html
+    assert 'id="g-away"' in html
     assert 'id="g-attention"' not in html
 
 
@@ -247,7 +247,7 @@ def test_hero_count_equals_the_attention_cards(alice_client, alice, live):  # no
     html = without_templates(page(alice_client))
     data = alice_client.get("/api/v1/overview.json").json()
 
-    cards = re.findall(r'<li class="g-attention__slot" data-unit="(host|cluster)"', html)
+    cards = re.findall(r'<li class="g-attention__slot" data-card="(host|cluster)"', html)
     assert data["attention_count"] == len(cards) == 4  # red, yellow, offline host + red cluster
     assert cards.count("cluster") == 1
     assert '<h1 class="page-title" id="overview-title">4 things need you</h1>' in html
@@ -279,7 +279,10 @@ def test_legacy_shows_3_activity_entries_and_glass_10(alice_client, alice):
 @pytest.mark.usefixtures("alice")  # a user exists, so the preview isn't sent to /setup/
 def test_preview_states_render_and_agree(client: Client, state, hosts, cards):
     html = without_templates(page(client, f"/dev/preview/?state={state}"))
-    assert len(re.findall(r'<li class="rack__slot" data-unit="host"', html)) == hosts
+    assert (
+        len(re.findall(r'<li class="rack__slot rack__slot--st-\w+" data-unit="host"', html))
+        == hosts
+    )
     assert len(re.findall(r'<li class="g-attention__slot"', html)) == cards
     if cards:
         assert f">{cards} things need you</h1>" in html

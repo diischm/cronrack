@@ -2,8 +2,8 @@
 // Overview auto-refresh (handoff 5.3). Loaded with defer, on the overview page only.
 //
 // Every 60s while the tab is visible, and once when it becomes visible again, fetch
-// /api/v1/overview.json and update the headline, the subline, the summary tiles, the racks
-// and the sections around them. "Check all now" / "Check now" (actions.js) ask for one
+// /api/v1/overview.json and update the headline, the subline, the summary tiles (Legacy), the
+// filter chips (Glass), the racks and the sections around them. "Check all now" / "Check now" (actions.js) ask for one
 // refresh with a "cronrack:refresh" event; this file puts a promise on event.detail.promise
 // that resolves once the page shows the new data (after the view transition, if any).
 //
@@ -17,10 +17,19 @@
 //     the Legacy link and the Glass button with its expand region, from one data row, so the
 //     two skins never disagree. Units the visitor opened (Glass) stay open, and focus moves
 //     to the same control of the rebuilt unit.
-//   - Glass: "Needs attention" (one card per host and cluster that is red, yellow or offline,
-//     the set the headline counts) and "While you were away" (newest 10), side by side in
-//     #g-duo. A section with nothing in it is removed, and added back from its <template>.
+//   - Glass: "Needs attention" (one short card per host and cluster that is red, yellow or
+//     offline, the set the headline counts; full width above the Hosts row) and "While you
+//     were away" (newest 10, right of the Hosts rack). A section with nothing in it is
+//     removed, and added back from its <template>. Cards the visitor opened stay open.
 //   - Legacy: "While you were away" with the newest 3, right of the rack.
+// Every summary line (cards and Glass units) is the server's "summary" field
+// (hosts.presenters.short_summary), never worked out here, so the two can't disagree.
+//
+// Glass filter chips (#host-filter): All / Needs you / Heads up / All good / Offline. A click
+// shows only the units with that status (.is-filtered-out on the others, Glass CSS only, so
+// Legacy never hides a unit), keeps focus on the chip and announces "Showing 1 of 3 hosts".
+// The choice is kept for this tab only (sessionStorage, default All). A chip whose count is 0
+// is aria-disabled; if the chosen one drops to 0 on a refresh, the filter goes back to All.
 // The Welcome example (0 hosts) is rendered by the server only: when hosts appear (or all
 // disappear), or the first cluster appears / the last one goes, the page reloads once so the
 // server renders the right sections.
@@ -32,8 +41,10 @@
 //     they morph instead of jumping. A refresh where nothing visible changed (the usual
 //     case: only "updated 30s ago") never starts a transition.
 //   - the headline changes word by word (.g-word), a changed status sends its dot's ring
-//     (.g-ring) and crossfades its colour, new activity rows slide in (.g-new) while the
-//     others move down (FLIP, transform only).
+//     (.g-ring) and crossfades its colour, a rack unit's status gradient crossfades (its old
+//     rack__slot--st-* class first, then the new one: glass.css transitions --g-st), new
+//     activity rows slide in (.g-new) while the others move down (FLIP, transform only).
+//   - filtering runs in a view transition too: hidden units slide out, shown ones slide in.
 // The first-load stagger is CSS (data-entrance, glass.js), so a refresh never plays it.
 //
 // While the host preview (host-preview.js, Legacy) is open, refreshes wait: the unit that
@@ -47,6 +58,10 @@
   const GLASS_ACTIVITY = 10;
   const LEGACY_ACTIVITY = 3;
   const NEEDS_ATTENTION = ["red", "yellow", "offline"];
+  // rack__slot--st-<status>: only these (glass.css maps offline, waiting, maintenance to grey).
+  const STATUSES = ["red", "yellow", "green", "offline", "waiting", "maintenance"];
+  const FILTER_KEY = "cronrack-host-filter";
+  const FILTERS = ["all", "red", "yellow", "green", "offline"];
 
   const root = document.documentElement;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -106,6 +121,14 @@
 
   function validId(value) {
     return Number.isInteger(value) && value > 0;
+  }
+
+  function statusClass(status) {
+    return STATUSES.includes(status) ? "rack__slot--st-" + status : "";
+  }
+
+  function slotStatus(li) {
+    return Array.from(li.classList).find((c) => c.startsWith("rack__slot--st-")) || "";
   }
 
   // One row per id, so ids built from it (aria-controls, region ids) are never duplicated.
@@ -201,8 +224,9 @@
 
   function fillFaceStatus(face, status, label, offlineText) {
     const offline = status === "offline";
-    if (LAMPS[status]) {
-      face.querySelector(".rack-unit__lamp").appendChild(lamp(status));
+    const holder = face.querySelector(".rack-unit__lamp"); // Legacy's face only
+    if (LAMPS[status] && holder) {
+      holder.appendChild(lamp(status));
     }
     const placeholder = face.querySelector(".rack-unit__head .status-icon");
     const note = face.querySelector(".rack-unit__offline");
@@ -271,6 +295,7 @@
     } else {
       issueLine.remove(); // offline with no issues: the offline line says it
     }
+    face.querySelector(".rack-unit__summary-text").textContent = text(host.summary);
     face.querySelector(".rack-unit__updates").textContent = updatesText(host.updates);
     face.querySelector(".rack-unit__containers").textContent = containersText(host.containers);
     fillDisk(face, host.disk_max_percent, isNew && motionOK());
@@ -291,6 +316,7 @@
       line = { waiting: "Waiting for the first report", offline: "No current data" }[status] || "Nothing needs you";
     }
     face.querySelector(".cluster-unit__issues").textContent = line;
+    face.querySelector(".rack-unit__summary-text").textContent = text(cluster.summary);
     face.querySelector(".cluster-unit__facts").textContent =
       "Nodes " + nodesText + " · " + plural(problems, "problem pod");
     face.querySelector(".cluster-unit__nodes").textContent = nodesText;
@@ -351,6 +377,9 @@
     const id = host.id;
     li.setAttribute("data-unit", "host");
     li.setAttribute("data-id", String(id));
+    if (statusClass(status)) {
+      li.classList.add(statusClass(status));
+    }
     li.style.setProperty("--g-vt", "g-host-" + id);
     li.querySelectorAll(".rack-unit").forEach((face) => fillHostFace(face, host, isNew));
     li.querySelector("a.rack-unit").setAttribute("href", hostUrl(host));
@@ -379,6 +408,9 @@
     const nodes = cluster.nodes || {};
     li.setAttribute("data-unit", "cluster");
     li.setAttribute("data-id", String(id));
+    if (statusClass(status)) {
+      li.classList.add(statusClass(status));
+    }
     li.style.setProperty("--g-vt", "g-cl-" + id);
     li.querySelectorAll(".rack-unit").forEach((face) => fillClusterFace(face, cluster));
     li.querySelector("a.rack-unit").setAttribute("href", clusterUrl(cluster));
@@ -393,37 +425,26 @@
   }
 
   // --- Glass "Needs attention" cards (components/attention_card.html) ----------------------------
+  // Closed: name + dot, the summary line, the type. The expand region: every issue, facts,
+  // Check now (online hosts) or its offline stand-in, Open host / Open cluster.
 
-  function attentionMeta(kind, row) {
-    if (kind === "cluster") {
-      const nodes = row.nodes || {};
-      return (
-        "cluster · nodes " + count(nodes.ready) + "/" + count(nodes.total) + " ready · " +
-        plural(count(row.problem_pods), "problem pod")
-      );
-    }
-    const parts = [];
-    const role = ROLE_WORDS[text(row.k8s_role)];
-    if (role) {
-      parts.push(role);
-    }
-    if (row.containers) {
-      parts.push(plural(count(row.containers.total), "container"));
-    }
-    if (Number.isFinite(row.disk_max_percent)) {
-      parts.push("disk " + Math.round(row.disk_max_percent) + "%");
-    }
-    parts.push("report " + text(row.last_seen_human));
-    return parts.join(" · ");
+  function cardType(kind, row) {
+    return kind === "cluster" ? "cluster" : ROLE_WORDS[text(row.k8s_role)] || "host";
+  }
+
+  function fact(dl, selector, value) {
+    dl.querySelector(selector).textContent = value;
   }
 
   function buildAttentionCard(kind, row) {
     const li = clone("attention-card-template");
     const status = text(row.status);
-    li.setAttribute("data-unit", kind);
-    li.setAttribute("data-id", String(row.id));
-    li.style.setProperty("--g-vt", "g-attn-" + (kind === "cluster" ? "c" : "h") + row.id);
-    li.querySelector(".g-attn").setAttribute("href", kind === "cluster" ? clusterUrl(row) : hostUrl(row));
+    const id = row.id;
+    const regionId = "attn-more-" + kind + "-" + id;
+    li.setAttribute("data-card", kind);
+    li.setAttribute("data-id", String(id));
+    li.style.setProperty("--g-vt", "g-attn-" + (kind === "cluster" ? "c" : "h") + id);
+    li.querySelector(".g-attn__btn").setAttribute("aria-controls", regionId);
     li.querySelector(".g-attn__name").textContent = text(row.name);
     const placeholder = li.querySelector(".g-attn__head .status-icon");
     if (status === "offline") {
@@ -442,14 +463,59 @@
         placeholder.remove();
       }
     }
-    let issue = issueList(row, 2)
-      .map((item) => text(item.text))
-      .join(" · ");
-    if (!issue && status === "offline") {
-      issue = kind === "cluster" ? "No current data" : "Offline · last report " + text(row.last_seen_human);
+    li.querySelector(".g-attn__summary-text").textContent = text(row.summary);
+    li.querySelector(".g-attn__type").textContent = cardType(kind, row);
+
+    const more = li.querySelector(".g-attn-more");
+    more.id = regionId;
+    const list = more.querySelector(".g-attn-more__issues");
+    const note = more.querySelector(".g-attn-more__note");
+    const issues = issueList(row, 50);
+    if (issues.length) {
+      list.replaceChildren(...issues.map(issueLine));
+      note.remove();
+    } else {
+      list.remove();
+      const missing = kind === "cluster" ? "No current data since " : "No report since ";
+      note.textContent = moreNote(status, missing + text(row.last_seen_human) + ".");
     }
-    li.querySelector(".g-attn__issue-text").textContent = issue;
-    li.querySelector(".g-attn__meta-text").textContent = attentionMeta(kind, row);
+    const hostFacts = more.querySelector(".g-attn-more__facts--host");
+    const clusterFacts = more.querySelector(".g-attn-more__facts--cluster");
+    const form = more.querySelector(".g-attn-more__check");
+    const off = more.querySelector(".g-attn-more__check-off");
+    const offNote = more.querySelector(".g-attn-more__off-note");
+    const open = more.querySelector(".g-attn-more__open");
+    if (kind === "cluster") {
+      const nodes = row.nodes || {};
+      const problems = count(row.problem_pods);
+      hostFacts.remove();
+      fact(clusterFacts, ".g-attn-more__nodes", count(nodes.ready) + "/" + count(nodes.total) + " ready");
+      fact(clusterFacts, ".g-attn-more__pods", problems + " problem" + (problems === 1 ? "" : "s"));
+      fact(clusterFacts, ".g-attn-more__version", text(row.version) || "n/a");
+      form.remove();
+      off.remove();
+      offNote.remove();
+      open.textContent = "Open cluster";
+      open.setAttribute("href", clusterUrl(row));
+      return li;
+    }
+    clusterFacts.remove();
+    const disk = row.disk_max_percent;
+    fact(hostFacts, ".g-attn-more__disk", Number.isFinite(disk) ? Math.round(disk) + "%" : "n/a");
+    fact(hostFacts, ".g-attn-more__updates", updatesText(row.updates));
+    fact(hostFacts, ".g-attn-more__seen", text(row.last_seen_human));
+    if (status === "offline") {
+      form.remove();
+      offNote.id = "attn-off-host-" + id;
+      off.setAttribute("aria-describedby", offNote.id);
+    } else {
+      form.setAttribute("action", "/hosts/" + id + "/collect/");
+      form.setAttribute("data-status-url", "/api/v1/hosts/" + id + "/status.json");
+      off.remove();
+      offNote.remove();
+    }
+    open.textContent = "Open host";
+    open.setAttribute("href", hostUrl(row));
     return li;
   }
 
@@ -521,13 +587,26 @@
     title.replaceChildren(...parts);
   }
 
-  function renderHead(data, hostCount, animate) {
-    setTitle(headline(data, hostCount), animate);
-    setText(
-      "overview-sub",
-      plural(hostCount, "host") + (hostCount ? " · updated " + text(data.updated_human) : "")
+  // "3 hosts · 1 cluster · updated 30s ago"; the clusters part is Glass only (.g-only span).
+  function renderSub(data, hostCount, clusterCount) {
+    const sub = byId("overview-sub");
+    const clusters = byId("overview-sub-clusters");
+    if (!sub || !clusters) {
+      return;
+    }
+    clusters.textContent = clusterCount ? " · " + plural(clusterCount, "cluster") : "";
+    sub.replaceChildren(
+      plural(hostCount, "host"),
+      clusters,
+      hostCount ? " · updated " + text(data.updated_human) : ""
     );
+  }
 
+  function renderHead(data, hostCount, clusterCount, animate) {
+    setTitle(headline(data, hostCount), animate);
+    renderSub(data, hostCount, clusterCount);
+
+    // Legacy's tiles.
     const counts = data.status_counts || {};
     ["red", "yellow", "green"].forEach((key) => {
       const n = count(counts[key]);
@@ -538,9 +617,6 @@
     setText("tile-online-unit", "of " + hostCount);
 
     const offline = count(counts.offline);
-    // Glass's fourth tile (hidden in Legacy) counts the offline hosts.
-    setText("tile-offline-count", String(offline));
-    setText("tile-offline-count-unit", offline === 1 ? "host" : "hosts");
     const note = byId("tile-offline");
     const noteText = byId("tile-offline-text");
     if (note && noteText) {
@@ -550,44 +626,183 @@
       note.hidden = offline === 0;
     }
     setText("hosts-count", " " + hostCount);
+    renderChips(chipCounts(data, hostCount));
+  }
+
+  // --- Glass filter chips -----------------------------------------------------------------------
+
+  const filterBox = byId("host-filter");
+  let filter = "all";
+
+  function chipCounts(data, hostCount) {
+    const counts = data.status_counts || {};
+    return {
+      all: hostCount,
+      red: count(counts.red),
+      yellow: count(counts.yellow),
+      green: count(counts.green),
+      offline: count(counts.offline),
+    };
+  }
+
+  function chips() {
+    return filterBox ? Array.from(filterBox.querySelectorAll("button.g-chip[data-filter]")) : [];
+  }
+
+  // The counts (glass.js rolls .g-flow), and aria-disabled on the empty ones.
+  function renderChips(counts) {
+    chips().forEach((chip) => {
+      const key = chip.getAttribute("data-filter");
+      if (!FILTERS.includes(key)) {
+        return;
+      }
+      setText("chip-" + key, String(counts[key]));
+      if (key !== "all" && counts[key] === 0) {
+        chip.setAttribute("aria-disabled", "true");
+      } else {
+        chip.removeAttribute("aria-disabled");
+      }
+    });
+  }
+
+  function pressChips() {
+    chips().forEach((chip) => {
+      chip.setAttribute("aria-pressed", chip.getAttribute("data-filter") === filter ? "true" : "false");
+    });
+  }
+
+  // Units that don't match the filter get .is-filtered-out (hidden in Glass only).
+  function applyFilter(units) {
+    Array.from(units).forEach((li) => {
+      const out = filter !== "all" && li.hasAttribute("data-unit") && slotStatus(li) !== "rack__slot--st-" + filter;
+      li.classList.toggle("is-filtered-out", out);
+    });
+  }
+
+  function readFilter() {
+    try {
+      const value = window.sessionStorage.getItem(FILTER_KEY);
+      return FILTERS.includes(value) ? value : "all";
+    } catch (e) {
+      return "all"; // storage blocked: the default
+    }
+  }
+
+  function saveFilter() {
+    try {
+      if (filter === "all") {
+        window.sessionStorage.removeItem(FILTER_KEY);
+      } else {
+        window.sessionStorage.setItem(FILTER_KEY, filter);
+      }
+    } catch (e) {
+      // storage blocked: the filter lasts until the page reloads
+    }
+  }
+
+  // "Showing 1 of 3 hosts" / "Showing all 3 hosts", politely (#host-filter-status).
+  function announceFilter() {
+    const units = Array.from(rack.children).filter((li) => li.hasAttribute("data-unit"));
+    const shown = units.filter((li) => !li.classList.contains("is-filtered-out")).length;
+    setText(
+      "host-filter-status",
+      filter === "all" ? "Showing all " + plural(units.length, "host") : "Showing " + shown + " of " + plural(units.length, "host")
+    );
+  }
+
+  function chipCount(key) {
+    const el = byId("chip-" + key);
+    const n = el ? Number(el.textContent) : 0;
+    return Number.isInteger(n) ? n : 0;
+  }
+
+  // A filter whose chip is empty goes back to All (returns true when it did).
+  function settleFilter(counts) {
+    if (filter !== "all" && !counts[filter]) {
+      filter = "all";
+      saveFilter();
+      return true;
+    }
+    return false;
+  }
+
+  function setFilter(next) {
+    filter = next;
+    saveFilter();
+    // The announcement counts the units after the change, so it runs inside the update
+    // (a view transition calls it later, asynchronously).
+    const apply = () => {
+      pressChips();
+      applyFilter(rack.children);
+      announceFilter();
+    };
+    if (motionOK() && typeof document.startViewTransition === "function" && document.visibilityState === "visible") {
+      document.startViewTransition(apply);
+    } else {
+      apply();
+    }
+  }
+
+  if (filterBox) {
+    filterBox.addEventListener("click", (event) => {
+      const chip = event.target instanceof Element ? event.target.closest("button.g-chip[data-filter]") : null;
+      if (!chip || chip.getAttribute("aria-disabled") === "true") {
+        return; // an empty chip: nothing to show (it stays focusable and readable)
+      }
+      const next = chip.getAttribute("data-filter");
+      if (FILTERS.includes(next) && next !== filter) {
+        setFilter(next);
+      }
+    });
+    // A filter chosen earlier in this tab, if its chip still has hosts.
+    filter = readFilter();
+    const counts = {};
+    FILTERS.forEach((key) => {
+      counts[key] = chipCount(key);
+    });
+    settleFilter(counts);
+    pressChips();
+    applyFilter(rack.children);
   }
 
   // --- Sections that come and go -------------------------------------------------------------------
 
-  // Glass's row: [Needs attention | While you were away], right after the tiles.
-  function renderDuo(cards, rows) {
-    let duo = byId("g-duo");
-    if (!cards.length && !rows.length) {
-      if (duo) {
-        duo.remove();
+  // Glass's "Needs attention": full width, before the Hosts row.
+  function renderAttention(cards) {
+    let attention = byId("g-attention");
+    if (!cards.length) {
+      if (attention) {
+        attention.remove();
       }
       return;
     }
-    if (!duo) {
-      duo = clone("g-duo-template");
-      byId("overview-body").before(duo);
+    if (!attention) {
+      attention = clone("g-attention-template");
+      byId("overview-body").before(attention);
     }
-    let attention = byId("g-attention");
-    if (cards.length) {
-      if (!attention) {
-        attention = clone("g-attention-template");
-        duo.prepend(attention);
-      }
-      setText("g-attention-count", " " + cards.length);
-      replaceKeepingFocus(byId("g-attention-list"), cards);
-    } else if (attention) {
-      attention.remove();
-    }
+    setText("g-attention-count", " " + cards.length);
+    replaceKeepingFocus(byId("g-attention-list"), cards);
+  }
+
+  // Glass's "While you were away": inside the Hosts section, after the rack (before Clusters).
+  function renderAway(rows) {
     let away = byId("g-away");
-    if (rows.length) {
-      if (!away) {
-        away = clone("g-away-template");
-        duo.append(away);
+    if (!rows.length) {
+      if (away) {
+        away.remove();
       }
-      byId("g-away-list").replaceChildren(...rows);
-    } else if (away) {
-      away.remove();
+      return;
     }
+    if (!away) {
+      away = clone("g-away-template");
+      const clustersHead = byId("clusters-head");
+      if (clustersHead) {
+        clustersHead.before(away);
+      } else {
+        byId("overview-hosts").append(away);
+      }
+    }
+    byId("g-away-list").replaceChildren(...rows);
   }
 
   // Legacy's "While you were away": the newest 3, right of the rack (.overview-body--split).
@@ -610,20 +825,23 @@
 
   // --- Keeping state across a rebuild ---------------------------------------------------------------
 
+  // "host:3" for a rack unit, "card-host:3" for that host's attention card.
   function slotKey(li) {
-    return li.getAttribute("data-unit") + ":" + li.getAttribute("data-id");
+    const card = li.getAttribute("data-card");
+    return (card ? "card-" + card : li.getAttribute("data-unit")) + ":" + li.getAttribute("data-id");
   }
 
-  // Units the visitor opened: their keys, so the rebuilt units open again.
+  // Units and cards the visitor opened: their keys, so the rebuilt ones open again.
   function openKeys() {
-    return new Set(Array.from(document.querySelectorAll(".rack__slot.is-open[data-unit]")).map(slotKey));
+    const open = document.querySelectorAll(".rack__slot.is-open[data-unit], .g-attention__slot.is-open[data-card]");
+    return new Set(Array.from(open).map(slotKey));
   }
 
-  function reopen(units, keys) {
-    units.forEach((li) => {
+  function reopen(items, keys) {
+    items.forEach((li) => {
       if (keys.has(slotKey(li))) {
         li.classList.add("is-open");
-        li.querySelector("button.g-unit").setAttribute("aria-expanded", "true");
+        li.querySelector("button.g-unit, button.g-attn__btn").setAttribute("aria-expanded", "true");
       }
     });
   }
@@ -632,7 +850,7 @@
   // position among the item's links and buttons) in the rebuilt item with the same key.
   function replaceKeepingFocus(list, items) {
     const focused = document.activeElement;
-    const old = focused && list.contains(focused) ? focused.closest("li[data-unit]") : null;
+    const old = focused && list.contains(focused) ? focused.closest("li[data-unit], li[data-card]") : null;
     let index = -1;
     let key = null;
     if (old) {
@@ -665,15 +883,50 @@
   function viewState(title, unitItems, clusterItems, cardItems, rowItems) {
     const unit = (li) => {
       const line = li.querySelector("a.rack-unit .rack-unit__issues");
-      return [slotKey(li), lampClass(li.querySelector(".rack-unit__lamp .lamp")), line ? line.textContent : ""];
+      const summary = li.querySelector(".g-unit .rack-unit__summary-text");
+      return [
+        slotKey(li),
+        lampClass(li.querySelector(".rack-unit__lamp .lamp")),
+        slotStatus(li),
+        line ? line.textContent : "",
+        summary ? summary.textContent : "",
+      ];
+    };
+    const card = (li) => {
+      const summary = li.querySelector(".g-attn__summary-text");
+      return [slotKey(li), summary ? summary.textContent : ""];
     };
     return JSON.stringify([
       title,
       Array.from(unitItems, unit),
       Array.from(clusterItems, unit),
-      Array.from(cardItems, slotKey),
+      Array.from(cardItems, card),
       Array.from(rowItems, rowKey),
     ]);
+  }
+
+  // Each rack unit's status class, to crossfade the gradients that changed (fadeStatus()).
+  function pageStatuses() {
+    const statuses = new Map();
+    document.querySelectorAll(".rack__slot[data-unit]").forEach((li) => statuses.set(slotKey(li), slotStatus(li)));
+    return statuses;
+  }
+
+  // The rebuilt unit starts with its old status class and switches to the new one a frame
+  // later, so glass.css's --g-st transition crossfades the gradient.
+  function fadeStatus(before) {
+    pageStatuses().forEach((now, key) => {
+      const old = before.get(key);
+      if (!old || !now || old === now) {
+        return;
+      }
+      const [kind, id] = key.split(":"); // id: digits only (validId)
+      document.querySelectorAll('.rack__slot[data-unit="' + kind + '"][data-id="' + id + '"]').forEach((li) => {
+        li.classList.replace(now, old);
+        window.getComputedStyle(li).getPropertyValue("--g-st"); // the old colour is the start
+        window.requestAnimationFrame(() => li.classList.replace(old, now));
+      });
+    });
   }
 
   function children(id) {
@@ -689,7 +942,8 @@
         return;
       }
       const [kind, id] = key.split(":"); // id: digits only (validId)
-      document.querySelectorAll('[data-unit="' + kind + '"][data-id="' + id + '"]').forEach((el) => {
+      const selector = '[data-unit="' + kind + '"][data-id="' + id + '"], [data-card="' + kind + '"][data-id="' + id + '"]';
+      document.querySelectorAll(selector).forEach((el) => {
         el.querySelectorAll(".rack-unit__lamp .lamp, .g-attn__head .lamp").forEach((dot) => {
           dot.classList.replace(now, old);
           dot.classList.add("g-dot-fade", "g-ring");
@@ -775,14 +1029,15 @@
   // --- The refresh ----------------------------------------------------------------------------------
 
   // Stable view-transition names on the server-rendered units and cards (CSSOM).
-  document.querySelectorAll("li[data-unit][data-id]").forEach((li) => {
-    const kind = li.getAttribute("data-unit") === "cluster" ? "cluster" : "host";
+  document.querySelectorAll("li[data-unit][data-id], li[data-card][data-id]").forEach((li) => {
+    const card = li.hasAttribute("data-card");
+    const kind = li.getAttribute(card ? "data-card" : "data-unit") === "cluster" ? "cluster" : "host";
     const id = li.getAttribute("data-id");
     if (!/^\d+$/.test(id)) {
       return;
     }
     let name = (kind === "cluster" ? "g-cl-" : "g-host-") + id;
-    if (li.classList.contains("g-attention__slot")) {
+    if (card) {
       name = "g-attn-" + (kind === "cluster" ? "c" : "h") + id;
     }
     li.style.setProperty("--g-vt", name);
@@ -839,10 +1094,13 @@
 
     // Build everything off the page first (no layout yet).
     const keepOpen = openKeys();
+    const counts = chipCounts(data, hosts.length);
+    const filterReset = filterBox !== null && settleFilter(counts);
     const units = showsExample ? null : hosts.map((h) => buildUnit(h, !seen.has("host:" + h.id)));
     const clusterUnits = clustersShown ? clusters.map(buildClusterUnit) : null;
     if (units) {
       reopen(units, keepOpen);
+      applyFilter(units);
     }
     if (clusterUnits) {
       reopen(clusterUnits, keepOpen);
@@ -855,6 +1113,7 @@
           .concat(
             clusters.filter((c) => NEEDS_ATTENTION.includes(c.status)).map((c) => buildAttentionCard("cluster", c))
           );
+    reopen(cards, keepOpen);
     const glassRows = activity.slice(0, GLASS_ACTIVITY).map(buildActivityRow);
     const legacyRows = activity.slice(0, LEGACY_ACTIVITY).map(buildActivityRow);
 
@@ -874,12 +1133,14 @@
       glassRows
     );
     const lampsBefore = pageLamps();
+    const statusesBefore = pageStatuses();
     const allowed = motionOK();
     const awayBefore = allowed ? rowTops(byId("g-away-list")) : new Map();
     let animate = false;
 
     function swap() {
-      renderHead(data, hosts.length, animate);
+      renderHead(data, hosts.length, clusters.length, animate);
+      pressChips();
       if (units) {
         replaceKeepingFocus(rack, units);
       }
@@ -887,7 +1148,8 @@
         replaceKeepingFocus(clusterRack, clusterUnits);
         setText("clusters-count", " " + clusters.length);
       }
-      renderDuo(cards, glassRows);
+      renderAttention(cards);
+      renderAway(glassRows);
       renderLegacyAway(legacyRows);
     }
 
@@ -902,6 +1164,7 @@
       }
       playList(byId("g-away-list"), awayBefore);
       ring(lampsBefore);
+      fadeStatus(statusesBefore);
       try {
         await transition.finished;
       } catch (e) {
@@ -912,7 +1175,11 @@
       if (animate) {
         playList(byId("g-away-list"), awayBefore);
         ring(lampsBefore);
+        fadeStatus(statusesBefore);
       }
+    }
+    if (filterReset) {
+      announceFilter(); // the chosen chip went empty: everything shows again
     }
     seen = new Set(Array.from(document.querySelectorAll(".rack__slot[data-unit]")).map(slotKey));
   }
