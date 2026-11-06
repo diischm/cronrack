@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from agent import AGENT_VERSION, collectors, report
-from agent.config import AgentConfig, KubernetesConfig
+from agent.config import AgentConfig, KubernetesConfig, NetworkConfig
 from agent.protocol import MAX_REPORT_BYTES, report_message
 from agent.report import (
     DEFAULT_COLLECTORS,
@@ -546,3 +546,46 @@ def test_fit_report_worst_case_unicode_stays_under_the_budget() -> None:
 def test_fit_report_result_is_still_json() -> None:
     fitted = fit_report(host_report(cluster()), 5_000)
     assert json.loads(json.dumps(fitted)) == fitted
+
+
+# --- network --------------------------------------------------------------------------------
+
+NETWORK = {
+    "method": "icmp",
+    "probed_at": "2026-10-12T12:00:00Z",
+    "gateway_found": True,
+    "server_local": False,
+    "points": [
+        {"name": "Router", "role": "gateway", "address": "192.0.2.1", "sent": 5, "received": 5,
+         "median_ms": 1.2, "p95_ms": 1.9},
+    ],
+    "dns": {"ok": True, "ms": 12.0},
+    "public_ip": None,
+}  # fmt: skip
+
+
+def test_no_network_key_unless_enabled() -> None:
+    plain = build_report(
+        AgentConfig(), now=NOW, collectors=fake_collectors(network=failing_collector)
+    )
+    assert "network" not in plain
+
+
+def test_network_key_when_enabled() -> None:
+    config = AgentConfig(network=NetworkConfig(enabled=True))
+    result = build_report(config, now=NOW, collectors=fake_collectors(network=lambda: NETWORK))
+    assert result["network"] == NETWORK
+    assert result["errors"] == []
+    assert list(result)[-1] == "errors"
+
+
+def test_network_failure_never_breaks_the_report() -> None:
+    def broken() -> Any:
+        raise OSError("192.0.2.1 unreachable")
+
+    config = AgentConfig(network=NetworkConfig(enabled=True))
+    result = build_report(config, now=NOW, collectors=fake_collectors(network=broken))
+    assert result["network"] is None
+    assert result["errors"] == [{"check": "network", "error": "OSError"}]
+    assert "192.0.2.1" not in json.dumps(result)
+    assert result["disks"] == [{"mount": "/", "percent": 42}]  # the rest is untouched

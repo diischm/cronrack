@@ -32,6 +32,16 @@
 #   --k8s-ca PATH          use this CA certificate instead (only with --k8s-cluster-view)
 #   --k8s-api URL          API server address (default https://127.0.0.1:6443)
 #
+# Network checks (optional, off unless you ask; see docs/network-monitoring.md):
+#   --network              check the path from this host to the internet: the router (the
+#                          default gateway, detected and confirmed), optional extra points,
+#                          then 1.1.1.1 and 8.8.8.8. Use it on ONE host, ideally the CronRack
+#                          server's own machine (it can still report during an outage).
+#   --network-hop NAME=IP  an extra local point after the router, e.g. "ISP box=192.0.2.254"
+#                          (repeatable, at most 2, in path order). Implies --network.
+#   --network-gateway IP   the router's address instead of asking ("auto" = always use the
+#                          default route). Needed when there is no terminal. Implies --network.
+#
 # Upgrade an installed agent: asks nothing, needs no terminal (safe for scripts and
 # Ansible) and keeps every setting. The usage text lists the exit codes.
 #
@@ -43,6 +53,8 @@
 #   --new-token      asks for a new token and replaces only the token
 #   --ca-file PATH   copies the CA certificate to /etc/cronrack/ca.crt and sets ca_file
 #   --k8s...         only changes the [kubernetes] settings you name; the rest is kept
+#   --network...     sets [network] enabled and gateway (and hops, if you name any);
+#                    the table's other keys (internet, dns, public IP) are kept
 #
 # Remove the agent again (asks before deleting /etc/cronrack, which holds the token):
 #
@@ -67,6 +79,8 @@ CA_DEST="$CONFIG_DIR/ca.crt"
 K8S_TOKEN_FILE="$CONFIG_DIR/k8s-token"
 K8S_CA_DEST="$CONFIG_DIR/k8s-ca.crt"
 K8S_CA_DEFAULT=/var/lib/rancher/k3s/server/tls/server-ca.crt
+ROUTE_FILE=/proc/net/route
+MAX_NETWORK_HOPS=2
 UNIT_NAME=cronrack-agent.service
 UNIT_FILE="/etc/systemd/system/$UNIT_NAME"
 DOCKER_DROPIN_DIR="/etc/systemd/system/$UNIT_NAME.d"
@@ -123,6 +137,7 @@ usage() {
   cat <<'USAGE'
 Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
                   [--k8s | --k8s-cluster-view [--k8s-ca PATH] [--k8s-api URL]]
+                  [--network [--network-gateway IP|auto] [--network-hop NAME=IP]...]
        install.sh --server https://SERVER --upgrade [--server-change] [--ca-file PATH]
        install.sh --uninstall
 
@@ -139,12 +154,22 @@ Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
   --k8s-ca PATH    Cluster CA certificate to copy (default: the k3s server CA). Public
                    certificate only: files with a private key are refused.
   --k8s-api URL    Kubernetes API address, https only (default https://127.0.0.1:6443)
+  --network        Check the path to the internet from this host: the router (default
+                   gateway, detected and confirmed), extra points, 1.1.1.1 and 8.8.8.8.
+                   Use it on ONE host, ideally the CronRack server's own machine.
+  --network-gateway IP|auto
+                   The router's private IPv4 address, or "auto" (follow the default
+                   route). Skips the question; needed without a terminal.
+  --network-hop NAME=IP
+                   An extra local point after the router, e.g. "ISP box=192.0.2.254".
+                   Repeatable (at most 2, in path order); replaces the existing hops.
   --upgrade        Upgrade an installed agent. Asks nothing and needs no terminal.
                    Keeps the token, the CA, the Kubernetes token and settings and the
                    current Docker choice. Changes nothing if it is already up to date.
                    If the new version doesn't keep running, the previous code is put
                    back (the websockets library in the venv is not rolled back).
-                   Not combinable with --new-token, --k8s*, --uninstall.
+                   Keeps [network] too.
+                   Not combinable with --new-token, --k8s*, --network*, --uninstall.
   --server-change  With --upgrade: allow --server to differ from server_url in
                    /etc/cronrack/agent.toml, and update it. Without it a different
                    server is refused, so an upgrade never moves an agent silently.
@@ -185,6 +210,9 @@ K8S=0
 K8S_VIEW=0
 K8S_CA=""
 K8S_API=""
+NETWORK=0
+NETWORK_GATEWAY=""
+NETWORK_HOPS=()  # "NAME=IP", in path order
 SERVER_CHANGE=0
 SETTING_FLAGS=()  # options that change settings: refused together with --upgrade
 while [ $# -gt 0 ]; do
@@ -200,6 +228,11 @@ while [ $# -gt 0 ]; do
     --k8s-ca=*) K8S_CA="${1#--k8s-ca=}"; SETTING_FLAGS+=(--k8s-ca); shift ;;
     --k8s-api) [ $# -ge 2 ] || die_usage "--k8s-api needs a URL"; K8S_API="$2"; SETTING_FLAGS+=(--k8s-api); shift 2 ;;
     --k8s-api=*) K8S_API="${1#--k8s-api=}"; SETTING_FLAGS+=(--k8s-api); shift ;;
+    --network) NETWORK=1; SETTING_FLAGS+=(--network); shift ;;
+    --network-gateway) [ $# -ge 2 ] || die_usage "--network-gateway needs an address or auto"; NETWORK=1; NETWORK_GATEWAY="$2"; SETTING_FLAGS+=(--network-gateway); shift 2 ;;
+    --network-gateway=*) NETWORK=1; NETWORK_GATEWAY="${1#--network-gateway=}"; SETTING_FLAGS+=(--network-gateway); shift ;;
+    --network-hop) [ $# -ge 2 ] || die_usage "--network-hop needs NAME=IP"; NETWORK=1; NETWORK_HOPS+=("$2"); SETTING_FLAGS+=(--network-hop); shift 2 ;;
+    --network-hop=*) NETWORK=1; NETWORK_HOPS+=("${1#--network-hop=}"); SETTING_FLAGS+=(--network-hop); shift ;;
     --uninstall) UNINSTALL=1; SETTING_FLAGS+=(--uninstall); shift ;;
     --upgrade) UPGRADE=1; shift ;;
     --server-change) SERVER_CHANGE=1; shift ;;
@@ -287,6 +320,85 @@ if [ -n "$K8S_API" ]; then
   K8S_API="${K8S_API%/}"
   [[ "$K8S_API" =~ ^https://([A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\])(:[0-9]{1,5})?$ ]] \
     || die_usage "--k8s-api must be https://HOST[:PORT] (no path; plain http:// is not allowed)"
+fi
+
+# Same rules as the agent (agent/config.py [network]): local points are private IPv4
+# (RFC 1918, link-local, CGNAT, RFC 5737), names 1-32 characters without quotes, backslashes or
+# control characters (they go into agent.toml as TOML strings).
+is_local_ipv4() {
+  local ip="$1" a b c d
+  # No leading zeros: the agent's parser refuses "010.0.0.1", and it would not start.
+  local octet='(0|[1-9][0-9]{0,2})'
+  [[ "$ip" =~ ^$octet\.$octet\.$octet\.$octet$ ]] || return 1
+  a=$((10#${BASH_REMATCH[1]})); b=$((10#${BASH_REMATCH[2]}))
+  c=$((10#${BASH_REMATCH[3]})); d=$((10#${BASH_REMATCH[4]}))
+  [ "$a" -le 255 ] && [ "$b" -le 255 ] && [ "$c" -le 255 ] && [ "$d" -le 255 ] || return 1
+  [ "$a" -eq 10 ] && return 0
+  [ "$a" -eq 172 ] && [ "$b" -ge 16 ] && [ "$b" -le 31 ] && return 0
+  [ "$a" -eq 192 ] && [ "$b" -eq 168 ] && return 0
+  [ "$a" -eq 169 ] && [ "$b" -eq 254 ] && return 0
+  [ "$a" -eq 100 ] && [ "$b" -ge 64 ] && [ "$b" -le 127 ] && return 0
+  # The documentation ranges (RFC 5737) are never routed; Python's ipaddress (the agent)
+  # counts them as private too.
+  [ "$a" -eq 192 ] && [ "$b" -eq 0 ] && [ "$c" -eq 2 ] && return 0
+  [ "$a" -eq 198 ] && [ "$b" -eq 51 ] && [ "$c" -eq 100 ] && return 0
+  [ "$a" -eq 203 ] && [ "$b" -eq 0 ] && [ "$c" -eq 113 ] && return 0
+  return 1
+}
+# default_gateway: the IPv4 default gateway from the route table (empty if there is none),
+# the same way the agent finds it (agent/network.py).
+default_gateway() {
+  local dest gw flags rest
+  [ -r "$ROUTE_FILE" ] || return 0
+  while read -r _ dest gw flags rest; do
+    [ "$dest" = "00000000" ] || continue
+    [[ "$gw" =~ ^[0-9A-Fa-f]{8}$ && "$flags" =~ ^[0-9A-Fa-f]+$ ]] || continue
+    (( (16#$flags & 3) == 3 )) || continue  # up, and a gateway route
+    printf '%d.%d.%d.%d\n' "$((16#${gw:6:2}))" "$((16#${gw:4:2}))" "$((16#${gw:2:2}))" "$((16#${gw:0:2}))"
+    return 0
+  done <"$ROUTE_FILE"
+}
+NETWORK_HOP_LINES=()  # TOML inline tables, built from NETWORK_HOPS
+if [ "$NETWORK" -eq 1 ]; then
+  if [ -n "$NETWORK_GATEWAY" ] && [ "$NETWORK_GATEWAY" != "auto" ] && ! is_local_ipv4 "$NETWORK_GATEWAY"; then
+    die_usage "--network-gateway must be auto or a private IPv4 address (e.g. 192.0.2.1)"
+  fi
+  [ "${#NETWORK_HOPS[@]}" -le "$MAX_NETWORK_HOPS" ] \
+    || die_usage "--network-hop: at most $MAX_NETWORK_HOPS extra points"
+  for hop in "${NETWORK_HOPS[@]}"; do
+    hop_name="${hop%=*}"
+    hop_ip="${hop##*=}"
+    [ "$hop_name" != "$hop" ] || die_usage "--network-hop needs NAME=IP, e.g. \"ISP box=192.0.2.254\""
+    # Trim spaces around the name.
+    hop_name="${hop_name#"${hop_name%%[![:space:]]*}"}"
+    hop_name="${hop_name%"${hop_name##*[![:space:]]}"}"
+    if [ "${#hop_name}" -lt 1 ] || [ "${#hop_name}" -gt 32 ] || [[ "$hop_name" =~ [\"\\[:cntrl:]] ]]; then
+      die_usage "--network-hop: the name must be 1-32 characters without quotes or backslashes"
+    fi
+    is_local_ipv4 "$hop_ip" || die_usage "--network-hop: $hop_ip is not a private IPv4 address"
+    # The agent refuses these too: point names are unique, and these words are taken.
+    case "${hop_name,,}" in
+      router|you|internet) die_usage "--network-hop: \"$hop_name\" is taken; use another name" ;;
+    esac
+    [[ ! "$hop_name" =~ ^[0-9.:]+$ ]] || die_usage "--network-hop: the name must not be an address"
+    for seen in "${NETWORK_HOP_LINES[@]}"; do
+      [[ "$seen" != "{ name = \"$hop_name\","* ]] || die_usage "--network-hop: two points named \"$hop_name\""
+    done
+    NETWORK_HOP_LINES+=("{ name = \"$hop_name\", address = \"$hop_ip\" }")
+  done
+  # The router: asked now, before anything is downloaded or written.
+  if [ -z "$NETWORK_GATEWAY" ]; then
+    [ "$(id -u)" -eq 0 ] || die "run this with sudo"
+    { : </dev/tty; } 2>/dev/null \
+      || die_usage "--network: no terminal to confirm the router; pass --network-gateway auto (or its address)"
+    detected="$(default_gateway)"
+    if [ -n "$detected" ] && ask_yes_no "Router (default gateway): $detected. Use the default route? [Y/n] " y; then
+      NETWORK_GATEWAY="auto"
+    else
+      read -r -p "The router's address (private IPv4, e.g. 192.0.2.1): " NETWORK_GATEWAY </dev/tty || true
+      is_local_ipv4 "$NETWORK_GATEWAY" || die_usage "that is not a private IPv4 address; nothing was changed"
+    fi
+  fi
 fi
 
 # curl trusts exactly this CA (not the system's) when --ca-file is given.
@@ -642,12 +754,13 @@ set_config_key() {
   xtrace_restore
 }
 
-# set_kubernetes_table KEY=VALUE...: in $CONFIG_FILE, set these keys inside the
-# [kubernetes] table (created if missing) and keep every other line, including the
-# table's other keys, as it is. VALUE is already TOML (true, or "quoted"). Bash builtins
-# only, new file root:cronrack 0640 before it is written, then moved over the old one.
-set_kubernetes_table() {
-  local tmp line pair key in_table=0 seen=0 skip
+# set_table TABLE KEY=VALUE...: in $CONFIG_FILE, set these keys inside [TABLE] (created
+# if missing) and keep every other line, including the table's other keys, as it is.
+# VALUE is already TOML (true, "quoted", or [ ... ]). Bash builtins only, new file
+# root:cronrack 0640 before it is written, then moved over the old one.
+set_table() {
+  local table="$1" tmp line pair key in_table=0 seen=0 skip
+  shift
   tmp="$(mktemp "$CONFIG_DIR/.agent.toml.XXXXXX")"
   if ! { chown root:"$AGENT_USER" "$tmp" && chmod 0640 "$tmp"; }; then
     rm -f "$tmp"
@@ -659,7 +772,7 @@ set_kubernetes_table() {
         # A table header ends the [kubernetes] table: add the keys it was missing.
         if [ "$in_table" -eq 1 ]; then printf '%s\n' "$@"; fi
         in_table=0
-        if [[ "$line" =~ ^[[:space:]]*\[kubernetes\][[:space:]]*(#.*)?$ ]]; then
+        if [[ "$line" =~ ^[[:space:]]*\[${table}\][[:space:]]*(#.*)?$ ]]; then
           in_table=1
           seen=1
         fi
@@ -676,7 +789,7 @@ set_kubernetes_table() {
     if [ "$in_table" -eq 1 ]; then
       printf '%s\n' "$@"
     elif [ "$seen" -eq 0 ]; then
-      printf '\n[kubernetes]\n'
+      printf '\n[%s]\n' "$table"
       printf '%s\n' "$@"
     fi
   } >"$tmp" || { rm -f "$tmp"; die "cannot write $tmp"; }
@@ -740,7 +853,7 @@ fi
 
 if [ "$K8S" -eq 1 ]; then
   if [ "$K8S_VIEW" -eq 0 ]; then
-    set_kubernetes_table 'enabled = true'
+    set_table kubernetes 'enabled = true'
     say "Kubernetes: this host reports its node role ([kubernetes] enabled = true)"
   else
     # The token file is created root:cronrack 0640 BEFORE the token goes in.
@@ -754,10 +867,30 @@ if [ "$K8S" -eq 1 ]; then
       install -m 0640 -o root -g "$AGENT_USER" "$K8S_CA_SRC" "$K8S_CA_DEST"
     fi
     say "Installed the Kubernetes CA certificate as $K8S_CA_DEST"
-    set_kubernetes_table 'enabled = true' 'cluster_view = true' \
+    set_table kubernetes 'enabled = true' 'cluster_view = true' \
       "token_file = \"$K8S_TOKEN_FILE\"" "ca_file = \"$K8S_CA_DEST\""
-    if [ -n "$K8S_API" ]; then set_kubernetes_table "api_server = \"$K8S_API\""; fi
+    if [ -n "$K8S_API" ]; then set_table kubernetes "api_server = \"$K8S_API\""; fi
     say "Kubernetes: cluster view on ([kubernetes] cluster_view = true)"
+  fi
+fi
+
+
+if [ "$NETWORK" -eq 1 ]; then
+  network_keys=('enabled = true' "gateway = \"$NETWORK_GATEWAY\"")
+  if [ "${#NETWORK_HOP_LINES[@]}" -gt 0 ]; then
+    hops_toml=""
+    for hop in "${NETWORK_HOP_LINES[@]}"; do hops_toml+="${hops_toml:+, }$hop"; done
+    network_keys+=("hops = [$hops_toml]")
+  fi
+  set_table network "${network_keys[@]}"
+  say "Network checks on ([network] enabled = true, gateway = \"$NETWORK_GATEWAY\", ${#NETWORK_HOP_LINES[@]} extra point(s))"
+  # Ping without root needs the agent's group inside net.ipv4.ping_group_range (systemd's
+  # default allows every group). Only reported: changing it is your decision.
+  agent_gid="$(id -g "$AGENT_USER")"
+  if read -r ping_low ping_high </proc/sys/net/ipv4/ping_group_range 2>/dev/null \
+     && { [ "$agent_gid" -lt "$ping_low" ] || [ "$agent_gid" -gt "$ping_high" ]; }; then
+    say "Note: net.ipv4.ping_group_range ($ping_low $ping_high) doesn't include the $AGENT_USER group,"
+    echo "    so the agent measures with TCP connects instead of ping (less exact)."
   fi
 fi
 
@@ -865,6 +998,7 @@ if wait_until_stable; then
   if [ -f "$CA_DEST" ] && [ -z "$CA_FILE" ]; then kept="$kept, CA certificate"; fi
   if [ -f "$K8S_TOKEN_FILE" ]; then kept="$kept, Kubernetes token"; fi
   if grep -Eq '^[[:space:]]*\[kubernetes\]' "$CONFIG_FILE"; then kept="$kept, [kubernetes] settings"; fi
+  if grep -Eq '^[[:space:]]*\[network\]' "$CONFIG_FILE"; then kept="$kept, [network] settings"; fi
   if [ -f "$DOCKER_DROPIN" ]; then kept="$kept, Docker access (on)"; else kept="$kept, Docker access (off)"; fi
   echo
   say "Upgraded the CronRack agent: $OLD_VERSION -> $NEW_VERSION"

@@ -5,6 +5,7 @@ The file will hold the host's token, so two rules apply everywhere here:
 - error messages name the bad *key*, never the value that was in it.
 """
 
+import ipaddress
 import os
 import re
 import stat
@@ -36,6 +37,21 @@ _TOKEN = re.compile(r"[A-Za-z0-9_-]{20,128}")
 DEFAULT_KUBE_API_SERVER = "https://127.0.0.1:6443"
 # /etc/rancher/k3s/k3s.yaml is the cluster *admin* kubeconfig. The agent must never use it.
 FORBIDDEN_KUBE_DIR = "/etc/rancher"
+# [network]: the points between this host and the internet. Every target is an address
+# written in this file (or the default route on this host): the server can't add any.
+DEFAULT_INTERNET_TARGETS = ("1.1.1.1", "8.8.8.8")
+DEFAULT_DNS_NAME = "example.com"
+DEFAULT_PUBLIC_IP_URL = "https://api.ipify.org"
+MAX_NETWORK_HOPS = 2
+MAX_INTERNET_TARGETS = 4
+MAX_POINT_NAME = 32
+RESERVED_POINT_NAMES = frozenset({"router", "you", "internet"})
+# Local points: private (RFC 1918), link-local or carrier-grade NAT (RFC 6598) IPv4.
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+_HOSTNAME = re.compile(
+    r"(?=.{1,253}\Z)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+)
+
 MAX_TOKEN_FILE_BYTES = 16 * 1024
 MAX_CA_FILE_BYTES = 1024 * 1024
 
@@ -61,6 +77,28 @@ class KubernetesConfig:
 
 
 @dataclass
+class NetworkHop:
+    """An extra local point after the router, e.g. the ISP box."""
+
+    name: str
+    address: str
+
+
+@dataclass
+class NetworkConfig:
+    """The [network] table. Off until the host owner turns it on here."""
+
+    enabled: bool = False
+    gateway: str = "auto"  # "auto" = the default route in /proc/net/route, or an address
+    hops: list[NetworkHop] = field(default_factory=list)
+    internet: list[str] = field(default_factory=lambda: list(DEFAULT_INTERNET_TARGETS))
+    dns: bool = True
+    dns_name: str = DEFAULT_DNS_NAME
+    public_ip_check: bool = False  # off: it asks a third party
+    public_ip_url: str = DEFAULT_PUBLIC_IP_URL
+
+
+@dataclass
 class AgentConfig:
     server_url: str | None = None
     token: str | None = None
@@ -69,6 +107,7 @@ class AgentConfig:
     enabled_checks: list[str] = field(default_factory=lambda: list(MVP_CHECKS))
     actions: dict[str, Any] = field(default_factory=dict)
     kubernetes: KubernetesConfig = field(default_factory=KubernetesConfig)
+    network: NetworkConfig = field(default_factory=NetworkConfig)
 
     def __repr__(self) -> str:
         # Written by hand so the token can't leak into logs or tracebacks.
@@ -78,7 +117,7 @@ class AgentConfig:
             f"AgentConfig(server_url={self.server_url!r}, token={token}, "
             f"ca_file={self.ca_file!r}, interval_seconds={self.interval_seconds!r}, "
             f"enabled_checks={self.enabled_checks!r}, actions={self.actions!r}, "
-            f"kubernetes={self.kubernetes!r})"
+            f"kubernetes={self.kubernetes!r}, network={self.network!r})"
         )
 
 
@@ -260,6 +299,125 @@ def _parse_kubernetes(data: Any) -> KubernetesConfig:
     return config
 
 
+def is_local_address(value: str) -> bool:
+    """Private, link-local or CGNAT IPv4: a point inside the home network."""
+    try:
+        ip = ipaddress.IPv4Address(value)
+    except ValueError:
+        return False
+    if ip.is_loopback or ip.is_unspecified or ip.is_multicast or ip.is_reserved:
+        return False
+    return ip.is_private or ip.is_link_local or ip in _CGNAT
+
+
+def is_internet_address(value: str) -> bool:
+    """A public unicast IPv4 address (Python counts 224.0.0.0/4 as global: not here)."""
+    try:
+        ip = ipaddress.IPv4Address(value)
+    except ValueError:
+        return False
+    return ip.is_global and not ip.is_multicast
+
+
+def _point_name(value: Any, key: str) -> str:
+    if not isinstance(value, str):
+        raise ConfigError(f"'{key}' must be a string")
+    name = value.strip()
+    if not 1 <= len(name) <= MAX_POINT_NAME or not name.isprintable():
+        raise ConfigError(f"'{key}' must be 1-{MAX_POINT_NAME} printable characters")
+    return name
+
+
+def _hop_name(value: Any, others: list[NetworkHop]) -> str:
+    """Point names are unique in a report: the strip's own words and addresses are taken."""
+    name = _point_name(value, "hops name")
+    if name.casefold() in RESERVED_POINT_NAMES or any(h.name == name for h in others):
+        raise ConfigError("each of 'hops' needs its own name (not Router, You or Internet)")
+    try:
+        ipaddress.ip_address(name)
+    except ValueError:
+        return name
+    raise ConfigError("a name in 'hops' must not be an address")
+
+
+def check_public_ip_url(url: str) -> str:
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        parts.port  # noqa: B018 - raises ValueError for a bad port
+    except ValueError:
+        raise ConfigError("'public_ip_url' is not a valid URL") from None
+    if parts.scheme != "https" or not host:
+        raise ConfigError("'public_ip_url' must be an https:// URL")
+    if parts.username or parts.password or parts.fragment:
+        raise ConfigError("'public_ip_url' must not contain a user name, password or #")
+    return url
+
+
+def _parse_network(data: Any) -> NetworkConfig:
+    """[network]. Errors name the key, never the value (addresses are host details)."""
+    if not isinstance(data, dict):
+        raise ConfigError("'network' must be a table")
+    known = {
+        "enabled",
+        "gateway",
+        "hops",
+        "internet",
+        "dns",
+        "dns_name",
+        "public_ip_check",
+        "public_ip_url",
+    }
+    unknown = sorted(set(data) - known)
+    if unknown:
+        raise ConfigError(f"unknown [network] setting(s): {', '.join(unknown)}")
+    for key in ("enabled", "dns", "public_ip_check"):
+        if not isinstance(data.get(key, False), bool):
+            raise ConfigError(f"'{key}' must be true or false")
+    config = NetworkConfig(
+        enabled=data.get("enabled", False),
+        dns=data.get("dns", True),
+        public_ip_check=data.get("public_ip_check", False),
+    )
+    if "gateway" in data:
+        gateway = data["gateway"]
+        if not isinstance(gateway, str) or not (gateway == "auto" or is_local_address(gateway)):
+            raise ConfigError("'gateway' must be \"auto\" or a private IPv4 address")
+        config.gateway = gateway
+    if "hops" in data:
+        hops = data["hops"]
+        if not isinstance(hops, list) or len(hops) > MAX_NETWORK_HOPS:
+            raise ConfigError(f"'hops' must be a list of at most {MAX_NETWORK_HOPS} points")
+        for hop in hops:
+            if not isinstance(hop, dict) or set(hop) != {"name", "address"}:
+                raise ConfigError('each of \'hops\' must be { name = "...", address = "..." }')
+            if not isinstance(hop["address"], str) or not is_local_address(hop["address"]):
+                raise ConfigError("'hops' addresses must be private IPv4 addresses")
+            config.hops.append(NetworkHop(_hop_name(hop["name"], config.hops), hop["address"]))
+    if "internet" in data:
+        targets = data["internet"]
+        if (
+            not isinstance(targets, list)
+            or not 1 <= len(targets) <= MAX_INTERNET_TARGETS
+            or not all(isinstance(t, str) and is_internet_address(t) for t in targets)
+        ):
+            raise ConfigError(
+                f"'internet' must be a list of 1-{MAX_INTERNET_TARGETS} public IPv4 addresses"
+            )
+        config.internet = list(dict.fromkeys(targets))
+    if "dns_name" in data:
+        name = data["dns_name"]
+        if not isinstance(name, str) or not _HOSTNAME.fullmatch(name):
+            raise ConfigError("'dns_name' must be a host name such as example.com")
+        config.dns_name = name
+    if "public_ip_url" in data:
+        url = data["public_ip_url"]
+        if not isinstance(url, str):
+            raise ConfigError("'public_ip_url' must be a string")
+        config.public_ip_url = check_public_ip_url(url)
+    return config
+
+
 def _optional_str(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     if value is not None and not isinstance(value, str):
@@ -276,6 +434,7 @@ def _parse(data: dict[str, Any]) -> AgentConfig:
         "enabled_checks",
         "actions",
         "kubernetes",
+        "network",
     }
     unknown = sorted(set(data) - known)
     if unknown:
@@ -322,6 +481,9 @@ def _parse(data: dict[str, Any]) -> AgentConfig:
 
     if "kubernetes" in data:
         config.kubernetes = _parse_kubernetes(data["kubernetes"])
+
+    if "network" in data:
+        config.network = _parse_network(data["network"])
 
     return config
 

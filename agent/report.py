@@ -10,7 +10,8 @@ A check is null when it is disabled, its tool is missing, or it crashed.
 Only a crash adds an entry to errors.
 
 When [kubernetes] enabled is set, a `kubernetes` key ({"node": ..., "cluster": ...})
-is added before errors. Without it the report is exactly as before.
+is added before errors; when [network] enabled is set, a `network` key (agent/network.py).
+Without them the report is exactly as before.
 """
 
 import json
@@ -22,6 +23,7 @@ from typing import Any
 
 from agent import AGENT_VERSION
 from agent import collectors as agent_collectors
+from agent import network as agent_network
 from agent.config import AgentConfig, KubernetesConfig
 from agent.kube_api import KubeClient
 from agent.kube_cluster import SHRINK_STEPS, collect_cluster_view, shrink_cluster_view
@@ -30,6 +32,7 @@ from agent.protocol import MAX_REPORT_BYTES, _clean, report_message
 Collector = Callable[[], Any]
 
 KUBERNETES_KEY = "kubernetes"
+NETWORK_KEY = "network"
 
 # Config check name -> key in the report, in report order.
 REPORT_KEYS: dict[str, str] = {
@@ -132,6 +135,14 @@ def build_report(
         )
         result, error = safe_collect(KUBERNETES_KEY, collect)
         report[KUBERNETES_KEY] = result
+        if error is not None:
+            errors.append(error)
+    if config.network.enabled:
+        collect = collectors.get(NETWORK_KEY) or partial(
+            agent_network.NETWORK, config.network, config.server_url
+        )
+        result, error = safe_collect(NETWORK_KEY, collect)
+        report[NETWORK_KEY] = result
         if error is not None:
             errors.append(error)
     report["errors"] = errors
