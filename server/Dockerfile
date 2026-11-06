@@ -9,7 +9,7 @@
 # The exact Python image, pinned by digest (the digest covers amd64 and arm64).
 # Upgrade on purpose: change the tag AND the digest together
 # (docker buildx imagetools inspect python:<tag> prints the digest).
-ARG PYTHON_IMAGE=python:3.12.15-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+ARG PYTHON_IMAGE=python:3.12.15-slim-trixie@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 
 
 # --- stage 1: build the virtual environment --------------------------------------------
@@ -38,6 +38,14 @@ ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     SQLITE_PATH=/data/db.sqlite3
+
+# Debian security fixes can land before the next python image does. Trade-off: builds are
+# slightly less reproducible (package versions depend on when this layer was built), but
+# the image ships patched packages. A cached layer only refreshes on a digest bump or a
+# cache miss, so bump the digest above to pick up newer fixes.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 # The base image's own pip goes too (the venv above has none): nothing in this image
 # installs packages at runtime.

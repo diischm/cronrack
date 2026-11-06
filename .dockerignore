@@ -20,3 +20,10 @@ server/data
 **/__pycache__
 **/*.pyc
 **/*.md
+
+# No npm files: the image has no Node, so these could only ever be stray files. They must
+# stay below the ! lines above, because the last matching rule wins.
+**/node_modules
+**/package*.json
+**/yarn.lock
+**/pnpm-lock.yaml
