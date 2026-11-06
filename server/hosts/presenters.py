@@ -230,9 +230,10 @@ def activity_entry(event: StatusEvent, now: datetime, data: OwnerData, with_day=
 
 
 def overview_context(user, now: datetime) -> dict[str, Any]:
-    # Imported here: clusters.presenters imports this module.
+    # Imported here: clusters.presenters and network.presenters import this module.
     from clusters.models import Cluster
     from clusters.presenters import cluster_summary
+    from network.presenters import network_summary
 
     data = OwnerData(user)
     owned = list(Host.objects.filter(owner=user))
@@ -243,7 +244,7 @@ def overview_context(user, now: datetime) -> dict[str, Any]:
     status_of = {h.pk: data.status(h, now) for h in owned}
     hosts = sort_hosts(owned, status_of=lambda h: status_of[h.pk])
     newest = max((h.last_seen_at for h in hosts if h.last_seen_at), default=None)
-    events = StatusEvent.objects.owned_by(user).select_related("host", "cluster")
+    events = StatusEvent.objects.owned_by(user).select_related("host", "cluster", "network")
     statuses = list(status_of.values())
     return {
         "attention_count": sum(1 for s in statuses if s in NEEDS_ATTENTION)
@@ -260,6 +261,7 @@ def overview_context(user, now: datetime) -> dict[str, Any]:
         "hosts_online": sum(1 for h in hosts if h.connected),
         "hosts": [host_summary(h, now, data) for h in hosts],
         "clusters": clusters,
+        "network": network_summary(user, now, data),
         "activity": [activity_entry(e, now, data) for e in events[:OVERVIEW_ACTIVITY]],
     }
 

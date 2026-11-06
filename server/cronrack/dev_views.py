@@ -8,6 +8,7 @@ from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import render
 
 from hosts.samples import PREVIEW_CONTEXT, PREVIEW_STATES, with_summaries
+from network.samples import NETWORK_STATES, sample_context, sample_summary
 
 XSS_SCRIPT = "<script>alert(1)</script>"
 XSS_IMG = '"><img src=x onerror=alert(1)>'
@@ -18,6 +19,8 @@ def preview(request: HttpRequest) -> HttpResponse:
 
     ?state=empty shows the 0-hosts page, ?state=xss puts hostile text into the data,
     ?state=one | small | busy | healthy show other amounts of data (hosts.samples).
+    ?net=ok | router | isp | internet | slow | unknown adds the network strip in that state
+    (network.samples); without it there is no network data, so no strip.
     The URL always exists, but answers 404 unless DEBUG is on, so a production
     server shows nothing here.
     """
@@ -46,7 +49,19 @@ def preview(request: HttpRequest) -> HttpResponse:
             clusters=[],
             activity=[],
         )
+    net = request.GET.get("net")
+    context["network"] = sample_summary(net) if net in NETWORK_STATES else None
     return render(request, "hosts/overview.html", context)
+
+
+def preview_network(request: HttpRequest) -> HttpResponse:
+    """The Network page with sample data: ?net=ok | router | isp | internet | slow | unknown,
+    anything else (or none) the page without any reporting agent. 404 unless DEBUG is on."""
+    if not settings.DEBUG:
+        raise Http404
+    net = request.GET.get("net")
+    context = sample_context(net) if net in NETWORK_STATES else {"network": None, "reporters": []}
+    return render(request, "network/index.html", context)
 
 
 def preview_cluster(request: HttpRequest) -> HttpResponse:

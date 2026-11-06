@@ -6,7 +6,7 @@
   headline's "N things".
 {% endcomment %}
 <section class="g-attention g-only" id="g-attention" aria-labelledby="g-attention-title">
-  <div class="section-head"><h2 class="section-title" id="g-attention-title">Needs attention<span class="section-count" id="g-attention-count">{% if not blank %} {{ attention_count }}{% endif %}</span></h2></div>
+  <h2 class="visually-hidden" id="g-attention-title">Needs attention<span id="g-attention-count">{% if not blank %} {{ attention_count }}{% endif %}</span></h2>
   <ul class="g-attention__grid" id="g-attention-list">
     {% if not blank %}{% for host in hosts %}{% if host.status == "red" or host.status == "yellow" or host.status == "offline" %}{% include "components/attention_card.html" with unit=host kind="host" %}{% endif %}{% endfor %}{% for cluster in clusters %}{% if cluster.status == "red" or cluster.status == "yellow" or cluster.status == "offline" %}{% include "components/attention_card.html" with unit=cluster kind="cluster" %}{% endif %}{% endfor %}{% endif %}
   </ul>

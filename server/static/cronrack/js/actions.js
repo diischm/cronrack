@@ -221,6 +221,8 @@
   }
 
   // Check all now: ask every host, wait for the reports (or 15 s), refresh, then report.
+  // Legacy's overview only for now: Glass has no such key, but this and the Dynamic Island
+  // stay, for when it returns.
   async function checkAll(form, ui) {
     const hosts = overviewHosts();
     const total = hosts.urls.length + hosts.offline;

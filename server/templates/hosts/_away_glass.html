@@ -2,14 +2,15 @@
 {% comment %}
   Glass "While you were away" (inside hosts/overview.html's .overview-hosts, after the Hosts
   rack): the newest entries (up to OVERVIEW_ACTIVITY, 10), in a box whose list scrolls
-  inside it; below 1200px only the newest 3 show (glass.css). "See all" sits in the section
-  header. blank=True: the empty shell in <template id="g-away-template">.
+  inside it; below 1200px only the newest 3 show (glass.css). "See all" sits at the bottom
+  right; the heading is visually hidden. blank=True: the empty shell in <template id="g-away-template">.
 {% endcomment %}
 <section class="g-side g-only" id="g-away" aria-labelledby="g-away-title">
   <div class="g-away">
-    <div class="section-head"><h2 class="section-title" id="g-away-title">While you were away</h2><a class="section-link" href="/activity/">See all</a></div>
+    <h2 class="visually-hidden" id="g-away-title">While you were away</h2>
     <ol class="g-away__list activity" id="g-away-list">
       {% if not blank %}{% for entry in activity %}{% include "components/activity_row.html" with entry=entry %}{% endfor %}{% endif %}
     </ol>
+    <a class="section-link g-see-all" href="/activity/">See all →</a>
   </div>
 </section>

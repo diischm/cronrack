@@ -23,8 +23,8 @@
    this file animates): tilt on the closed attention cards (mouse only, 8° max, no glare),
    Number Flow (the filter chips' counts), the nav's hover highlight and sliding pill, rack
    units sliding out on hover and expanding inline (attention cards expand the same way),
-   the rack units' status gradient crossfading, the status ring, the Animated List, the
-   per-word headline, the Dynamic Island, toasts, press scale, meters filling, the
+   the rack units' status gradient crossfading, the network strip's colours crossfading, the
+   Animated List, the Dynamic Island, toasts, press scale, meters filling, the
    progressive blur, view transitions on refresh and filtering, and the first-load entrance.
    Only transform and opacity animate, except the inline expand's grid-template-rows and the
    status colour (--g-st, a registered <color>) of the unit gradients.
@@ -186,10 +186,11 @@
    page has scrolled. */
 [data-skin="glass"] .topbar { position: sticky; top: 0; z-index: 9; min-height: var(--g-bar-h);
   padding: 12px var(--space-4); }
-[data-skin="glass"] .brand { gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: var(--g-text); }
-/* Logo: the same three bars (base.html), orange at 1 / .6 / .35. */
+[data-skin="glass"] .brand { gap: 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; color: var(--g-text); }
+/* Logo: the same three bars (base.html), orange at 1 / .6 / .35. Phone 24px wide + a 19px
+   wordmark (it still fits beside the keys); desktop 28px + 22px. */
 [data-skin="glass"] .brand__bars { gap: 3px; }
-[data-skin="glass"] .brand__bars span { width: 20px; height: 4px; border-radius: 2px; background: var(--g-accent); }
+[data-skin="glass"] .brand__bars span { width: 24px; height: 4px; border-radius: 2px; background: var(--g-accent); }
 [data-skin="glass"] .brand__bars span:nth-child(2) { opacity: 0.6; }
 [data-skin="glass"] .brand__bars span:nth-child(3) { opacity: 0.35; }
 /* Glass is dark only: no light/dark key. */
@@ -204,7 +205,9 @@
   [data-skin="glass"] .app:not(.app--bare) .brand,
   [data-skin="glass"] .app:not(.app--bare) .topbar__actions { position: sticky; top: 0; z-index: 9;
     align-self: stretch; margin-block: 0; }
-  [data-skin="glass"] .app:not(.app--bare) .brand { font-size: 18px; }
+  [data-skin="glass"] .app:not(.app--bare) .brand { font-size: 22px; }
+  [data-skin="glass"] .app:not(.app--bare) .brand__bars { gap: 4px; }
+  [data-skin="glass"] .app:not(.app--bare) .brand__bars span { width: 28px; height: 5px; border-radius: 2.5px; }
   /* The nav keeps its own 54px height, centred in the bar while it sticks. */
   [data-skin="glass"] .app:not(.app--bare) .bottom-nav { position: sticky; z-index: 9; align-self: start;
     top: calc((var(--g-bar-h) - 54px) / 2); margin-top: calc((var(--g-bar-h) - 54px) / 2); height: 54px; }
@@ -408,10 +411,11 @@
      .status-icon, also the title= tooltip on hover);
    - every card also says WHY in plain text (the summary line: "immich-server exited",
      "2 issues", "All good", "Waiting for the first report", "Offline");
-   - Settings > Appearance > "Show status labels" adds the visible word next to every dot
-     and next to every rack unit's name (Needs you, Heads up, All good, Offline), for anyone
-     who can't tell the colours apart.
-   The filter chips are the only place the words always show. */
+   - Settings > Appearance > "Show status labels" adds the visible word next to every dot,
+     every rack unit's name and every attention card's name (Needs you, Heads up, All good,
+     Offline), for anyone who can't tell the colours apart.
+   On the overview only the activity rows have dots; the filter chips always show words.
+   The host detail and Clusters pages keep theirs for now. */
 [data-skin="glass"] .status-icon { width: auto; height: auto; min-width: 10px; min-height: 10px; gap: 7px;
   font-size: 12px; font-weight: 600; color: var(--g-text-2); --dot: var(--g-grey); }
 [data-skin="glass"] .status-icon svg { display: none; }
@@ -436,22 +440,6 @@
 [data-skin="glass"] .lamp--off { background: var(--g-grey); }
 [data-skin="glass"] .lamp-label { gap: 10px; }
 
-/* Status ring (overview.js adds .g-ring when a status changed on a refresh): one soft outline
-   that expands and fades, twice, then stops. One-shot, not a glow. The dot's own colour
-   change crossfades (.g-dot-fade). */
-[data-skin="glass"] .lamp.g-ring, [data-skin="glass"] .status-icon.g-ring { position: relative; }
-[data-skin="glass"] .lamp.g-ring::after, [data-skin="glass"] .status-icon.g-ring::after { content: ""; position: absolute;
-  width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--g-ring, var(--g-grey)); pointer-events: none;
-  animation: g-ring 1.4s var(--g-ease) 2 both; }
-[data-skin="glass"] .lamp.g-ring::after { left: 0; top: 0; box-sizing: border-box; }
-[data-skin="glass"] .status-icon.g-ring::after { left: 0; top: 50%; margin-top: -4.5px; box-sizing: border-box; }
-[data-skin="glass"][data-labels="on"] .status-icon.g-ring::after { left: auto; right: 0; }
-[data-skin="glass"] .lamp--red.g-ring, [data-skin="glass"] .status-icon--bad.g-ring { --g-ring: var(--g-red); }
-[data-skin="glass"] .lamp--amber.g-ring, [data-skin="glass"] .status-icon--warn.g-ring { --g-ring: var(--g-yellow); }
-[data-skin="glass"] .lamp--green.g-ring, [data-skin="glass"] .status-icon--good.g-ring { --g-ring: var(--g-green); }
-@keyframes g-ring { from { transform: scale(1); opacity: 0.9; } to { transform: scale(3.2); opacity: 0; } }
-[data-skin="glass"] .lamp.g-dot-fade { transition: background-color 600ms var(--g-ease); }
-
 /* "Offline · last report 3 days ago": the word (and its separator) only for screen readers,
    unless "Show status labels" is on; the grey dot says it. */
 [data-skin="glass"] .offline-note { color: var(--g-text-3); font-size: 13px; font-weight: 500; }
@@ -472,15 +460,20 @@
 
 /* --- Filter chips + Number Flow ---------------------------------------------------------------
    The status counts, as filter chips under the Hosts heading (hosts/overview.html; they
-   replace Legacy's tiles): "All N", then Needs you / Heads up / All good / Offline, each with
-   its dot. The pressed chip is the grey pill (like the nav). A chip with 0 hosts is
+   replace Legacy's tiles): "All N", then Needs you / Heads up / All good / Offline, words
+   and counts only (dots are for the activity rows). The pressed chip is the grey pill (like the nav). A chip with 0 hosts is
    aria-disabled: faded, but its text keeps >= 4.5:1 (rgba(235,235,245,.55) on the ground is
    5.4:1), so its count stays readable. They wrap onto more lines on phones (44px targets),
    never scroll sideways. overview.js filters the rack.
    Number Flow (SmoothUI): glass.js puts a column of 0–9 per digit next to the real number
    (.g-flow, kept for screen readers and overview.js) and rolls it to the value: a plain
    ease-out, no overshoot (an overshoot would flash the next digit). */
-[data-skin="glass"] .g-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+/* The row above the rack: chips left, "+ Add host" right, the same height as a chip; the
+   only orange key on the overview. On phones the chips wrap and the key stays right. */
+[data-skin="glass"] .g-hosts-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px 12px; margin: 0 0 10px; }
+[data-skin="glass"] .g-chips { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+[data-skin="glass"] .g-add-host.btn--primary { min-height: 34px; padding: 0 14px; font-size: 13.5px; margin-left: auto; }
 [data-skin="glass"] .g-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 13px;
   border-radius: 999px; border: 1px solid var(--g-edge); background: var(--g-fill); color: var(--g-text-2);
   font: 500 13.5px/1.2 var(--font-ui); cursor: pointer;
@@ -490,16 +483,12 @@
 [data-skin="glass"] .g-chip[aria-pressed="true"] { background: var(--g-fill-hi); border-color: var(--g-edge-2); color: var(--g-text); }
 [data-skin="glass"] .g-chip__count { display: inline-flex; align-items: center; line-height: 1; color: var(--g-text);
   font-weight: 650; font-variant-numeric: tabular-nums; }
-[data-skin="glass"] .g-chip__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--g-grey); }
-[data-skin="glass"] .g-chip__dot--red { background: var(--g-red); }
-[data-skin="glass"] .g-chip__dot--yellow { background: var(--g-yellow); }
-[data-skin="glass"] .g-chip__dot--green { background: var(--g-green); }
 [data-skin="glass"] .g-chip[aria-disabled="true"] { cursor: default; background: transparent; border-color: rgba(255, 255, 255, 0.05);
   color: rgba(235, 235, 245, 0.55); }
 [data-skin="glass"] .g-chip[aria-disabled="true"] .g-chip__count { color: rgba(235, 235, 245, 0.55); }
-[data-skin="glass"] .g-chip[aria-disabled="true"] .g-chip__dot { opacity: 0.4; }
 @media (max-width: 899.98px) {
   [data-skin="glass"] .g-chip { min-height: 44px; }
+  [data-skin="glass"] .g-add-host.btn--primary { min-height: 44px; }
 }
 /* With JS (glass.js adds .g-flowing): the digits show, the plain number is for screen readers. */
 [data-skin="glass"] .g-flowing > .g-flow { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden;
@@ -513,33 +502,25 @@
 [data-skin="glass"] .g-digit__col > span { display: block; height: 1em; line-height: 1; }
 
 /* --- Overview layout --------------------------------------------------------------------------
-   design-ref/glass/overview-glass-v8.html: headline + keys → Needs attention (full width) →
-   [Hosts: chips + rack | While you were away] → Clusters rack. Every gap between sections is
-   --g-section, every gap between cards --g-gap. A section with nothing in it isn't rendered
-   (hosts/overview.html), so it leaves no gap. DOM order = visual order = focus order at
-   every width.
+   Top bar → network strip → Needs attention → [chips + Add host, Hosts rack | While you were
+   away] → Clusters. No header row (.overview-head is Legacy only) and no visible section
+   titles: every section is labelled by a visually-hidden heading. Every gap between sections
+   is --g-section, every gap between cards --g-gap. A section with nothing in it isn't
+   rendered (hosts/overview.html), so it leaves no gap. DOM order = visual order = focus
+   order at every width.
    The row (from 1200px): .overview-hosts is a grid, minmax(0, 7fr) | minmax(280px, 3fr). The
-   activity box spans the Hosts heading, chips and rack; it is absolutely placed inside its
-   cell (at least 240px), so its list scrolls inside it and never makes the row taller.
-   Without activity the Hosts column takes the full width. The Clusters heading and rack
-   span both columns below. Below 1200px one column: Hosts, the newest 3 of "While you were
-   away" + "See all", Clusters. No sticky side column anywhere. */
+   activity box spans the chips row and the rack; it is absolutely placed inside its cell
+   (at least 240px), so its list scrolls inside it and never makes the row taller.
+   Without activity the Hosts column takes the full width. The Clusters rack and its
+   "See all →" span both columns below. Below 1200px one column: Hosts, the newest 3 of
+   "While you were away", Clusters. No sticky side column anywhere. */
 [data-skin="glass"] .app-main--wide { --stack-gap: var(--g-section); }
-[data-skin="glass"] .overview-head { margin: 0; }
-[data-skin="glass"] .overview-head .page-title { font-size: 24px; letter-spacing: -0.02em; line-height: 1.2; }
-[data-skin="glass"] .overview-head__sub { color: var(--g-text-2); }
 [data-skin="glass"] .refresh-failed { color: var(--g-text); font-weight: 600; }
-/* Phones: "Check all now" + "Add host" under the headline; the top bar's copies go. */
+/* Phones: "+ Add host" is on the chips row, so the top bar's copy goes when that row exists
+   (no hosts yet: no chips, the key stays). No Check all key on the overview. */
 @media (max-width: 899.98px) {
-  [data-skin="glass"] .overview-head__actions.desk-only, [data-skin="glass"] .overview-head__actions .desk-only { display: flex !important; }
-  [data-skin="glass"] .overview-head__actions { flex-wrap: wrap; gap: 10px; margin-top: 12px; }
-  [data-skin="glass"] .overview-head__actions form { display: flex; }
-  [data-skin="glass"] .topbar__form, [data-skin="glass"] .app:has(.overview-head__actions) .add-key { display: none; }
+  [data-skin="glass"] .topbar__form, [data-skin="glass"] .app:has(.g-add-host) .add-key { display: none; }
 }
-/* The headline changes word by word (overview.js wraps the words in .g-word). */
-[data-skin="glass"] .g-word { display: inline-block; animation: g-word-in 550ms var(--g-ease) both;
-  animation-delay: calc(var(--g-i, 0) * 60ms); }
-@keyframes g-word-in { from { opacity: 0; filter: blur(6px); transform: translateY(8px); } }
 
 [data-skin="glass"] .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
   min-height: 44px; margin: 0 0 4px; }
@@ -550,21 +531,30 @@
 [data-skin="glass"] .g-attention__slot { min-width: 0; }
 
 /* The Hosts section: heading, chips, rack; then the activity box and the Clusters rack. */
-[data-skin="glass"] .overview-hosts { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 24px; align-items: start; }
+[data-skin="glass"] .overview-hosts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 24px; align-items: start; }
 [data-skin="glass"] .overview-hosts > * { grid-column: 1; min-width: 0; }
 [data-skin="glass"] .overview-hosts > #g-away { margin-top: var(--g-section); }
+/* The Clusters heading is hidden, its row collapses; the gap above the rack stays. */
+[data-skin="glass"] .overview-clusters__head { display: block; min-height: 0; margin: var(--g-section) 0 0; }
+[data-skin="glass"] .overview-clusters__head > .section-title { position: absolute; width: 1px; height: 1px; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+/* "See all →": small, at the bottom right of the Clusters section and the activity box. */
+[data-skin="glass"] .g-see-all { display: block; justify-self: end; align-self: flex-end; width: fit-content; margin-top: 8px;
+  padding-block: 13px 0; min-height: 44px; }
+[data-skin="glass"] .g-see-all::after { bottom: 12px; }
 /* Below 1200px: the newest 3 entries ("See all" opens the rest). */
 @media (max-width: 1199.98px) {
   [data-skin="glass"] .g-away__list > :nth-child(n+4) { display: none; }
 }
 @media (min-width: 1200px) {
   [data-skin="glass"] .overview-hosts:has(> #g-away) { grid-template-columns: minmax(0, 7fr) minmax(280px, 3fr);
-    grid-template-rows: auto auto 1fr; }
-  [data-skin="glass"] .overview-hosts > #g-away { grid-column: 2; grid-row: 1 / span 3; align-self: stretch;
+    grid-template-rows: auto 1fr; }
+  [data-skin="glass"] .overview-hosts > #g-away { grid-column: 2; grid-row: 1 / span 2; align-self: stretch;
     position: relative; min-height: 240px; margin-top: 0; }
   [data-skin="glass"] .overview-hosts > #g-away > .g-away { position: absolute; inset: 0; }
   [data-skin="glass"] .overview-hosts > .overview-clusters__head,
-  [data-skin="glass"] .overview-hosts > .overview-clusters__rack { grid-column: 1 / -1; }
+  [data-skin="glass"] .overview-hosts > .overview-clusters__rack,
+  [data-skin="glass"] .overview-hosts > .g-see-all { grid-column: 1 / -1; }
 }
 
 /* Attention card (components/attention_card.html): a neutral surface; the dot carries the
@@ -579,7 +569,12 @@
 [data-skin="glass"] .g-attn__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
 [data-skin="glass"] .g-attn__name { min-width: 0; font-size: 15.5px; font-weight: 700; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; }
-[data-skin="glass"] .g-attn__head > .status-icon, [data-skin="glass"] .g-attn__offline { flex: none; display: inline-flex; align-items: center; }
+/* No dot on the card: the status is words only, visible with "Show status labels". */
+[data-skin="glass"] .g-attn__head > .status-icon, [data-skin="glass"] .g-attn__offline { flex: none; display: inline-flex; align-items: center;
+  font-size: 12px; font-weight: 600; color: var(--g-text-2); }
+[data-skin="glass"] .g-attn__head > .status-icon { min-width: 0; min-height: 0; --dot: transparent; }
+[data-skin="glass"][data-labels="on"] .g-attn__offline > .visually-hidden { position: static; width: auto; height: auto; margin: 0;
+  overflow: visible; clip: auto; clip-path: none; }
 [data-skin="glass"] .g-attn__summary { display: block; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; }
 [data-skin="glass"] .g-attn__meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0;
@@ -760,15 +755,10 @@
     -webkit-box-orient: vertical; }
 }
 
-/* The overview's racks: the Hosts heading (Legacy: screen-reader only) is a visible section
-   heading here; the Clusters rack spans the full width after the Hosts row (layout above). */
+/* The overview's racks: the Clusters rack spans the full width after the Hosts row (layout above). */
 /* pages.css gives Legacy's split body align-items: start; here every section takes the full width. */
 [data-skin="glass"] .overview-body, [data-skin="glass"] .overview-body--split { display: flex; flex-direction: column;
   align-items: stretch; gap: var(--g-section); }
-[data-skin="glass"] .overview-hosts > h2.visually-hidden { position: static; width: auto; height: auto; margin: 0 0 4px;
-  overflow: visible; clip: auto; clip-path: none; white-space: normal; display: flex; align-items: center; min-height: 44px;
-  font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
-[data-skin="glass"] .overview-clusters__head { margin-top: var(--g-section); }
 
 /* First page load only: the cards and units come in one after another (staggered).
    theme-init.js sets data-entrance="on" before the first paint; glass.js removes it once the
@@ -788,21 +778,22 @@
    chip is pressed): stable names per host / cluster unit, attention card and section, set
    through the --g-vt custom property (CSSOM, never a style attribute). Units and cards that
    appear, go or move morph instead of jumping; units a filter hides or shows slide out / in
-   (view-transition-class g-unit). Parts that animate by themselves (the chips' digits,
-   headline words, the activity list) show only their new state, so nothing is drawn twice. */
+   (view-transition-class g-unit). Parts that animate by themselves (the chips' digits, the
+   network strip's colours, the activity list) show only their new state, so nothing is
+   drawn twice. */
 [data-skin="glass"] .rack__slot, [data-skin="glass"] .g-attention__slot { view-transition-name: var(--g-vt, none); }
 [data-skin="glass"] #g-attention { view-transition-name: g-sec-attention; }
 [data-skin="glass"] #g-away { view-transition-name: g-sec-away; }
 [data-skin="glass"] #overview-hosts { view-transition-name: g-sec-hosts; }
 [data-skin="glass"] #host-filter { view-transition-name: g-chips; }
-[data-skin="glass"] #overview-title { view-transition-name: g-title; }
+[data-skin="glass"] #net-strip { view-transition-name: g-net; }
 [data-skin="glass"] #g-away-list { view-transition-name: g-away-list; }
 [data-skin="glass"]::view-transition-old(root), [data-skin="glass"]::view-transition-new(root) {
   animation-duration: 350ms; animation-timing-function: ease; }
 [data-skin="glass"]::view-transition-group(*) { animation-duration: 450ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
-[data-skin="glass"]::view-transition-old(g-chips), [data-skin="glass"]::view-transition-old(g-title),
+[data-skin="glass"]::view-transition-old(g-chips), [data-skin="glass"]::view-transition-old(g-net),
 [data-skin="glass"]::view-transition-old(g-away-list) { animation: none; opacity: 0; }
-[data-skin="glass"]::view-transition-new(g-chips), [data-skin="glass"]::view-transition-new(g-title),
+[data-skin="glass"]::view-transition-new(g-chips), [data-skin="glass"]::view-transition-new(g-net),
 [data-skin="glass"]::view-transition-new(g-away-list) { animation: none; }
 /* Separate rules: a browser without view-transition-class drops only these. */
 [data-skin="glass"]::view-transition-old(.g-unit):only-child { animation: g-unit-out 300ms var(--g-ease) both; }
@@ -810,14 +801,67 @@
 @keyframes g-unit-out { to { opacity: 0; transform: translateX(-24px); } }
 @keyframes g-unit-in { from { opacity: 0; transform: translateX(-24px); } }
 
+/* --- Network (components/network_strip.html, network/index.html) -----------------------------
+   design-ref/glass/network-minimal.html. Colour only for status: the chain's icons and lines
+   (green working, red down and slightly larger, yellow slow, grey + dashed not tested) and
+   the status words on the page. No glow. Icon colours are >= 3:1 on the card (grey is the
+   lightest that reads as "off": #8e8e93, 6:1). */
+[data-skin="glass"] .net-strip { display: flex; align-items: center; gap: 28px; padding: 16px 20px; border-radius: var(--g-radius);
+  background: var(--g-fill); border: 1px solid var(--g-edge); }
+[data-skin="glass"] .net-strip__text { flex: none; width: 220px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+[data-skin="glass"] .net-strip__status { font-size: 15px; font-weight: 650; }
+[data-skin="glass"] .net-strip__more { font-size: 13px; font-weight: 600; color: var(--g-accent-text); text-decoration: none; width: fit-content; }
+[data-skin="glass"] .net-strip__more:hover { color: var(--g-accent-text); text-decoration: underline; }
+[data-skin="glass"] .net-chain { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; margin: 0; padding: 0; list-style: none; }
+[data-skin="glass"] .net-pt { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--g-grey); }
+[data-skin="glass"] .net-pt__icon { display: grid; place-items: center; width: 26px; height: 26px;
+  transition: transform 500ms var(--g-spring), color 500ms var(--g-ease); }
+[data-skin="glass"] .net-pt__name { font-size: 12px; color: var(--g-text-2); white-space: nowrap; }
+[data-skin="glass"] .net-pt--ok .net-pt__icon { color: var(--g-green); }
+[data-skin="glass"] .net-pt--slow .net-pt__icon { color: var(--g-yellow); }
+[data-skin="glass"] .net-pt--down .net-pt__icon { color: var(--g-red); transform: scale(1.15); }
+[data-skin="glass"] .net-pt--down .net-pt__name { color: var(--g-text); }
+[data-skin="glass"] .net-pt--untested .net-pt__icon { color: var(--g-grey); }
+[data-skin="glass"] .net-ln { flex: 1 1 auto; min-width: 8px; height: 2px; margin: 0 8px 22px; border-radius: 2px;
+  transition: background-color 500ms var(--g-ease); }
+[data-skin="glass"] .net-ln--ok { background: color-mix(in srgb, var(--g-green) 55%, transparent); }
+[data-skin="glass"] .net-ln--slow { background: color-mix(in srgb, var(--g-yellow) 60%, transparent); }
+[data-skin="glass"] .net-ln--off { background: repeating-linear-gradient(90deg, var(--g-grey) 0 5px, transparent 5px 10px); }
+@media (max-width: 699.98px) {
+  [data-skin="glass"] .net-strip { flex-direction: column; align-items: stretch; gap: 14px; }
+  [data-skin="glass"] .net-strip__text { width: auto; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 10px; }
+  [data-skin="glass"] .net-pt__name { font-size: 11px; }
+  [data-skin="glass"] .net-ln { margin-inline: 4px; }
+}
+/* The Network page. */
+[data-skin="glass"] .net-points { width: 100%; border-collapse: collapse; font-size: 14px; }
+[data-skin="glass"] .net-points thead th { padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 500; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--g-text-3); border-bottom: 1px solid var(--g-edge); }
+[data-skin="glass"] .net-points tbody th, [data-skin="glass"] .net-points td { padding: 11px 10px; text-align: left; font-weight: 500;
+  border-bottom: 1px solid var(--g-edge); white-space: nowrap; }
+[data-skin="glass"] .net-points tbody th { color: var(--g-text); }
+[data-skin="glass"] .net-points .mono { font: 12.5px var(--font-code); color: var(--g-text-2); }
+[data-skin="glass"] .net-word { font-weight: 600; }
+[data-skin="glass"] .net-word--ok { color: var(--g-green); }
+[data-skin="glass"] .net-word--slow { color: var(--g-yellow); }
+[data-skin="glass"] .net-word--down { color: var(--g-red-text); }
+[data-skin="glass"] .net-word--untested { color: var(--g-text-3); }
+[data-skin="glass"] .net-trend { display: block; width: 96px; height: 24px; }
+[data-skin="glass"] .net-trend__line { fill: none; stroke: rgba(235, 235, 245, 0.7); stroke-width: 1; vector-effect: non-scaling-stroke; }
+[data-skin="glass"] .net-trend__loss { fill: var(--g-red); opacity: 0.7; }
+[data-skin="glass"] .net-facts { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 16px 0 0; font-size: 12.5px; color: var(--g-text-3); }
+[data-skin="glass"] .net-facts dd { margin: 2px 0 0; font: 500 13px var(--font-code); color: var(--g-text); }
+[data-skin="glass"] .net-note { margin: 12px 0 0; font-size: 13px; }
+[data-skin="glass"] .net-settings form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+[data-skin="glass"] .net-settings .field__label, [data-skin="glass"] .net-settings .field__help { flex: 1 1 100%; margin: 0; }
+[data-skin="glass"] .net-settings input.well { width: 96px; }
+
 /* --- "While you were away" / Activity ---------------------------------------------------------
    Glass box (.g-away, overview) and the Activity page rows. Animated List (SmoothUI): a new
    row slides and un-blurs in at the top (.g-new); the rows already there move down smoothly
    (overview.js: FLIP, transform only). */
 [data-skin="glass"] .g-away { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; max-height: none;
   padding: 16px 18px; border-radius: var(--g-radius); background: var(--g-fill); border: 1px solid var(--g-edge); }
-[data-skin="glass"] .g-away > .section-head { margin: -6px 0 4px; }
-[data-skin="glass"] .g-away .section-title { font-size: 15px; }
 [data-skin="glass"] .g-away__list.activity { flex: 1 1 auto; min-height: 0; margin: 0; padding: 0; overflow: auto;
   scrollbar-width: thin; background: none; border: 0; box-shadow: none; }
 [data-skin="glass"] .activity { padding: 4px 20px; }
@@ -1119,16 +1163,14 @@
 [data-skin="glass"][data-motion="off"] *::after {
   animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
   transition-duration: 0s !important; transition-delay: 0s !important; }
-[data-skin="glass"][data-motion="off"] .loader span, [data-skin="glass"][data-motion="off"] .g-island__bars span,
-[data-skin="glass"][data-motion="off"] .g-ring::after { animation: none !important; }
+[data-skin="glass"][data-motion="off"] .loader span, [data-skin="glass"][data-motion="off"] .g-island__bars span { animation: none !important; }
 [data-skin="glass"][data-motion="off"]::view-transition-group(*), [data-skin="glass"][data-motion="off"]::view-transition-old(*),
 [data-skin="glass"][data-motion="off"]::view-transition-new(*) { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
   [data-skin="glass"] *, [data-skin="glass"] *::before, [data-skin="glass"] *::after {
     animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
     transition-duration: 0s !important; transition-delay: 0s !important; }
-  [data-skin="glass"] .loader span, [data-skin="glass"] .g-island__bars span,
-  [data-skin="glass"] .g-ring::after { animation: none !important; }
+  [data-skin="glass"] .loader span, [data-skin="glass"] .g-island__bars span { animation: none !important; }
   [data-skin="glass"]::view-transition-group(*), [data-skin="glass"]::view-transition-old(*),
   [data-skin="glass"]::view-transition-new(*) { animation: none !important; }
   [data-skin="glass"] .btn:active, [data-skin="glass"] .btn.is-pressed { transform: none; }
@@ -1140,7 +1182,7 @@
 /* --- Forced colours (Windows High Contrast): backgrounds are replaced by the system's, so
    dots, the switch and the selected segment / tab get borders or keep their own colours. */
 @media (forced-colors: active) {
-  [data-skin="glass"] .status-icon::before, [data-skin="glass"] .lamp, [data-skin="glass"] .g-chip__dot,
+  [data-skin="glass"] .status-icon::before, [data-skin="glass"] .lamp,
   [data-skin="glass"] .toast::before {
     forced-color-adjust: none; border: 1px solid CanvasText; }
   [data-skin="glass"] .switch__track { border: 1px solid CanvasText; }
@@ -1151,6 +1193,8 @@
     outline: 2px solid Highlight; outline-offset: -2px; }
   [data-skin="glass"] .rack__slot { border: 1px solid CanvasText; }
   [data-skin="glass"] .g-meter { border: 1px solid CanvasText; }
+  [data-skin="glass"] .net-ln { forced-color-adjust: none; background: CanvasText; }
+  [data-skin="glass"] .net-ln--off { background: repeating-linear-gradient(90deg, CanvasText 0 5px, transparent 5px 10px); }
   [data-skin="glass"] .g-meter__fill { forced-color-adjust: none; background: CanvasText; }
   [data-skin="glass"] .g-edge, [data-skin="glass"] .g-nav-hl, [data-skin="glass"] .g-nav-pill { display: none; }
 }

@@ -304,8 +304,10 @@ def test_overview_hosts_heading_is_for_screen_readers_only(alice_client: Client,
         r'<section class="overview-hosts" id="overview-hosts" aria-labelledby="hosts-title">\s*'
         r'<h2 class="visually-hidden overview-hosts__title" id="hosts-title">Hosts'
         r'<span class="section-count g-only" id="hosts-count"> 1</span></h2>\s*'
-        r'<div class="g-chips g-only" id="host-filter" role="group" aria-label="Filter hosts by status">'
-        r'.*?</div>\s*<p class="visually-hidden g-only" id="host-filter-status"[^>]*></p>\s*'
+        r'<div class="g-hosts-bar g-only">\s*'
+        r'<div class="g-chips" id="host-filter" role="group" aria-label="Filter hosts by status">'
+        r'.*?</div>\s*<a class="btn btn--primary g-add-host"[^>]*>\+ Add host</a>\s*</div>\s*'
+        r'<p class="visually-hidden g-only" id="host-filter-status"[^>]*></p>\s*'
         r'<div class="rack-chassis surface" id="hosts-rack-chassis">',
         hosts,
         re.DOTALL,

@@ -1,0 +1,17 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  The overview's network strip (design-ref/glass/network-minimal.html): a short status, "More
+  info" and one chain of line icons: You, the router, extra points, Internet. Only icon and
+  line colours change; no title, no dots, no numbers. Only rendered when some agent reports
+  network data. Both skins (Legacy: the same markup, plainer CSS).
+    {% include "components/network_strip.html" with network=network %}
+    {% include "components/network_strip.html" with blank=True %}  the copy in <template
+    id="net-strip-template">; overview.js fills it with textContent / classes only.
+  aria-label, no heading: the region is named, the strip adds nothing to the heading order.
+  Each point's accessible name says its status ("ISP box: Down"). Names come from agent.toml
+  through a validated report: plain {{ }} output.
+{% endcomment %}
+<section class="net-strip" id="net-strip" aria-label="Network">
+  <div class="net-strip__text"><span class="net-strip__status" id="net-status">{{ network.text }}</span><a class="net-strip__more" id="net-more"{% if not blank %} href="{{ network.url }}"{% endif %}>More info →</a></div>
+  <ol class="net-chain" id="net-chain">{% if not blank %}{% for point in network.points %}{% if not forloop.first %}<li class="net-ln net-ln--{{ point.line }}" aria-hidden="true"></li>{% endif %}{% include "components/network_point.html" with point=point %}{% endfor %}{% endif %}</ol>
+</section>

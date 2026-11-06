@@ -3,6 +3,56 @@
 All notable changes to CronRack. Versions follow [Semantic Versioning](https://semver.org/);
 before 1.0.0, any release may change things that worked before, and the notes say so.
 
+## [Unreleased]
+
+### Added
+
+- **Network checks (opt-in, works with any router).** One agent checks the path from its host
+  to the internet, point by point, and CronRack shows where a problem is: "Router down", "ISP
+  box down", "Internet down", "Internet slow", "DNS failing". `install.sh --network`, with
+  `--network-hop "ISP box=IP"` for extra points. No root and no router setup; every target
+  comes from `agent.toml`. See docs/network-monitoring.md.
+- **The network is its own subject**, like a cluster: its own status, activity entries and
+  Discord alerts (same cooldown and rule overrides, `network.*`). A new status must hold for 3
+  reports before it counts. The measuring host doesn't change colour. "Router rebooted" and
+  "Public IP changed" are activity entries only.
+- **Network page** (`/network/`, from "More info" on the strip): each point's status in words,
+  latency, packet loss and a 24 h trend, DNS, last router reboot, which agent measures it.
+  Default: the agent on the CronRack server's own machine, because it can still report during
+  an outage.
+
+### Changed
+
+- **Glass overview:** the network strip comes first, and there's no header row any more: no
+  headline, no "Check all now" (Check now on cards and units stays), "updated …" moved to the
+  top bar. "+ Add host" sits on the chips row. No visible section titles (they stay for screen
+  readers), "See all →" at the bottom of Clusters and "While you were away". Dots only on
+  activity rows, not on attention cards or chips. A bigger logo.
+
+### Changed
+
+- **Glass is calmer.** No glows anywhere: the orange background glows, the light running
+  around red cards, the tilt glare, coloured shadows and status-tinted cards are gone.
+  Surfaces are neutral graphite; status colour is only the small dot (and a disk bar from
+  85%); orange only marks the logo, Add host, "See all", the focus ring and the "Check all
+  now" pill. The current page in the nav is a grey pill, without an orange dot.
+- **The server rack in Glass** for hosts and clusters (ears, bay, LED, readouts, vents). A
+  click opens a unit in place: its issues, last report, Check now and Open host (clusters:
+  nodes, pods, k3s version, Open cluster). Several can be open; they stay open when the
+  page refreshes.
+- **Overview layout:** headline, tiles, then "Needs attention" next to "While you were
+  away" (up to 10 entries, scrolling in its box), then the Hosts and Clusters racks. Empty
+  sections aren't shown at all. Clusters that need you get an attention card too, so the
+  headline's count always matches the cards. Legacy still shows the newest 3 entries.
+- **Settings > Appearance:** "Moving background" is replaced by **Reduce animations** (off
+  by default). Your device's reduced-motion setting always turns them off too.
+- **"Check all now" tells the truth:** it waits for each host's new report (up to 15 s) and
+  for the page to refresh, then says "All 5 hosts reported" or "4 of 5 hosts reported".
+  Offline hosts count as not reported.
+- Glass's top bar stays at the top while you scroll. Smoother motion: the page refresh
+  morphs instead of jumping (where the browser supports it), the headline changes word by
+  word, a changed status pulses its dot once, new activity slides in.
+
 ## [0.2.0] - Unreleased
 
 Kubernetes monitoring: CronRack now answers "what needs my attention?" for a k3s (or other

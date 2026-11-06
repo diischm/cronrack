@@ -192,6 +192,8 @@ OVERVIEW_KEYS = {
     "status_counts", "hosts_online",
     # Kubernetes clusters (own list: overview.js replaces the host rack).
     "clusters",
+    # The network strip, or None without network data.
+    "network",
 }  # fmt: skip
 
 
@@ -447,10 +449,9 @@ def test_overview_html_and_json_agree_on_offline(alice_client: Client, alice):
 
     statuses = {h["name"]: h["status"] for h in data["hosts"]}
     assert statuses == {"edge-pi": "offline", "nas": "green"}
-    # edge-pi only: its unit's Legacy link and its Glass attention card (the Glass button has
-    # no lamp: the unit's gradient shows the status). The "Hosts online" tile is a summary
-    # and uses an icon, not a lamp.
-    assert html.count("lamp--off") == 2
+    # edge-pi only: its unit's Legacy link (Glass has no lamp on a unit: the gradient shows the
+    # status; none on a card: words). The "Hosts online" tile is a summary, with an icon.
+    assert html.count("lamp--off") == 1
     assert (
         '<strong>Offline</strong><span class="offline-note__sep"> · </span>last report 28 h ago'
         in html

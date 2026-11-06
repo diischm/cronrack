@@ -23,20 +23,34 @@
         </form>
 {% endblock %}
 
+{# Glass: when this page last heard from a host, next to the version (desktop only). #}
+{% block topbar_meta %}{% if hosts %}<p class="side-version g-only" id="overview-updated">updated {{ updated_human }}</p>{% endif %}{% endblock %}
+
 {% comment %}
   Legacy phone (<900px) shows: headline, the host rack, "While you were away".
   Everything marked desk-only (actions, tiles, the units' front panels) appears from 900px.
-  Glass (design-ref/glass/overview-glass-v8.html): headline + keys, Needs attention, then
-  [Hosts (filter chips + rack) | While you were away], then Clusters; no tiles.
-  overview.js refreshes the headline, subline, tiles, chips and racks every 60s (handoff
-  5.3); the ids below are fixed hooks for it.
+  Glass: the network strip first, then Needs attention, then [chips + Add host + the Hosts
+  rack | While you were away], then Clusters. No header row, no tiles, no visible section
+  titles: each section keeps a visually-hidden heading.
+  overview.js refreshes the strip, headline, subline, tiles, chips and racks every 60s
+  (handoff 5.3); the ids below are fixed hooks for it.
+
+  "Check all now" is Legacy only here. Glass has no such key on the overview for now; the
+  honest round (actions.js, the Dynamic Island in glass.js) stays in place for when it
+  returns. Check now on a card or a unit is unaffected.
 {% endcomment %}
 {% block content %}
-  <div class="page-head overview-head">
+  <h1 class="visually-hidden g-only">Overview</h1>
+  {% if network %}{% include "components/network_strip.html" with network=network %}{% endif %}
+  <template id="net-strip-template">{% include "components/network_strip.html" with blank=True %}</template>
+  <template id="net-point-template">{% include "components/network_point.html" with point=None %}</template>
+  <template id="net-icons"><span data-kind="you">{% include "components/net_icon.html" with kind="you" %}</span><span data-kind="router">{% include "components/net_icon.html" with kind="router" %}</span><span data-kind="box">{% include "components/net_icon.html" with kind="box" %}</span><span data-kind="internet">{% include "components/net_icon.html" with kind="internet" %}</span></template>
+  <p class="visually-hidden" id="net-announce" role="status" aria-live="polite"></p>
+  <div class="page-head overview-head legacy-only">
     <div class="overview-head__text">
       <h1 class="page-title" id="overview-title">{% if not hosts %}No hosts yet{% elif attention_count %}{{ attention_count }} thing{{ attention_count|pluralize }} need{{ attention_count|pluralize:"s," }} you{% else %}All good{% endif %}</h1>
       <p class="page-sub overview-head__sub">
-        <span id="overview-sub">{{ hosts|length }} host{{ hosts|length|pluralize }}<span class="g-only" id="overview-sub-clusters">{% if clusters %} · {{ clusters|length }} cluster{{ clusters|length|pluralize }}{% endif %}</span>{% if hosts %} · updated {{ updated_human }}{% endif %}</span>
+        <span id="overview-sub">{{ hosts|length }} host{{ hosts|length|pluralize }}{% if hosts %} · updated {{ updated_human }}{% endif %}</span>
         {# Shown by overview.js while /api/v1/overview.json can't be reached; the page keeps its content. #}
         <span class="refresh-failed" id="refresh-failed" role="status" hidden>{% include "components/status_icon.html" with status="yellow" label="Warning" %}<span>Offline — retrying</span></span>
         <span class="loader loader--sm surface" role="status" aria-label="Checking all hosts" id="check-all-loader" hidden><span></span><span></span><span></span></span>
@@ -44,8 +58,7 @@
     </div>
     {% comment %}
       Desktop (>= 900px): "Check all now" + "Add host" next to the headline. On Legacy phones
-      both live in the top bar instead (topbar_keys above, and base.html's Add host key); on
-      Glass phones they sit under the headline and the top bar's copies are hidden.
+      both live in the top bar instead (topbar_keys above, and base.html's Add host key).
       The result appears as a toast (actions.js), not under the keys.
     {% endcomment %}
     <div class="overview-head__actions desk-only">
@@ -113,10 +126,9 @@
     {% endcomment %}
     <section class="overview-hosts" id="overview-hosts" aria-labelledby="hosts-title">
       {% comment %}
-        Legacy: screen readers only (the rack is the page's main content and needs no visible
-        title), out of the layout (position: absolute), so the chassis is the column's first
-        box and starts at the same top as the "While you were away" card.
-        Glass: a visible section heading with the count.
+        Screen readers only (the rack is the page's main content and needs no visible title),
+        out of the layout (position: absolute), so the chassis (Legacy) or the chips (Glass)
+        is the column's first box. The count is Glass's "All N" chip, read here too.
       {% endcomment %}
       <h2 class="visually-hidden overview-hosts__title" id="hosts-title">Hosts{% if hosts %}<span class="section-count g-only" id="hosts-count"> {{ hosts|length }}</span>{% endif %}</h2>
       {% comment %}
@@ -127,12 +139,15 @@
         glass.js: .g-flow). #host-filter-status announces the result of a click.
       {% endcomment %}
       {% if hosts %}
-      <div class="g-chips g-only" id="host-filter" role="group" aria-label="Filter hosts by status">
+      <div class="g-hosts-bar g-only">
+      <div class="g-chips" id="host-filter" role="group" aria-label="Filter hosts by status">
         <button type="button" class="g-chip" data-filter="all" aria-pressed="true">All <span class="g-chip__count"><span class="g-flow" id="chip-all">{{ hosts|length }}</span></span></button>
-        <button type="button" class="g-chip" data-filter="red" aria-pressed="false"{% if not status_counts.red %} aria-disabled="true"{% endif %}><span class="g-chip__dot g-chip__dot--red" aria-hidden="true"></span>Needs you <span class="g-chip__count"><span class="g-flow" id="chip-red">{{ status_counts.red }}</span></span></button>
-        <button type="button" class="g-chip" data-filter="yellow" aria-pressed="false"{% if not status_counts.yellow %} aria-disabled="true"{% endif %}><span class="g-chip__dot g-chip__dot--yellow" aria-hidden="true"></span>Heads up <span class="g-chip__count"><span class="g-flow" id="chip-yellow">{{ status_counts.yellow }}</span></span></button>
-        <button type="button" class="g-chip" data-filter="green" aria-pressed="false"{% if not status_counts.green %} aria-disabled="true"{% endif %}><span class="g-chip__dot g-chip__dot--green" aria-hidden="true"></span>All good <span class="g-chip__count"><span class="g-flow" id="chip-green">{{ status_counts.green }}</span></span></button>
-        <button type="button" class="g-chip" data-filter="offline" aria-pressed="false"{% if not status_counts.offline %} aria-disabled="true"{% endif %}><span class="g-chip__dot g-chip__dot--offline" aria-hidden="true"></span>Offline <span class="g-chip__count"><span class="g-flow" id="chip-offline">{{ status_counts.offline }}</span></span></button>
+        <button type="button" class="g-chip" data-filter="red" aria-pressed="false"{% if not status_counts.red %} aria-disabled="true"{% endif %}>Needs you <span class="g-chip__count"><span class="g-flow" id="chip-red">{{ status_counts.red }}</span></span></button>
+        <button type="button" class="g-chip" data-filter="yellow" aria-pressed="false"{% if not status_counts.yellow %} aria-disabled="true"{% endif %}>Heads up <span class="g-chip__count"><span class="g-flow" id="chip-yellow">{{ status_counts.yellow }}</span></span></button>
+        <button type="button" class="g-chip" data-filter="green" aria-pressed="false"{% if not status_counts.green %} aria-disabled="true"{% endif %}>All good <span class="g-chip__count"><span class="g-flow" id="chip-green">{{ status_counts.green }}</span></span></button>
+        <button type="button" class="g-chip" data-filter="offline" aria-pressed="false"{% if not status_counts.offline %} aria-disabled="true"{% endif %}>Offline <span class="g-chip__count"><span class="g-flow" id="chip-offline">{{ status_counts.offline }}</span></span></button>
+      </div>
+      <a class="btn btn--primary g-add-host" href="{% url 'host-add' %}">+ Add host</a>
       </div>
       <p class="visually-hidden g-only" id="host-filter-status" role="status" aria-live="polite"></p>
       {% endif %}
@@ -173,7 +188,7 @@
       {% if clusters %}
         <div class="section-head overview-clusters__head" id="clusters-head">
           <h2 class="section-title" id="clusters-title">Clusters<span class="section-count g-only" id="clusters-count"> {{ clusters|length }}</span></h2>
-          <a class="section-link" href="/clusters/">See all</a>
+          <a class="section-link legacy-only" href="/clusters/">See all</a>
         </div>
         <div class="rack-chassis surface overview-clusters__rack" id="clusters-rack-chassis">
           <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
@@ -184,6 +199,7 @@
           </ul>
           <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
         </div>
+        <a class="section-link g-see-all g-only" href="/clusters/">See all →</a>
         <template id="cluster-unit-template">{% include "components/cluster_unit.html" with blank=True %}</template>
       {% endif %}
     </section>

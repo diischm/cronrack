@@ -13,9 +13,10 @@
   the rest with textContent / setAttribute only. Keep the class names in sync with
   overview.js.
 
-  Closed, a card shows only: the name, the status dot (status icon with its words, or the
-  grey lamp + "Offline" when offline), ONE short summary line (hosts.presenters.short_summary)
-  and the type ("k8s server", "host", "cluster") with a chevron. The header is a <button
+  Closed, a card shows only: the name, ONE short summary line
+  (hosts.presenters.short_summary) and the type; the status is in words for screen readers
+  (visible with "Show status labels"), no dot: dots are for the activity rows. The type is
+  "k8s server", "host" or "cluster", with a chevron. The header is a <button
   aria-expanded aria-controls>; clicking it opens .g-attn-more in place (glass.js, the same
   0fr → 1fr technique as the rack units): every issue, a few facts, Check now (online
   hosts) and Open host / Open cluster, as separate controls. Several can be open; they stay
@@ -28,7 +29,7 @@
 <li class="g-attention__slot"{% if not blank %} data-card="{{ kind }}" data-id="{{ unit.id }}"{% endif %}>
   <div class="g-attn">
     <button type="button" class="g-attn__btn" aria-expanded="false"{% if not blank %} aria-controls="attn-more-{{ kind }}-{{ unit.id }}"{% endif %}>
-      <span class="g-attn__head"><span class="g-attn__name">{{ unit.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif unit.status == "offline" %}<span class="g-attn__offline">{% include "components/lamp.html" with status="off" %}<span class="visually-hidden">Offline</span></span>{% else %}{% include "components/status_icon.html" with status=unit.status label=unit.status_label %}{% endif %}</span>
+      <span class="g-attn__head"><span class="g-attn__name">{{ unit.name }}</span><span class="visually-hidden">, </span>{% if blank %}{% include "components/status_icon.html" with status="info" label="Info" %}{% elif unit.status == "offline" %}<span class="g-attn__offline"><span class="visually-hidden">Offline</span></span>{% else %}{% include "components/status_icon.html" with status=unit.status label=unit.status_label %}{% endif %}</span>
       <span class="g-attn__summary"><span class="visually-hidden">, </span><span class="g-attn__summary-text">{{ unit.summary }}</span></span>
       <span class="g-attn__meta"><span class="visually-hidden">, </span><span class="g-attn__type">{% if blank %}{% elif kind == "cluster" %}cluster{% elif unit.k8s_role == "server" %}k8s server{% elif unit.k8s_role == "agent" %}k8s worker{% elif unit.k8s_role == "node" %}k8s node{% else %}host{% endif %}</span><svg class="g-attn__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"></path></svg></span>
     </button>

@@ -26,7 +26,7 @@ def activity_page(user, page: int) -> dict:
     start = (page - 1) * PAGE_SIZE
     # One extra row tells us whether a next page exists, without a COUNT query.
     events = list(
-        StatusEvent.objects.owned_by(user).select_related("host", "cluster")[
+        StatusEvent.objects.owned_by(user).select_related("host", "cluster", "network")[
             start : start + PAGE_SIZE + 1
         ]
     )

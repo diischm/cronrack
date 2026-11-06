@@ -31,6 +31,7 @@ from activity.models import StatusEvent
 from clusters.models import Cluster
 from cronrack.outbound import opener as _opener
 from hosts.models import Host
+from network.models import Network
 from prefs.models import Prefs
 
 logger = logging.getLogger(__name__)
@@ -106,7 +107,7 @@ def _cooldown_cutoff(now):
 def _claim_alert(model, pk: int, status: str, now) -> bool:
     """True if an alert saying `status` may go out now; then it starts the cooldown.
 
-    `model` is Host or Cluster. False while it cools down (the change stays pending:
+    `model` is Host, Cluster or Network. False while it cools down (the change stays pending:
     last_alert_status differs from the current status), or if the last alert already
     said `status`. One UPDATE that only matches when allowed, so the web app and the
     scheduler (separate processes) can't both send within the cooldown.
@@ -142,16 +143,16 @@ def notify(event: StatusEvent) -> bool:
     return send_discord(prefs.discord_webhook_url, format_alert(event))
 
 
-def format_current(subject: Host | Cluster) -> str:
-    """'🟢 pi-01 is green now (after several quick changes)' (a host or a cluster)"""
+def format_current(subject: Host | Cluster | Network) -> str:
+    """'🟢 pi-01 is green now (after several quick changes)' (host, cluster or network)"""
     emoji = STATUS_EMOJI.get(subject.status, "⚪")
     return f"{emoji} {subject.name} is {subject.status} now (after several quick changes)"
 
 
-def send_pending_alerts(now=None) -> list[Host | Cluster]:
+def send_pending_alerts(now=None) -> list[Host | Cluster | Network]:
     """Run by the scheduler: catch up on changes that happened during a cooldown.
 
-    For every host and cluster whose cooldown is over and whose status differs from what
+    For every host, cluster and network whose cooldown is over and whose status differs from what
     its last alert said, send one alert with the current status. Ones that never alerted
     are left alone (nothing was held back for them). Returns what was alerted.
     """
@@ -161,7 +162,7 @@ def send_pending_alerts(now=None) -> list[Host | Cluster]:
         Prefs.objects.exclude(discord_webhook_url="").values_list("owner_id", "discord_webhook_url")
     )
     sent = []
-    for model in (Host, Cluster):
+    for model in (Host, Cluster, Network):
         candidates = (
             model.objects.filter(owner_id__in=webhooks, last_alert_at__lte=_cooldown_cutoff(now))
             .exclude(status=F("last_alert_status"))
