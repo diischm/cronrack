@@ -15,6 +15,7 @@ format agent/report.py builds and nothing else:
 If agent/report.py changes, change this file in the same pull request.
 """
 
+import ipaddress
 import re
 from collections.abc import Mapping
 from datetime import datetime
@@ -480,6 +481,119 @@ class KubernetesSerializer(StrictSerializer):
     cluster = ClusterViewSerializer(allow_null=True)
 
 
+# --- network (agent/network.py collect_network) ------------------------------------------
+# The agent's own caps (agent/config.py): the router, at most 2 extra local points, at most
+# 4 internet targets. Addresses are re-checked here: extra local points private (RFC 1918,
+# link-local, CGNAT, documentation ranges), internet targets and the public IP global, the
+# router either.
+
+NET_MAX_POINTS = 1 + 2 + 4
+NET_MAX_PROBES = 10
+NET_MAX_MS = 60_000
+NET_MAX_NAME = 32
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
+def network_address_kind(value: str) -> str | None:
+    """ "local", "internet" or None (not an IPv4 address we accept)."""
+    try:
+        ip = ipaddress.IPv4Address(value)
+    except ValueError:
+        return None
+    if ip.is_loopback or ip.is_unspecified or ip.is_multicast or ip.is_reserved:
+        return None
+    if ip.is_global:
+        return "internet"
+    if ip.is_private or ip.is_link_local or ip in _CGNAT:
+        return "local"
+    return None
+
+
+class NetworkMsField(serializers.FloatField):
+    """Milliseconds: a JSON number (not a string or bool), 0 to 60 000."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, int | float):
+            self.fail("invalid")
+        return super().to_internal_value(data)
+
+
+def _ms(**kwargs):
+    return NetworkMsField(min_value=0, max_value=NET_MAX_MS, allow_null=True, **kwargs)
+
+
+class NetworkPointSerializer(StrictSerializer):
+    name = StrictCharField(max_length=NET_MAX_NAME, min_length=1)
+    role = StrictChoiceField(choices=["gateway", "local", "internet"])
+    address = StrictCharField(max_length=15)
+    sent = StrictIntegerField(min_value=1, max_value=NET_MAX_PROBES)
+    received = StrictIntegerField(min_value=0, max_value=NET_MAX_PROBES)
+    median_ms = _ms()
+    p95_ms = _ms()
+
+    def validate(self, attrs):
+        kind = network_address_kind(attrs["address"])
+        # A detected router is usually private, but a VPS or some ISP lines have a public
+        # default gateway: refusing it would refuse the host's whole report.
+        wanted = {"gateway": ("local", "internet"), "local": ("local",), "internet": ("internet",)}
+        if kind not in wanted[attrs["role"]]:
+            raise serializers.ValidationError({"address": ["Not an expected IPv4 address."]})
+        if attrs["received"] > attrs["sent"]:
+            raise serializers.ValidationError({"received": ["More than sent."]})
+        answered = attrs["received"] > 0
+        for key in ("median_ms", "p95_ms"):
+            if (attrs[key] is not None) != answered:
+                raise serializers.ValidationError({key: ["Only (and always) with an answer."]})
+        if answered and attrs["p95_ms"] < attrs["median_ms"]:
+            raise serializers.ValidationError({"p95_ms": ["Below the median."]})
+        return attrs
+
+
+class NetworkDnsSerializer(StrictSerializer):
+    ok = StrictBooleanField()
+    ms = _ms()
+
+    def validate(self, attrs):
+        if attrs["ms"] is not None and not attrs["ok"]:
+            raise serializers.ValidationError({"ms": ["Only for a working lookup."]})
+        return attrs
+
+
+class NetworkSerializer(StrictSerializer):
+    method = StrictChoiceField(choices=["icmp", "tcp"])
+    probed_at = StrictPatternField(_TIMESTAMP.pattern, max_length=20)
+    gateway_found = StrictBooleanField()
+    server_local = StrictBooleanField()
+    points = NetworkPointSerializer(many=True, max_length=NET_MAX_POINTS)
+    dns = NetworkDnsSerializer(allow_null=True)
+    public_ip = StrictCharField(max_length=45, allow_null=True)
+
+    def validate_public_ip(self, value):
+        if value is None:
+            return value
+        try:
+            ip = ipaddress.ip_address(value)
+        except ValueError:
+            raise serializers.ValidationError("Not an IP address.") from None
+        if not ip.is_global or ip.is_multicast:
+            raise serializers.ValidationError("Not a public address.")
+        return str(ip)
+
+    def validate(self, attrs):
+        roles = [p["role"] for p in attrs["points"]]
+        order = {"gateway": 0, "local": 1, "internet": 2}
+        if roles != sorted(roles, key=order.__getitem__):
+            raise serializers.ValidationError({"points": ["Not in path order."]})
+        if roles.count("gateway") > 1 or roles.count("local") > 2 or roles.count("internet") > 4:
+            raise serializers.ValidationError({"points": ["Too many points of one kind."]})
+        if attrs["gateway_found"] != ("gateway" in roles):
+            raise serializers.ValidationError({"gateway_found": ["Doesn't match the points."]})
+        names = [p["name"] for p in attrs["points"]]
+        if len(set(names)) != len(names):
+            raise serializers.ValidationError({"points": ["Point names must be unique."]})
+        return attrs
+
+
 class ReportSerializer(StrictSerializer):
     """The report built by agent/report.py: build_report()."""
 
@@ -495,6 +609,8 @@ class ReportSerializer(StrictSerializer):
     # Only agents with [kubernetes] enabled send it (agent 0.2.0 and later); null when
     # its collector crashed.
     kubernetes = KubernetesSerializer(required=False, allow_null=True)
+    # Only agents with [network] enabled send it; null when its collector crashed.
+    network = NetworkSerializer(required=False, allow_null=True)
     errors = ErrorSerializer(many=True, max_length=50)
 
     def validate_timestamp(self, value: str) -> str:

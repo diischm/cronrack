@@ -22,6 +22,7 @@ from rules.base import (
     RuleContext,
 )
 from rules.k8s import CLUSTER_RULES
+from rules.network import NETWORK_RULES
 from rules.registry import RULES, get_rule
 
 OFFLINE_RULE = "connectivity.offline"
@@ -86,6 +87,8 @@ def resolve_override(
 
     scope="cluster": `host` is a cluster (or its ID) and "host" in the chain above reads
     "cluster". Overrides of the other kind (a host's, for a cluster) never apply.
+    scope="network": `host` is the owner's Network. There is one per owner, so only the
+    all-hosts overrides apply; one scoped to a host or a cluster never does.
     """
     rule = get_rule(rule_id)
     owner_id = _owner_id(owner)
@@ -94,9 +97,13 @@ def resolve_override(
     if overrides is None:
         from rules.models import RuleOverride
 
-        overrides = RuleOverride.objects.filter(owner_id=owner_id, rule_id=rule_id).filter(
-            Q(host__isnull=True, cluster__isnull=True) | Q(**{own: host_id})
-        )
+        overrides = RuleOverride.objects.filter(owner_id=owner_id, rule_id=rule_id)
+        if scope == "network":
+            overrides = overrides.filter(host__isnull=True, cluster__isnull=True)
+        else:
+            overrides = overrides.filter(
+                Q(host__isnull=True, cluster__isnull=True) | Q(**{own: host_id})
+            )
 
     # Lower number = more specific. Overrides for other users, rules, hosts or
     # subjects are skipped, even if the caller passed them in by mistake.
@@ -105,6 +112,10 @@ def resolve_override(
             return None
         if override.subject and override.subject != subject:
             return None
+        if scope == "network":
+            if getattr(override, "host_id", None) or getattr(override, "cluster_id", None):
+                return None
+            return 2 if override.subject else 3
         # Fake overrides in tests may lack the cluster column; real ones always have it.
         if getattr(override, other, None) is not None:
             return None
@@ -210,6 +221,34 @@ def evaluate(
         learning=host.learning_until is not None and host.learning_until > now,
         privileged=_has_privileged_data(report),
     )
+
+
+def load_network_overrides(network) -> list:
+    """The owner's overrides that can apply to the network: the all-hosts ones."""
+    from rules.models import RuleOverride
+
+    return list(
+        RuleOverride.objects.filter(
+            owner_id=network.owner_id, host__isnull=True, cluster__isnull=True
+        )
+    )
+
+
+def evaluate_network(
+    network, held: Mapping[str, Any], now: datetime, overrides=None
+) -> list[Finding]:
+    """The network rules against the network's held state (network/services.py)."""
+    if overrides is None:
+        overrides = load_network_overrides(network)
+    ctx = RuleContext(
+        host_id=network.pk,
+        now=now,
+        connected=False,
+        last_seen_at=None,
+        settings=_no_settings,
+        scope_prefix="n",
+    )
+    return _run_rules(NETWORK_RULES.values(), ctx, held, network, overrides, "network")
 
 
 def evaluate_cluster(

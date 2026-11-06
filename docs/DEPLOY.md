@@ -386,7 +386,7 @@ or Ansible. It:
 the Kubernetes token and every `[kubernetes]` setting, and your current Docker choice
 (on stays on, off stays off). `agent.toml` is not rewritten at all, except `server_url`
 with `--server-change` and `ca_file` with `--ca-file new-ca.crt` (allowed, to replace the
-CA). Other options that change settings (`--new-token`, `--k8s…`, `--uninstall`) are
+CA). Other options that change settings (`--new-token`, `--k8s…`, `--network…`, `--uninstall`) are
 refused with `--upgrade` (exit 2): run the install command without `--upgrade` for them.
 
 **Automatic rollback:** if the new version doesn't keep running, the installer puts the
@@ -449,6 +449,7 @@ you pass `--new-token`. It needs a terminal, because it may ask questions.
 | change the CA certificate | `--ca-file new-ca.crt` |
 | turn Docker checks on or off | nothing extra; it asks about Docker again |
 | turn on Kubernetes | `--k8s` or `--k8s-cluster-view` ([kubernetes-monitoring.md](kubernetes-monitoring.md)) |
+| turn on network checks | `--network`, optionally `--network-hop "NAME=IP"` ([network-monitoring.md](network-monitoring.md)) |
 
 The questions, in this order (each only when it applies):
 

@@ -15,6 +15,7 @@ from typing import Any
 from rules.base import RED, YELLOW, Finding, Rule, RuleContext
 from rules.base import ago as _ago
 from rules.k8s import CLUSTER_RULES, HELM_CLI_RULE
+from rules.network import NETWORK_RULES
 
 # --- connectivity --------------------------------------------------------------
 
@@ -240,7 +241,9 @@ RULES: dict[str, Rule] = {rule.id: rule for rule in (*_ALL_RULES, HELM_CLI_RULE)
 
 
 def get_rule(rule_id: str) -> Rule:
-    """Return the rule (host or cluster), or raise KeyError for an unknown ID."""
+    """Return the rule (host, cluster or network), or raise KeyError for an unknown ID."""
     if rule_id in RULES:
         return RULES[rule_id]
+    if rule_id in NETWORK_RULES:
+        return NETWORK_RULES[rule_id]
     return CLUSTER_RULES[rule_id]

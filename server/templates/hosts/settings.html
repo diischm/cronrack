@@ -87,6 +87,17 @@
       <div class="form-keys"><button type="submit" class="btn btn--danger">Revoke token</button></div>
     </form>
 
+    {% if host.network_reporter %}
+    <form class="surface panel form" method="post" action="{% url 'network-view' %}">
+      {% csrf_token %}
+      <h3 class="subsection-title">Network view</h3>
+      <p class="field__help">This agent reports network data. The overview's network strip uses one agent: best the one on the CronRack server's own machine, because it can still report during a router or internet outage.</p>
+      <input type="hidden" name="host" value="{{ host.pk }}">
+      <input type="hidden" name="next" value="{% url 'host-settings' host.pk %}">
+      <button type="submit" class="btn">Use this host for the network view</button>
+    </form>
+    {% endif %}
+
     <form class="surface panel form danger-zone js-confirm" method="post" action="{% url 'host-delete' host.pk %}" novalidate>
       {% csrf_token %}
       <h2 class="section-title">Danger zone</h2>

@@ -1,0 +1,89 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Network · CronRack{% endblock %}
+{% block main_class %}app-main--wide{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/network.js' %}" defer></script>{% endblock %}
+
+{% comment %}
+  The details the overview's strip leaves out (design-ref/glass/network-minimal.html): the
+  sentence, one row per point (status as coloured WORDS, never colour alone), a small 24 h
+  trend per point, DNS and so on. network.js refreshes it every 60 s from
+  /api/v1/network.json. Addresses and names: plain {{ }} output.
+{% endcomment %}
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title" id="net-title">{% if network %}{{ network.text }}{% else %}Network{% endif %}</h1>
+    <p class="page-sub" id="net-sentence">{% if network %}{{ network.sentence }}{% else %}No agent reports network data yet.{% endif %}</p>
+  </div>
+  {# network.js says a change of state here, once. #}
+  <p class="visually-hidden" id="net-page-announce" role="status"></p>
+  {% if network %}
+  <section class="surface panel net-table" aria-labelledby="net-points-title">
+    <h2 class="visually-hidden" id="net-points-title">Points on the way to the internet</h2>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="net-points-title">
+      <table class="net-points">
+        <thead><tr><th scope="col">Point</th><th scope="col">Address</th><th scope="col">Status</th><th scope="col">Latency</th><th scope="col">Packet loss</th><th scope="col">24 h</th></tr></thead>
+        <tbody id="net-rows">
+          {% for row in network.rows %}
+          <tr data-point="{{ row.name }}">
+            <th scope="row">{{ row.name }}</th>
+            <td class="mono net-cell--address">{{ row.address|default:"—" }}</td>
+            <td><span class="net-word net-word--{{ row.status }}">{{ row.word }}</span></td>
+            <td class="mono net-cell--latency">{{ row.latency }}</td>
+            <td class="mono net-cell--loss">{{ row.loss }}</td>
+            <td class="net-cell--trend">{% if row.trend.has_data %}<svg class="net-trend" viewBox="0 0 {{ row.trend.w }} {{ row.trend.h }}" width="96" height="24" preserveAspectRatio="none" role="img" aria-label="{{ row.name }}: latency over 24 hours, highest {{ row.trend.top }}; packet loss in {{ row.trend.bars|length }} of 96 quarter hours">{% for bar in row.trend.bars %}<rect class="net-trend__loss" x="{{ bar.x }}" y="{{ bar.y }}" width="1" height="{{ bar.h }}"></rect>{% endfor %}{% if row.trend.line %}<polyline class="net-trend__line" points="{{ row.trend.line }}"></polyline>{% endif %}</svg>{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <dl class="net-facts">
+      <div><dt>DNS</dt><dd id="net-dns">{{ network.facts.dns }}</dd></div>
+      {% if network.facts.public_ip %}<div><dt>Public IP</dt><dd id="net-public-ip">{{ network.facts.public_ip }}</dd></div>{% endif %}
+      <div><dt>Last router reboot</dt><dd id="net-reboot">{{ network.facts.last_reboot }}</dd></div>
+      <div><dt>Measured with</dt><dd id="net-method">{{ network.facts.method }}</dd></div>
+      <div><dt>Checked</dt><dd id="net-checked">{{ network.facts.checked }}</dd></div>
+    </dl>
+    {% if network.facts.tcp %}<p class="muted net-note">Ping isn't allowed for the agent on this host, so these are TCP connection times. A box that silently ignores those ports can look down.</p>{% endif %}
+  </section>
+  {% if network.advice %}
+  <section class="surface panel net-advice" aria-labelledby="net-advice-title">
+    <h2 class="section-title" id="net-advice-title">What this means</h2>
+    {% for item in network.advice %}
+      <p>{{ item.why }}</p>
+      {% if item.fix %}<pre class="code mono">{{ item.fix }}</pre>{% endif %}
+    {% endfor %}
+  </section>
+  {% endif %}
+  <section class="surface panel form net-settings" aria-labelledby="net-settings-title">
+    <h2 class="section-title" id="net-settings-title">Settings</h2>
+    {% if reporters|length > 1 %}
+    <form method="post" action="{% url 'network-view' %}" class="net-picker">
+      {% csrf_token %}
+      <label class="field__label" for="net-host">The agent that measures the network</label>
+      <select class="well" id="net-host" name="host">
+        <option value="auto"{% if network.view_is_auto %} selected{% endif %}>Automatic ({{ network.view_host.name }})</option>
+        {% for reporter in reporters %}<option value="{{ reporter.id }}"{% if not network.view_is_auto and reporter.is_view %} selected{% endif %}>{{ reporter.name }}{% if reporter.server_local %} (on the CronRack server){% endif %} · {{ reporter.last_report }}</option>{% endfor %}
+      </select>
+      <p class="field__help">Best on the CronRack server's own machine: it can still report during a router or internet outage.</p>
+      <button type="submit" class="btn">Use this agent</button>
+    </form>
+    {% else %}
+    <p class="muted">Measured by {{ network.view_host.name }}.</p>
+    {% endif %}
+    <form method="post" action="{% url 'network-settings' %}" class="net-confirm">
+      {% csrf_token %}
+      <label class="field__label" for="net-confirm">Reports in a row before a change counts</label>
+      <input class="well" id="net-confirm" name="confirm_reports" type="number" min="1" max="20" value="{{ network.confirm_reports }}">
+      <button type="submit" class="btn">Save</button>
+    </form>
+  </section>
+  {% else %}
+  <section class="surface panel" aria-label="How to turn it on">
+    <p>Turn it on with the installer on one host, ideally the CronRack server's own machine:</p>
+    <pre class="code mono">sudo bash install.sh --server https://SERVER --network</pre>
+  </section>
+  {% endif %}
+{% endblock %}

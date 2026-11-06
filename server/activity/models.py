@@ -4,24 +4,31 @@ from django.utils import timezone
 
 from clusters.models import Cluster
 from hosts.models import Host
+from network.models import Network
 
 
 class StatusEventQuerySet(models.QuerySet):
     def owned_by(self, user):
-        """Events of the user's hosts and clusters. Every view goes through this, so
-        none can forget the cluster half."""
-        return self.filter(Q(host__owner=user) | Q(cluster__owner=user))
+        """Events of the user's hosts, clusters and network. Every view goes through this,
+        so none can forget a kind of subject."""
+        return self.filter(Q(host__owner=user) | Q(cluster__owner=user) | Q(network__owner=user))
 
 
 class StatusEvent(models.Model):
-    """One row each time a host's or a cluster's status changes (e.g. green -> red)."""
+    """One row each time a host's, a cluster's or the network's status changes (e.g.
+    green -> red). The network also gets rows that don't change its status (old == new,
+    "Router rebooted", "Public IP changed"): they are shown, never alerted.
+    """
 
-    # Exactly one of host and cluster is set (status_event_one_subject).
+    # Exactly one of host, cluster and network is set (status_event_one_subject).
     host = models.ForeignKey(
         Host, on_delete=models.CASCADE, null=True, blank=True, related_name="status_events"
     )
     cluster = models.ForeignKey(
         Cluster, on_delete=models.CASCADE, null=True, blank=True, related_name="status_events"
+    )
+    network = models.ForeignKey(
+        Network, on_delete=models.CASCADE, null=True, blank=True, related_name="status_events"
     )
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     old_status = models.CharField(max_length=16, choices=Host.Status.choices)
@@ -35,12 +42,14 @@ class StatusEvent(models.Model):
         indexes = (
             models.Index(fields=["host", "-created_at"]),
             models.Index(fields=["cluster", "-created_at"]),
+            models.Index(fields=["network", "-created_at"]),
         )
         constraints = (
             models.CheckConstraint(
                 condition=(
-                    Q(host__isnull=False, cluster__isnull=True)
-                    | Q(host__isnull=True, cluster__isnull=False)
+                    Q(host__isnull=False, cluster__isnull=True, network__isnull=True)
+                    | Q(host__isnull=True, cluster__isnull=False, network__isnull=True)
+                    | Q(host__isnull=True, cluster__isnull=True, network__isnull=False)
                 ),
                 name="status_event_one_subject",
             ),
@@ -48,8 +57,10 @@ class StatusEvent(models.Model):
 
     @property
     def subject(self):
-        """The host or cluster this event is about."""
-        return self.host if self.host_id is not None else self.cluster
+        """The host, cluster or network this event is about."""
+        if self.host_id is not None:
+            return self.host
+        return self.cluster if self.cluster_id is not None else self.network
 
     @property
     def subject_name(self) -> str:
@@ -65,6 +76,15 @@ class StatusEvent(models.Model):
     def describe(self) -> str:
         """One sentence for the activity list and alerts: 'pi-01 went red: 2 security updates'."""
         name = self.subject_name
+        if self.network_id is not None:
+            # "Network: Internet down", "Network: Router rebooted …", "Network OK again".
+            if self.summary:
+                return f"{name}: {self.summary}"
+            return (
+                f"{name} OK again"
+                if self.new_status == "green"
+                else f"{name} went {self.new_status}"
+            )
         if self.new_status == "offline":
             text = f"{name} went offline"
         elif self.old_status == "offline":

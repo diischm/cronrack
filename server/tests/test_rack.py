@@ -91,10 +91,7 @@ def test_overview_without_hosts_shows_the_example_and_an_empty_slot(alice_client
     html = alice_client.get("/").content.decode()
 
     assert '<h1 class="page-title" id="overview-title">No hosts yet</h1>' in html
-    assert (
-        '<span id="overview-sub">0 hosts<span class="g-only" id="overview-sub-clusters"></span></span>'
-        in html
-    )
+    assert '<span id="overview-sub">0 hosts</span>' in html
     assert '<a class="rack-unit card-press rack-unit--example" href="/hosts/example/">' in html
     assert EXAMPLE_NAME in html
     example = html[html.index("rack-unit--example") :]
@@ -132,10 +129,7 @@ def test_example_disappears_once_a_host_exists(alice_client: Client, alice):
     assert EXAMPLE_NAME not in html
     assert "/hosts/example/" not in html
     assert "rack__slot--empty" not in html
-    assert (
-        '<span id="overview-sub">1 host<span class="g-only" id="overview-sub-clusters"></span>'
-        " · updated never</span>" in html
-    )
+    assert '<span id="overview-sub">1 host · updated never</span>' in html
 
 
 # --- rack units ----------------------------------------------------------------------

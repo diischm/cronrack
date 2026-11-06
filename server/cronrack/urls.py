@@ -9,6 +9,7 @@ urlpatterns = [
     path("", include("accounts.urls")),
     path("", include("hosts.urls")),
     path("", include("clusters.urls")),
+    path("", include("network.urls")),
     path("", include("activity.urls")),
     path("", include("prefs.urls")),
     # Public: install.sh and the agent package (no secrets inside).
@@ -16,6 +17,7 @@ urlpatterns = [
     # Dev-only: 404 unless DEBUG=1 (checked inside each view).
     path("dev/preview/", dev_views.preview, name="dev-preview"),
     path("dev/preview/cluster/", dev_views.preview_cluster, name="dev-preview-cluster"),
+    path("dev/preview/network/", dev_views.preview_network, name="dev-preview-network"),
     path("dev/styleguide/", dev_views.styleguide, name="dev-styleguide"),
 ]
 

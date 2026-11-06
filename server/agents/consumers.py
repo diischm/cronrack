@@ -41,6 +41,7 @@ from hosts.services import (
     host_group,
     save_report,
 )
+from network.services import save_network
 from rules.engine import top_issues
 
 logger = logging.getLogger(__name__)
@@ -173,6 +174,11 @@ def ingest_report(host_id: int, report: dict, connection_id: str) -> None:
         except Exception as exc:  # noqa: BLE001 - the host's own report must still be saved
             # The class name only: messages could contain agent data.
             logger.warning("Host %s: cluster view not saved (%s)", host_id, type(exc).__name__)
+        try:
+            with transaction.atomic():
+                save_network(host, host_report.get("network"))
+        except Exception as exc:  # noqa: BLE001 - the host's own report must still be saved
+            logger.warning("Host %s: network data not saved (%s)", host_id, type(exc).__name__)
         # The scheduler clears `connected` when it marks a host offline. If this
         # (still active) socket reports again after all, it is connected after all.
         Host.objects.filter(pk=host_id, connection_id=connection_id, connected=False).update(

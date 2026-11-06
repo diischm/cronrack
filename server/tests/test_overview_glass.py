@@ -106,36 +106,90 @@ def test_server_and_json_summaries_agree(alice_client: Client, alice, live):  # 
     assert all(expected[name] == text for name, text in cards)
 
 
-# --- 2. Header: headline, subline, keys; no tiles in Glass --------------------------------------
+# --- 2. No header row in Glass ------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_header_has_the_headline_subline_and_both_keys(alice_client: Client, alice, live):  # noqa: F811
+def test_glass_has_no_header_row_headline_or_check_all(alice_client: Client, alice):
     make_host(alice, "a-red", "red", make_report(reboot_required=True))
     html = without_templates(page(alice_client))
-    head = html[
-        html.index('<div class="page-head overview-head">') : html.index("summary desk-only")
-    ]
-    # alice has "nas" (the live fixture's healthy reporter), a-red, and the cluster with a
-    # crash-looping pod: a-red + the cluster need her.
-    assert '<h1 class="page-title" id="overview-title">2 things need you</h1>' in head
+    # All of it is in the Legacy-only header (display: none in Glass, out of the a11y tree).
+    head = html[html.index('<div class="page-head overview-head legacy-only">') :]
+    head = head[: head.index("summary desk-only")]
+    assert 'id="overview-title"' in head and "Check all now" in head and "overview-sub" in head
+    assert html.count("Check all now") == 1
+    # Glass's heading for the page, visually hidden.
+    assert '<h1 class="visually-hidden g-only">Overview</h1>' in html
+    # The phone top bar's Check all key and Add host copy are hidden in Glass.
     assert (
-        '<span id="overview-sub">2 hosts<span class="g-only" id="overview-sub-clusters">'
-        " · 1 cluster</span> · updated just now</span>"
-    ) in head
-    assert "Check all now" in head and "Add host" in head
+        '[data-skin="glass"] .topbar__form, [data-skin="glass"] .app:has(.g-add-host) .add-key'
+        in glass_css()
+    )
     assert '<section class="summary desk-only legacy-only" aria-label="Summary">' in html
-    assert "tile--offline" not in html  # Glass's own tile is gone
     assert 'id="g-duo"' not in html
 
 
-def test_glass_css_has_no_tile_rules_and_a_24px_headline():
+@pytest.mark.django_db
+def test_updated_time_is_in_the_top_bar_and_refreshes(alice_client: Client, alice):
+    make_host(alice, "a", "green", make_report())
+    html = without_templates(page(alice_client))
+    bar = html[html.index('<header class="topbar">') : html.index("</header>")]
+    assert '<p class="side-version g-only" id="overview-updated">updated just now</p>' in bar
+    assert 'setText("overview-updated", "updated " + text(data.updated_human));' in read_js(
+        "overview.js"
+    )
+
+
+def test_glass_css_has_no_tile_rules_and_the_logo_sizes():
     css = glass_css()
     assert not [sel for sel, _ in css_rules(css) if ".tile" in sel or ".summary" in sel]
-    assert '[data-skin="glass"] .overview-head .page-title { font-size: 24px;' in css
-    # Phones: the keys sit under the headline; the top bar's copies are hidden.
-    assert '[data-skin="glass"] .overview-head__actions.desk-only' in css
-    assert '[data-skin="glass"] .app:has(.overview-head__actions) .add-key' in css
+    assert ".app:not(.app--bare) .brand__bars span { width: 28px; height: 5px;" in css  # desktop
+    assert '[data-skin="glass"] .app:not(.app--bare) .brand { font-size: 22px; }' in css
+    assert '[data-skin="glass"] .brand__bars span { width: 24px; height: 4px;' in css  # phone
+    assert '[data-skin="glass"] .brand { gap: 10px; font-size: 19px;' in css
+
+
+@pytest.mark.django_db
+def test_section_titles_are_visually_hidden_headings(alice_client: Client, alice, live):  # noqa: F811
+    host = make_host(alice, "a-red", "red", make_report(reboot_required=True))
+    StatusEvent.objects.create(host=host, old_status="green", new_status="red")
+    html = without_templates(page(alice_client))
+    assert '<h2 class="visually-hidden" id="g-attention-title">Needs attention' in html
+    assert '<h2 class="visually-hidden overview-hosts__title" id="hosts-title">Hosts' in html
+    assert '<h2 class="visually-hidden" id="g-away-title">While you were away</h2>' in html
+    assert 'id="g-attention" aria-labelledby="g-attention-title">' in html
+    assert 'id="g-away" aria-labelledby="g-away-title">' in html
+    # Clusters shares its header with Legacy: hidden by Glass's CSS.
+    assert '<h2 class="section-title" id="clusters-title">Clusters' in html
+    assert ".overview-clusters__head > .section-title { position: absolute;" in glass_css()
+    headings = re.findall(r"<(h[12])\b", html[html.index("<main") :])
+    assert headings[0] == "h1"  # Glass's page heading, before every section's h2
+
+
+@pytest.mark.django_db
+def test_add_host_is_on_the_chips_row_inside_the_hosts_section(alice_client: Client, alice):
+    make_host(alice, "a", "green", make_report())
+    html = without_templates(page(alice_client))
+    section = html[html.index('<section class="overview-hosts"') :]
+    bar = section[section.index('<div class="g-hosts-bar g-only">') : section.index('id="rack"')]
+    assert '<a class="btn btn--primary g-add-host" href="/hosts/add/">+ Add host</a>' in bar
+    assert bar.index('id="host-filter"') < bar.index("g-add-host")
+    assert '[data-skin="glass"] .g-add-host.btn--primary { min-height: 44px; }' in glass_css()
+
+
+@pytest.mark.django_db
+def test_dots_stay_only_on_activity_rows(alice_client: Client, alice):
+    host = make_host(alice, "a-red", "red", make_report(reboot_required=True))
+    make_silent_host(alice, "b-off")
+    StatusEvent.objects.create(host=host, old_status="green", new_status="red")
+    html = without_templates(page(alice_client))
+    chips = html[html.index('id="host-filter"') : html.index('class="btn btn--primary g-add-host"')]
+    assert "dot" not in chips
+    cards = html[html.index('id="g-attention-list"') : html.index('<div class="overview-body')]
+    assert "lamp" not in cards
+    assert "--dot: transparent; }" in glass_css()
+    away = html[html.index('id="g-away-list"') :]
+    assert "lamp--red" in away[: away.index("</ol>")]  # activity keeps its dots
 
 
 # --- 3. Needs attention: short cards, details on click ------------------------------------------
@@ -165,7 +219,7 @@ def test_closed_card_shows_only_name_dot_summary_and_type(alice_client: Client, 
         "g-attn__meta",
         "g-attn__type",
     ]
-    assert "status-icon--bad" in button  # the dot, with its words
+    assert "status-icon--bad" in button  # the words (no dot: --dot is transparent here)
     assert '<span class="g-attn__summary-text">x.service failed</span>' in button
     assert '<span class="g-attn__type">host</span>' in button
     # Nothing else when closed: no facts, no keys, no issue list.
@@ -237,7 +291,7 @@ def test_headline_count_matches_the_cards(alice_client: Client, alice, live):  #
 
 
 def chip_attrs(html: str) -> dict[str, str]:
-    box = html[html.index('<div class="g-chips g-only" id="host-filter"') :]
+    box = html[html.index('<div class="g-chips" id="host-filter"') :]
     box = box[: box.index("</div>")]
     pattern = r'<button type="button" class="g-chip" data-filter="(\w+)"([^>]*)>'
     return dict(re.findall(pattern, box))
@@ -251,8 +305,7 @@ def test_chips_render_counts_disabled_zeroes_and_all_pressed(alice_client: Clien
     html = without_templates(page(alice_client))
 
     assert (
-        '<div class="g-chips g-only" id="host-filter" role="group"'
-        ' aria-label="Filter hosts by status">'
+        '<div class="g-chips" id="host-filter" role="group" aria-label="Filter hosts by status">'
     ) in html
     attrs = chip_attrs(html)
     assert list(attrs) == ["all", "red", "yellow", "green", "offline"]

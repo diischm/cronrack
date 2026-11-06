@@ -12,6 +12,10 @@
 // element.style.setProperty. No HTML string is ever parsed, so text like <script> is shown as
 // text and can't become markup. Nothing is logged.
 //
+// The network strip (components/network_strip.html, the first thing on the page): overview.json's
+// "network", or null (no strip). Its points update in place; a change of state is announced
+// once, politely (#net-announce), and "updated …" in Glass's top bar (#overview-updated).
+//
 // What a refresh renders (the same as the server's templates):
 //   - each host / cluster unit (components/rack_unit.html, cluster_unit.html): BOTH controls,
 //     the Legacy link and the Glass button with its expand region, from one data row, so the
@@ -40,10 +44,10 @@
 //     view-transition names (--g-vt: g-host-<id>, g-cl-<id>, g-attn-h<id> / g-attn-c<id>), so
 //     they morph instead of jumping. A refresh where nothing visible changed (the usual
 //     case: only "updated 30s ago") never starts a transition.
-//   - the headline changes word by word (.g-word), a changed status sends its dot's ring
-//     (.g-ring) and crossfades its colour, a rack unit's status gradient crossfades (its old
-//     rack__slot--st-* class first, then the new one: glass.css transitions --g-st), new
-//     activity rows slide in (.g-new) while the others move down (FLIP, transform only).
+//   - a rack unit's status gradient crossfades (its old rack__slot--st-* class first, then
+//     the new one: glass.css transitions --g-st), the network strip's icon and line colours
+//     crossfade (classes swapped in place), new activity rows slide in (.g-new) while the
+//     others move down (FLIP, transform only).
 //   - filtering runs in a view transition too: hidden units slide out, shown ones slide in.
 // The first-load stagger is CSS (data-entrance, glass.js), so a refresh never plays it.
 //
@@ -62,6 +66,9 @@
   const STATUSES = ["red", "yellow", "green", "offline", "waiting", "maintenance"];
   const FILTER_KEY = "cronrack-host-filter";
   const FILTERS = ["all", "red", "yellow", "green", "offline"];
+  const NET_STATUSES = ["ok", "down", "slow", "untested"];
+  const NET_LINES = ["ok", "slow", "off"];
+  const NET_KINDS = ["you", "router", "box", "internet"];
 
   const root = document.documentElement;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -453,7 +460,7 @@
       const words = document.createElement("span");
       words.className = "visually-hidden";
       words.textContent = "Offline";
-      offline.append(lamp("offline"), words);
+      offline.append(words);
       placeholder.replaceWith(offline);
     } else {
       const icon = statusIcon(status, text(row.status_label));
@@ -563,48 +570,15 @@
     return attention ? plural(attention, "thing") + (attention === 1 ? " needs you" : " need you") : "All good";
   }
 
-  // Per Word Crossfade: each word its own span, coming in one after another (glass.css).
-  function setTitle(value, animate) {
-    const title = byId("overview-title");
-    if (!title || title.textContent === value) {
-      return;
-    }
-    if (!animate) {
-      title.textContent = value;
-      return;
-    }
-    const parts = [];
-    value.split(" ").forEach((word, i) => {
-      if (i) {
-        parts.push(" ");
-      }
-      const span = document.createElement("span");
-      span.className = "g-word";
-      span.style.setProperty("--g-i", String(i));
-      span.textContent = word;
-      parts.push(span);
-    });
-    title.replaceChildren(...parts);
-  }
-
-  // "3 hosts · 1 cluster · updated 30s ago"; the clusters part is Glass only (.g-only span).
-  function renderSub(data, hostCount, clusterCount) {
-    const sub = byId("overview-sub");
-    const clusters = byId("overview-sub-clusters");
-    if (!sub || !clusters) {
-      return;
-    }
-    clusters.textContent = clusterCount ? " · " + plural(clusterCount, "cluster") : "";
-    sub.replaceChildren(
-      plural(hostCount, "host"),
-      clusters,
-      hostCount ? " · updated " + text(data.updated_human) : ""
+  function renderHead(data, hostCount) {
+    // Legacy's header: the headline and the subline.
+    setText("overview-title", headline(data, hostCount));
+    setText(
+      "overview-sub",
+      plural(hostCount, "host") + (hostCount ? " · updated " + text(data.updated_human) : "")
     );
-  }
-
-  function renderHead(data, hostCount, clusterCount, animate) {
-    setTitle(headline(data, hostCount), animate);
-    renderSub(data, hostCount, clusterCount);
+    // Glass's top bar.
+    setText("overview-updated", "updated " + text(data.updated_human));
 
     // Legacy's tiles.
     const counts = data.status_counts || {};
@@ -765,6 +739,99 @@
     applyFilter(rack.children);
   }
 
+  // --- The network strip ---------------------------------------------------------------------------
+
+  function netClass(list, value, fallback) {
+    return list.includes(value) ? value : fallback;
+  }
+
+  function netLine(point) {
+    const li = document.createElement("li");
+    li.className = "net-ln net-ln--" + netClass(NET_LINES, point.line, "off");
+    li.setAttribute("aria-hidden", "true");
+    return li;
+  }
+
+  function fillNetPoint(li, point) {
+    li.className = "net-pt net-pt--" + netClass(NET_STATUSES, point.status, "untested");
+    li.querySelector(".net-pt__label").textContent = text(point.name);
+    li.querySelector(".net-pt__word").textContent = ": " + text(point.word);
+  }
+
+  function buildNetPoint(point) {
+    const li = clone("net-point-template");
+    const kind = netClass(NET_KINDS, point.kind, "internet");
+    li.setAttribute("data-kind", kind);
+    const icons = byId("net-icons");
+    const icon = icons && icons.content.querySelector('[data-kind="' + kind + '"] svg');
+    if (icon) {
+      li.querySelector(".net-pt__icon").replaceChildren(icon.cloneNode(true));
+    }
+    fillNetPoint(li, point);
+    return li;
+  }
+
+  function renderNetwork(net) {
+    let strip = byId("net-strip");
+    if (!net || typeof net !== "object") {
+      if (strip) {
+        strip.remove();
+      }
+      return;
+    }
+    if (!strip) {
+      strip = clone("net-strip-template");
+      byId("net-strip-template").before(strip);
+    }
+    const status = byId("net-status");
+    const before = status.textContent;
+    const now = text(net.text);
+    status.textContent = now;
+    byId("net-more").setAttribute("href", "/network/"); // a fixed path, never from data
+    const chain = byId("net-chain");
+    const points = (Array.isArray(net.points) ? net.points : []).filter((p) => p && typeof p === "object");
+    const shown = Array.from(chain.querySelectorAll(".net-pt"));
+    const same =
+      shown.length === points.length &&
+      shown.every((li, i) => li.getAttribute("data-kind") === netClass(NET_KINDS, points[i].kind, "internet"));
+    if (same) {
+      // In place: the colours crossfade (glass.css).
+      shown.forEach((li, i) => fillNetPoint(li, points[i]));
+      Array.from(chain.querySelectorAll(".net-ln")).forEach((line, i) => {
+        line.className = "net-ln net-ln--" + netClass(NET_LINES, points[i + 1].line, "off");
+      });
+    } else {
+      const items = [];
+      points.forEach((point, i) => {
+        if (i) {
+          items.push(netLine(point));
+        }
+        items.push(buildNetPoint(point));
+      });
+      chain.replaceChildren(...items);
+    }
+    if (before && before !== now) {
+      setText("net-announce", now); // once: only when the state changed
+    }
+  }
+
+  function netState(net) {
+    return net && typeof net === "object"
+      ? [text(net.text), (Array.isArray(net.points) ? net.points : []).map((p) => p && text(p.status))]
+      : null;
+  }
+
+  function pageNetState() {
+    const status = byId("net-status");
+    if (!status) {
+      return null;
+    }
+    const statuses = Array.from(document.querySelectorAll("#net-chain .net-pt")).map((li) =>
+      (Array.from(li.classList).find((c) => c.startsWith("net-pt--")) || "").slice(8)
+    );
+    return [status.textContent, statuses];
+  }
+
   // --- Sections that come and go -------------------------------------------------------------------
 
   // Glass's "Needs attention": full width, before the Hosts row.
@@ -867,15 +934,6 @@
     }
   }
 
-  // Lamp per unit on the page, to find the dots whose status changed (ring()).
-  function pageLamps() {
-    const lamps = new Map();
-    document.querySelectorAll(".rack__slot[data-unit]").forEach((li) => {
-      lamps.set(slotKey(li), lampClass(li.querySelector(".rack-unit__lamp .lamp")));
-    });
-    return lamps;
-  }
-
   // What a set of units, cards and rows shows, in one string: the headline, each unit's
   // key + lamp + issue line, each attention card's key and the activity rows. The same
   // function describes the page now and the nodes a refresh built, so equal strings mean
@@ -932,28 +990,6 @@
   function children(id) {
     const el = byId(id);
     return el ? el.children : [];
-  }
-
-  // Status ring: the changed units' dots crossfade from the old colour and send one ring.
-  function ring(before) {
-    pageLamps().forEach((now, key) => {
-      const old = before.get(key);
-      if (!old || !now || old === now) {
-        return;
-      }
-      const [kind, id] = key.split(":"); // id: digits only (validId)
-      const selector = '[data-unit="' + kind + '"][data-id="' + id + '"], [data-card="' + kind + '"][data-id="' + id + '"]';
-      document.querySelectorAll(selector).forEach((el) => {
-        el.querySelectorAll(".rack-unit__lamp .lamp, .g-attn__head .lamp").forEach((dot) => {
-          dot.classList.replace(now, old);
-          dot.classList.add("g-dot-fade", "g-ring");
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => dot.classList.replace(old, now));
-          });
-        });
-        el.querySelectorAll(".g-attn__head > .status-icon").forEach((icon) => icon.classList.add("g-ring"));
-      });
-    });
   }
 
   // Animated List: rows already there glide from where they were (FLIP, transform only);
@@ -1119,27 +1155,27 @@
 
     const title = byId("overview-title");
     const stateBefore = viewState(
-      title ? title.textContent : "",
+      JSON.stringify([title ? title.textContent : "", pageNetState()]),
       rack.children,
       children("cluster-rack"),
       children("g-attention-list"),
       children("g-away-list")
     );
     const stateAfter = viewState(
-      headline(data, hosts.length),
+      JSON.stringify([headline(data, hosts.length), netState(data.network)]),
       units || rack.children,
       clusterUnits || [],
       cards,
       glassRows
     );
-    const lampsBefore = pageLamps();
     const statusesBefore = pageStatuses();
     const allowed = motionOK();
     const awayBefore = allowed ? rowTops(byId("g-away-list")) : new Map();
     let animate = false;
 
     function swap() {
-      renderHead(data, hosts.length, clusters.length, animate);
+      renderHead(data, hosts.length);
+      renderNetwork(data.network);
       pressChips();
       if (units) {
         replaceKeepingFocus(rack, units);
@@ -1163,7 +1199,6 @@
         swap(); // the transition could not run the swap: apply it directly
       }
       playList(byId("g-away-list"), awayBefore);
-      ring(lampsBefore);
       fadeStatus(statusesBefore);
       try {
         await transition.finished;
@@ -1174,7 +1209,6 @@
       swap();
       if (animate) {
         playList(byId("g-away-list"), awayBefore);
-        ring(lampsBefore);
         fadeStatus(statusesBefore);
       }
     }

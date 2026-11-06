@@ -228,15 +228,19 @@ def test_activity_alone_takes_the_row_without_needs_attention(alice_client, alic
     assert 'id="g-attention"' not in html
 
 
-def test_see_all_is_inside_a_section_header(alice_client, alice, live):  # noqa: F811
+def test_see_all_links_have_a_fixed_place(alice_client, alice, live):  # noqa: F811
     host = make_host(alice, "box-1", "red", make_report())
     add_events(host, 2)
     html = without_templates(page(alice_client))
-    links = [m.start() for m in re.finditer(r'<a class="section-link"', html)]
-    assert len(links) == 3  # Glass away, Clusters, Legacy away
-    for at in links:
-        head = html.rfind('<div class="section-head', 0, at)
-        assert head != -1 and "</div>" not in html[head:at], html[at - 200 : at]
+    # Legacy: in the section headers (its away box, and the Clusters header, Legacy only).
+    assert html.count('<a class="section-link" href="/activity/">See all</a>') == 1
+    assert '<a class="section-link legacy-only" href="/clusters/">See all</a>' in html
+    # Glass: at the bottom of the activity box and of the Clusters section.
+    away = html[html.index('id="g-away-list"') :]
+    assert away.index("</ol>") < away.index('<a class="section-link g-see-all" href="/activity/">')
+    assert html.index('id="clusters-rack-chassis"') < html.index(
+        '<a class="section-link g-see-all g-only" href="/clusters/">See all →</a>'
+    )
 
 
 def test_hero_count_equals_the_attention_cards(alice_client, alice, live):  # noqa: F811
@@ -251,7 +255,7 @@ def test_hero_count_equals_the_attention_cards(alice_client, alice, live):  # no
     assert data["attention_count"] == len(cards) == 4  # red, yellow, offline host + red cluster
     assert cards.count("cluster") == 1
     assert '<h1 class="page-title" id="overview-title">4 things need you</h1>' in html
-    assert '<span class="section-count" id="g-attention-count"> 4</span>' in html
+    assert '<span id="g-attention-count"> 4</span>' in html
 
 
 def test_legacy_shows_3_activity_entries_and_glass_10(alice_client, alice):

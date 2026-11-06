@@ -454,3 +454,34 @@ html, body { overflow-x: hidden; }
   .settings-grid--host { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .settings-head { align-items: center; }
 }
+
+/* Network strip and page (components/network_strip.html, network/index.html). Legacy's
+   simple version: a row of icons and words in the theme's status colours. New elements
+   only; Glass has its own rules. */
+.net-strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card); background: var(--surface-hi); }
+.net-strip__text { display: flex; flex-direction: column; gap: 2px; }
+.net-strip__status { font-weight: 800; }
+.net-strip__more { font-size: 14px; font-weight: 700; color: var(--accent-text); }
+.net-chain { flex: 1 1 auto; display: flex; align-items: center; margin: 0; padding: 0; list-style: none; }
+.net-pt { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--status-muted); }
+.net-pt__name { font-size: 12px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+.net-pt--ok { color: var(--status-good); }
+.net-pt--slow { color: var(--status-warn); }
+.net-pt--down { color: var(--status-bad); }
+.net-ln { flex: 1 1 auto; min-width: 8px; height: 2px; margin: 0 6px 20px; background: var(--status-good); }
+.net-ln--slow { background: var(--status-warn); }
+.net-ln--off { background: repeating-linear-gradient(90deg, var(--status-muted) 0 5px, transparent 5px 10px); }
+.net-points { width: 100%; border-collapse: collapse; }
+.net-points th, .net-points td { padding: var(--space-2); text-align: left; white-space: nowrap; }
+.net-word { font-weight: 800; }
+.net-word--ok { color: var(--green-chip-text); }
+.net-word--slow { color: var(--amber-chip-text); }
+.net-word--down { color: var(--red-chip-text); }
+.net-word--untested { color: var(--text-faint); }
+.net-trend { display: block; width: 96px; height: 24px; }
+.net-trend__line { fill: none; stroke: currentColor; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.net-trend__loss { fill: var(--status-bad); }
+.net-facts { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-5); margin: var(--space-3) 0 0; }
+.net-facts dt { font-size: 13px; color: var(--text-faint); }
+.net-facts dd { margin: 0; font-weight: 700; }

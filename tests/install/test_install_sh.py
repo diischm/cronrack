@@ -83,6 +83,11 @@ def test_upgrade_refuses_when_the_service_is_missing(box):
         "--k8s-ca=/srv/tls/ca.crt",
         "--k8s-api https://127.0.0.1:6443",
         "--k8s-api=https://127.0.0.1:6443",
+        "--network",
+        "--network-gateway auto",
+        "--network-gateway=192.0.2.1",
+        "--network-hop ISP-box=192.0.2.254",
+        "--network-hop=ISP-box=192.0.2.254",
         "--uninstall",
     ],
 )
@@ -468,3 +473,117 @@ def test_enter_keeps_docker_access_off(box):
     assert "Give the agent Docker access?" in result.out
     assert "[y/N]" in result.out
     assert not box.exists(DROPIN)
+
+
+# --- [network] ---------------------------------------------------------------------------
+
+NETWORK_CONFIG = (
+    "import sys; sys.path.insert(0, '/opt/cronrack-agent/app');"
+    " from agent.config import load_config; n = load_config().network;"
+    " print(n.enabled, n.gateway, [(h.name, h.address) for h in n.hops], n.internet)"
+)
+
+
+def agent_network(box) -> str:
+    """[network] as the installed agent itself reads it."""
+    return box.ok(
+        f'runuser -u cronrack -- /opt/cronrack-agent/venv/bin/python -c "{NETWORK_CONFIG}"'
+    ).strip()
+
+
+def test_network_writes_the_table_the_agent_reads(box, packages):
+    box.install('--network --network-gateway 192.0.2.1 --network-hop "ISP box=192.0.2.254"')
+
+    assert "[network]" in box.read(CONFIG)
+    assert agent_network(box) == (
+        "True 192.0.2.1 [('ISP box', '192.0.2.254')] ['1.1.1.1', '8.8.8.8']"
+    )
+    assert box.mode(CONFIG) == "root:cronrack 640"
+
+
+def test_network_asks_for_the_router_when_none_is_detected(box, packages):
+    # The test container has no network, so there is no default route to confirm.
+    result = box.install("--network", f"192.0.2.1\n{box.token}\n")  # asked before the token
+
+    assert "The router's address" in result.out
+    assert agent_network(box).startswith("True 192.0.2.1 []")
+
+
+def test_network_without_a_terminal_needs_the_gateway(box, packages):
+    box.install()
+    box.clear_systemctl_calls()
+
+    result = box.sh("setsid -w bash /install.sh --server https://localhost --network <&-")
+
+    assert result.code == 2, result.out
+    assert "--network-gateway" in result.out
+    assert "[network]" not in box.read(CONFIG)
+    assert "Downloading" not in result.out  # refused before anything was done
+
+
+@pytest.mark.parametrize(
+    "hop",
+    [
+        "no-equals-sign",
+        "Internet=8.8.8.8",  # an extra point is local: a private address
+        "x=192.0.2.300",
+        "x=010.0.0.1",  # the agent's parser refuses leading zeros
+        "Router=192.0.2.9",  # a name the chain already uses
+        "1.2.3.4=192.0.2.9",
+        'quote"d=192.0.2.9',
+        "=192.0.2.9",
+        "a-name-that-is-much-longer-than-32=192.0.2.9",
+    ],
+)
+def test_bad_network_hops_are_refused_before_anything_happens(box, hop):
+    result = box.sh(f"bash /install.sh --server https://localhost --network-hop '{hop}' <&-")
+
+    assert result.code == 2, result.out
+    assert "--network-hop" in result.out
+    assert box.systemctl_calls() == []
+    assert not box.exists(CONFIG)
+
+
+def test_at_most_two_extra_points(box):
+    hops = " ".join(f"--network-hop p{i}=192.0.2.{i}" for i in range(1, 4))
+    result = box.sh(f"bash /install.sh --server https://localhost {hops} <&-")
+
+    assert result.code == 2, result.out
+    assert "at most 2" in result.out
+
+
+def test_two_extra_points_need_their_own_names(box):
+    result = box.sh(
+        "bash /install.sh --server https://localhost"
+        " --network-hop a=192.0.2.2 --network-hop a=192.0.2.3 <&-"
+    )
+
+    assert result.code == 2, result.out
+    assert "two points named" in result.out
+
+
+def test_rerun_with_network_keeps_the_other_network_keys(box, packages):
+    box.install("--network --network-gateway auto")
+    box.ok(f"printf 'public_ip_check = true\\n' >>{CONFIG}")  # [network] is the last table
+
+    box.install('--network --network-gateway 192.0.2.1 --network-hop "Modem=192.0.2.200"')
+
+    config = box.read(CONFIG)
+    assert config.count("[network]") == 1
+    assert "public_ip_check = true" in config
+    assert 'gateway = "192.0.2.1"' in config and 'gateway = "auto"' not in config
+    assert agent_network(box).startswith("True 192.0.2.1 [('Modem', '192.0.2.200')]")
+
+
+def test_upgrade_keeps_the_network_table(box, packages):
+    box.install('--network --network-gateway auto --network-hop "ISP box=192.0.2.254"')
+    before = snapshot(box)
+    box.use_package("next")
+
+    result = box.upgrade()
+
+    assert result.code == 0, result.out
+    assert_asked_nothing(result.out)
+    assert snapshot(box) == before
+    kept = next(line for line in result.out.splitlines() if "Kept:" in line)
+    assert "[network] settings" in kept

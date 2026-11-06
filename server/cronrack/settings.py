@@ -139,6 +139,7 @@ INSTALLED_APPS = [
     "activity",
     "alerts",
     "clusters",
+    "network",
     "prefs",
     "rules",
 ]
