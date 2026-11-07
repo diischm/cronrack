@@ -1,0 +1,10 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  Settings sections: plain links, one page each, so they work without JS and every tab has
+  its own URL. The current one has aria-current="page" (the views pass settings_tab).
+{% endcomment %}
+<nav class="settings-tabs" aria-label="Settings sections">
+  <a class="settings-tabs__tab" href="{% url 'prefs' %}"{% if settings_tab == "account" %} aria-current="page"{% endif %}>Account</a>
+  <a class="settings-tabs__tab" href="{% url 'notifications' %}"{% if settings_tab == "notifications" %} aria-current="page"{% endif %}>Notifications</a>
+  <a class="settings-tabs__tab" href="{% url 'appearance' %}"{% if settings_tab == "appearance" %} aria-current="page"{% endif %}>Appearance</a>
+</nav>

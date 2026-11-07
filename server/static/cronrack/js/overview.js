@@ -1095,6 +1095,8 @@
     if (!data || !Array.isArray(data.hosts)) {
       throw new Error("bad response");
     }
+    // sound.js listens: a soft tone when a new "needs you" issue shows up (if turned on).
+    document.dispatchEvent(new CustomEvent("cronrack:overview-data", { detail: data }));
     return data;
   }
 

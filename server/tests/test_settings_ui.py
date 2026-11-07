@@ -280,8 +280,11 @@ def test_settings_page_fields(alice_client: Client):
     assert 'autocomplete="current-password"' in html
     assert html.count('autocomplete="new-password"') == 2
     assert html.count('aria-label="Show password" aria-pressed="false"') == 3
+    # The theme pickers have their own tab now (Settings → Appearance).
+    appearance = alice_client.get("/settings/appearance/").content.decode()
     for value in ("light", "dark", "system"):
-        assert f'type="radio" name="theme" value="{value}"' in html
+        assert f'type="radio" name="theme" value="{value}"' in appearance
+        assert f'type="radio" name="theme" value="{value}"' not in html
     # "Send test alert" is its own form, linked from the Alerts panel.
     assert (
         '<button type="submit" class="btn" form="test-alert-form">Send test alert</button>' in html

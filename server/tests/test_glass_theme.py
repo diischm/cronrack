@@ -257,7 +257,7 @@ def top_level_parts(group: str) -> list[str]:
 
 def test_settings_page_has_the_appearance_controls(client: Client, alice):
     client.force_login(alice)
-    html = client.get("/settings/").content.decode()
+    html = client.get("/settings/appearance/").content.decode()  # its own tab now
     for value in ("glass", "legacy"):
         assert f'type="radio" name="skin" value="{value}"' in html
     for value in ("light", "dark", "system"):
@@ -270,9 +270,10 @@ def test_settings_page_has_the_appearance_controls(client: Client, alice):
     assert ">Reduce animations<" in html
     assert "Moving background" not in html
     assert ">Show status labels<" in html
-    # "Send test alert" still posts to the real server action.
-    assert 'form="test-alert-form">Send test alert</button>' in html
-    assert 'action="/settings/test-alert/"' in html
+    # "Send test alert" (on the Account tab) still posts to the real server action.
+    account = client.get("/settings/").content.decode()
+    assert 'form="test-alert-form">Send test alert</button>' in account
+    assert 'action="/settings/test-alert/"' in account
 
 
 # --- CSP --------------------------------------------------------------------------------------

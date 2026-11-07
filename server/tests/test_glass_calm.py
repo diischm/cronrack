@@ -134,7 +134,7 @@ def test_nav_has_the_pill_and_highlight(alice_client: Client):
 
 
 def test_settings_show_reduce_animations_not_moving_background(alice_client: Client):
-    html = page(alice_client, "/settings/")
+    html = page(alice_client, "/settings/appearance/")
     assert ">Reduce animations<" in html
     assert 'id="pref-reduce-motion"' in html
     assert "Moving background" not in html
