@@ -32,6 +32,8 @@ from .test_host_views import make_host
 SERVER = Path(__file__).resolve().parent.parent
 ROUTER_IP = "192.0.2.1"
 BOX_IP = "192.0.2.254"
+SWITCH_IP = "192.0.2.2"
+AP_IP = "192.0.2.3"
 
 
 def point(name, role, address, received=5, median=2.0, p95=3.0, sent=5):
@@ -41,9 +43,13 @@ def point(name, role, address, received=5, median=2.0, p95=3.0, sent=5):
             "median_ms": median, "p95_ms": p95}  # fmt: skip
 
 
-def net(router=5, box=5, internet=5, dns=True, median=18.0, p95=22.0, **extra):
-    """A report's network section: Router, ISP box, 1.1.1.1 with these answers out of 5."""
-    points = [point("Router", "gateway", ROUTER_IP, router)]
+def net(router=5, box=5, internet=5, dns=True, median=18.0, p95=22.0, switch=None, **extra):
+    """A report's network section: Router, ISP box, 1.1.1.1 with these answers out of 5.
+
+    switch: answers of a "Switch" point before the router; None = no such point (old agents).
+    """
+    points = [] if switch is None else [point("Switch", "before", SWITCH_IP, switch)]
+    points.append(point("Router", "gateway", ROUTER_IP, router))
     if box is not None:
         points.append(point("ISP box", "local", BOX_IP, box))
     points.append(point("1.1.1.1", "internet", "1.1.1.1", internet, median, p95))
@@ -70,6 +76,64 @@ def valid(data) -> bool:
 def test_a_good_section_is_valid():
     assert valid(net())
     assert valid(net(box=None, dns=False))
+
+
+def test_points_before_the_router_are_valid():
+    assert valid(net(switch=5))
+    assert valid(net(switch=0, box=None))
+    data = net(switch=5)
+    data["points"].insert(1, point("AP", "before", AP_IP))
+    assert valid(data)
+
+
+def test_the_maximum_path_is_valid():
+    data = net(switch=5)
+    data["points"].insert(1, point("AP", "before", AP_IP))
+    data["points"].insert(4, point("Modem", "local", "192.0.2.253"))
+    for address in ("8.8.8.8", "9.9.9.9", "8.8.4.4"):
+        data["points"].append(point(address, "internet", address))
+    assert len(data["points"]) == 9
+    assert valid(data)
+
+
+def test_a_full_report_with_a_before_point_is_valid():
+    report = make_report(network=net(switch=5))
+    serializer = ReportSerializer(data=report)
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        # after the router: the order is the path
+        lambda d: d["points"].insert(2, point("AP", "before", AP_IP)),
+        lambda d: d["points"].append(point("AP", "before", AP_IP)),
+        lambda d: d["points"][0].update(address="8.8.8.8"),  # a before point is local
+        lambda d: d["points"].insert(0, point("Router", "before", AP_IP)),  # same name
+        lambda d: d["points"][0].update(name="evil\nname"),
+        lambda d: (
+            d["points"].extend(  # three
+                point(f"s{i}", "before", AP_IP) for i in range(2)
+            )
+            or d["points"].sort(key=lambda p: p["role"] != "before")
+        ),
+    ],
+)
+def test_odd_before_points_are_refused(change):
+    data = net(switch=5)
+    change(data)
+    assert not valid(data)
+
+
+@pytest.mark.parametrize("name", ["You", "you", "ROUTER", "Internet"])
+@pytest.mark.parametrize("role", ["before", "local"])
+def test_the_strips_own_words_are_refused_as_point_names(name, role):
+    data = net(box=None, switch=None)
+    extra = point(name, role, AP_IP)
+    data["points"].insert(0 if role == "before" else 1, extra)
+    if name.casefold() == "router":
+        data["points"][0 if role == "local" else 1]["name"] = "Gateway"
+    assert not valid(data)
 
 
 def test_a_public_default_gateway_is_valid():
@@ -152,6 +216,121 @@ def test_classify(data, state, chain, text):
     assert verdict.state == state
     assert verdict.chain == chain
     assert decide.state_text(verdict.state, verdict.point) == text
+
+
+@pytest.mark.parametrize(
+    ("data", "state", "point_name", "chain", "text"),
+    [
+        (net(switch=5), decide.STATE_OK, "", (O, O, O, O), "Network OK"),
+        # The first unreachable point in path order is the one reported.
+        (net(switch=0), decide.LOCAL_DOWN, "Switch", (D, U, U, U), "Switch down"),
+        (net(switch=0, router=0, box=0, internet=0),
+         decide.LOCAL_DOWN, "Switch", (D, U, U, U), "Switch down"),
+        (net(switch=5, router=0), decide.ROUTER_DOWN, "Router", (O, D, U, U), "Router down"),
+        (net(switch=5, router=0, box=0, internet=0),
+         decide.ROUTER_DOWN, "Router", (O, D, U, U), "Router down"),
+        (net(switch=5, box=0), decide.LOCAL_DOWN, "ISP box", (O, O, D, U), "ISP box down"),
+        (net(switch=5, internet=0),
+         decide.INTERNET_DOWN, "Internet", (O, O, O, D), "Internet down"),
+        (net(switch=5, box=None, internet=0),
+         decide.INTERNET_DOWN, "Internet", (O, O, D), "Internet down"),
+        (net(switch=5, p95=500), decide.INTERNET_SLOW, "Internet", (O, O, O, S), "Internet slow"),
+        (net(switch=5, internet=4),
+         decide.INTERNET_SLOW, "Internet", (O, O, O, S), "Internet slow"),
+        (net(switch=5, dns=False), decide.DNS_FAILING, "", (O, O, O, O), "DNS failing"),
+        # A slow answer from the switch is an answer: the switch isn't down.
+        (net(switch=1), decide.STATE_OK, "", (O, O, O, O), "Network OK"),
+    ],
+)  # fmt: skip
+def test_classify_with_a_point_before_the_router(data, state, point_name, chain, text):
+    verdict = decide.classify(data)
+    assert (verdict.state, verdict.point, verdict.chain) == (state, point_name, chain)
+    assert decide.state_text(verdict.state, verdict.point) == text
+
+
+def two_before(first=5, second=5, **kwargs):
+    data = net(switch=first, **kwargs)
+    data["points"].insert(1, point("AP", "before", AP_IP, second))
+    return data
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "router", "point_name", "chain"),
+    [
+        (0, 0, 0, "Switch", (D, U, U, U, U)),
+        (0, 5, 5, "Switch", (D, U, U, U, U)),  # an answer behind a dead point doesn't count
+        (5, 0, 5, "AP", (O, D, U, U, U)),
+        (5, 5, 0, "Router", (O, O, D, U, U)),
+    ],
+)
+def test_two_points_before_the_router_in_order(first, second, router, point_name, chain):
+    verdict = decide.classify(two_before(first, second, router=router))
+    assert (verdict.point, verdict.chain) == (point_name, chain)
+
+
+def no_route(switch):
+    return net(
+        gateway_found=False,
+        points=[
+            point("Switch", "before", SWITCH_IP, switch),
+            point("1.1.1.1", "internet", "1.1.1.1", 0),
+        ],
+    )
+
+
+def test_no_default_route_with_a_working_switch_is_the_router():
+    verdict = decide.classify(no_route(5))
+    assert (verdict.state, verdict.chain) == (decide.ROUTER_DOWN, (O, D, U))
+    assert not verdict.router_untested
+    shown = decide.points_for_display(no_route(5), verdict.chain)
+    assert [p["name"] for p in shown] == ["You", "Switch", "Router", "Internet"]
+    assert [p["status"] for p in shown] == [O, O, D, U]
+
+
+def test_no_default_route_with_a_dead_switch_is_the_switch():
+    verdict = decide.classify(no_route(0))
+    assert (verdict.state, verdict.point, verdict.chain) == (decide.LOCAL_DOWN, "Switch", (D, U, U))
+    assert verdict.router_untested
+
+
+def test_only_a_point_before_the_router_leaves_the_router_untested():
+    assert decide.classify(net(switch=0)).router_untested
+    assert not decide.classify(net(switch=5, box=0)).router_untested
+    assert not decide.classify(net(box=0)).router_untested
+    assert not decide.classify(net(router=0)).router_untested
+
+
+@pytest.mark.parametrize(
+    ("state", "held_point", "chain"),
+    [
+        (decide.LOCAL_DOWN, "Switch", (D, U, U, U)),
+        (decide.ROUTER_DOWN, "Router", (O, D, U, U)),
+        (decide.LOCAL_DOWN, "ISP box", (O, O, D, U)),
+        (decide.INTERNET_DOWN, "Internet", (O, O, O, D)),
+        (decide.INTERNET_SLOW, "Internet", (O, O, O, S)),
+        (decide.STATE_OK, "", (O, O, O, O)),
+    ],
+)
+def test_the_held_chain_follows_the_path(state, held_point, chain):
+    assert decide.chain_for_held(state, held_point, net(switch=5)) == chain
+
+
+def test_a_held_point_gone_from_the_config_shows_untested():
+    assert decide.chain_for_held(decide.LOCAL_DOWN, "Switch", net()) is None
+    shown = decide.points_for_display(net(), None)
+    assert {p["status"] for p in shown} == {U}
+
+
+def test_the_strip_shows_points_in_path_order_with_their_kinds():
+    shown = decide.points_for_display(two_before(), (O, O, O, O, O))
+    assert [(p["name"], p["kind"]) for p in shown] == [
+        ("You", "you"),
+        ("Switch", "switch"),
+        ("AP", "switch"),
+        ("Router", "router"),
+        ("ISP box", "box"),
+        ("Internet", "internet"),
+    ]
 
 
 def test_one_bad_internet_target_never_makes_the_internet_look_down():
@@ -329,6 +508,58 @@ def test_a_router_reboot_is_an_activity_entry_not_an_alert(
     assert event.describe() == "Network: Router rebooted (unreachable for 2 min)"
     assert event.old_status == event.new_status
     sender.assert_not_called()
+
+
+def test_a_dead_switch_says_so_and_alerts_through_the_existing_path(
+    alice, host, django_capture_on_commit_callbacks
+):
+    Prefs.objects.create(owner=alice, discord_webhook_url="https://discord.com/api/webhooks/1/abc")
+    send(host, [net(switch=5)])
+    with (
+        mock.patch.object(discord, "send_discord", return_value=True) as sender,
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        send(host, [net(switch=0)] * 3)
+    network = network_of(alice)
+    assert (network.state, network.state_point) == (decide.LOCAL_DOWN, "Switch")
+    assert network.status == "red"
+    sender.assert_called_once()
+    assert "Switch down" in sender.call_args.args[1]
+    host.refresh_from_db()
+    assert host.status != "red"  # the measuring host doesn't change colour
+
+
+def test_a_dead_switch_never_counts_as_a_router_reboot(alice, host):
+    """Router down, then the switch in front of it: the router wasn't seen coming back."""
+    start = timezone.now()
+    send(host, [net(switch=5), net(switch=5, router=0)], start)
+    network = network_of(alice)
+    down_since = network.router_down_since
+    assert down_since is not None
+    send(host, [net(switch=0)], start + timedelta(minutes=2))
+    network.refresh_from_db()
+    assert network.last_router_reboot_at is None
+    assert network.router_down_since == down_since  # still counting
+    assert not StatusEvent.objects.filter(network=network).exists()
+    send(host, [net(switch=5)], start + timedelta(minutes=3))
+    network.refresh_from_db()
+    assert network.last_router_reboot_at is not None  # now it answers again
+    assert network.router_down_since is None
+
+
+def test_a_point_after_the_router_still_ends_a_router_outage(alice, host):
+    start = timezone.now()
+    send(host, [net(router=0), net(box=0)], start)
+    network = network_of(alice)
+    assert network.last_router_reboot_at is not None  # the path shows the router answered
+    assert network.router_down_since is None
+
+
+def test_two_reporters_with_different_paths_only_the_view_host_counts(alice, host):
+    other = make_host(alice, "other", "green")
+    send(host, [net(switch=5)])
+    send(other, [net(switch=0)] * 3)
+    assert network_of(alice).state == decide.STATE_OK
 
 
 def test_public_ip_change_is_info_only(alice, host, django_capture_on_commit_callbacks):
@@ -606,7 +837,7 @@ def test_the_page_shows_points_in_words(alice_client, alice, host):
     )
     html = shown_html(alice_client, "/network/")
     assert '<h1 class="page-title" id="net-title">ISP box down</h1>' in html
-    assert "Your router is fine; ISP box isn&#x27;t answering (down or rebooting)." in html
+    assert "ISP box isn&#x27;t answering (down or rebooting), so nothing after it" in html
     assert '<span class="net-word net-word--ok">Working</span>' in html
     assert '<span class="net-word net-word--down">Down</span>' in html
     assert '<span class="net-word net-word--untested">Not tested</span>' in html
@@ -616,6 +847,63 @@ def test_the_page_shows_points_in_words(alice_client, alice, host):
     assert "ping -c 3 192.0.2.254" in html  # the read-only check command
     assert "<polyline" in html  # the trend
     assert 'style="' not in html
+
+
+def test_the_page_lists_a_switch_in_path_order_and_blames_it(alice_client, alice, host):
+    data = net(switch=0)
+    send(host, [net(switch=5), *[data] * 3])
+    Host.objects.filter(pk=host.pk).update(latest_report=make_report(network=data))
+    html = shown_html(alice_client, "/network/")
+    assert '<h1 class="page-title" id="net-title">Switch down</h1>' in html
+    assert "Switch isn&#x27;t answering" in html
+    assert "router is fine" not in html.lower()  # the router wasn't tested
+    assert "your router answers" not in html.lower()
+    assert html.index(SWITCH_IP) < html.index(ROUTER_IP) < html.index(BOX_IP)
+    assert html.count('class="net-row-icon"') == 1  # the switch row only
+    assert 'class="net-row-icon"' not in shown_html_of_old_path(alice_client, host)
+    assert "ping -c 3 192.0.2.2" in html
+
+
+def shown_html_of_old_path(client, host):
+    send(host, [net()])
+    Host.objects.filter(pk=host.pk).update(latest_report=make_report(network=net()))
+    return shown_html(client, "/network/")
+
+
+def test_the_strip_has_a_switch_icon_and_the_refresh_knows_the_kind(alice_client, alice, host):
+    _reported(host, net(switch=5))
+    html = shown_html(alice_client, "/")
+    assert 'data-kind="switch"' in html
+    # What overview.js needs to draw it on a refresh: the kind, and the icon to copy.
+    assert '<span data-kind="switch">' in (SERVER / "templates/hosts/overview.html").read_text()
+    assert '"switch"' in (SERVER / "static/cronrack/js/overview.js").read_text()
+
+
+def _reported(host, data):
+    send(host, [net(switch=5), *[data] * 3])
+    Host.objects.filter(pk=host.pk).update(latest_report=make_report(network=data))
+
+
+def test_the_strip_summary_has_the_switch_first(alice, host):
+    _reported(host, net(switch=5, router=0))
+    summary = network_summary(alice, timezone.now())
+    assert summary["text"] == "Router down"
+    assert [(p["name"], p["kind"], p["word"]) for p in summary["points"]] == [
+        ("You", "you", "Working"),
+        ("Switch", "switch", "Working"),
+        ("Router", "router", "Down"),
+        ("ISP box", "box", "Not tested"),
+        ("Internet", "internet", "Not tested"),
+    ]
+
+
+def test_old_agent_reports_still_read_the_same(alice, host):
+    data = net(router=0)
+    send(host, [net(), *[data] * 3])
+    Host.objects.filter(pk=host.pk).update(latest_report=make_report(network=data))
+    summary = network_summary(alice, timezone.now())
+    assert [p["kind"] for p in summary["points"]] == ["you", "router", "box", "internet"]
+    assert summary["text"] == "Router down"
 
 
 def test_a_hostile_point_name_stays_text(alice_client, alice, host):
@@ -709,7 +997,8 @@ def test_gets_dont_change_settings(alice_client, alice, host):
 @pytest.mark.parametrize(
     ("name", "text"),
     [("ok", "Network OK"), ("router", "Router down"), ("isp", "ISP box down"),
-     ("internet", "Internet down"), ("slow", "Internet slow"), ("unknown", "Network unknown")],
+     ("internet", "Internet down"), ("slow", "Internet slow"), ("unknown", "Network unknown"),
+     ("switch", "Switch down"), ("switch-router", "Router down"), ("max", "Network OK")],
 )  # fmt: skip
 def test_preview_states(client, name, text):
     overview = shown_html(client, f"/dev/preview/?state=small&net={name}")

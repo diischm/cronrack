@@ -233,14 +233,41 @@ def test_see_all_links_have_a_fixed_place(alice_client, alice, live):  # noqa: F
     add_events(host, 2)
     html = without_templates(page(alice_client))
     # Legacy: in the section headers (its away box, and the Clusters header, Legacy only).
-    assert html.count('<a class="section-link" href="/activity/">See all</a>') == 1
-    assert '<a class="section-link legacy-only" href="/clusters/">See all</a>' in html
+    # Both skins: each link says what it opens (a links list would show two "See all").
+    assert (
+        html.count(
+            '<a class="section-link" href="/activity/" aria-label="See all activity">See all</a>'
+        )
+        == 1
+    )
+    assert (
+        '<a class="section-link legacy-only" href="/clusters/" aria-label="See all clusters">See all</a>'
+        in html
+    )
     # Glass: at the bottom of the activity box and of the Clusters section.
     away = html[html.index('id="g-away-list"') :]
-    assert away.index("</ol>") < away.index('<a class="section-link g-see-all" href="/activity/">')
-    assert html.index('id="clusters-rack-chassis"') < html.index(
-        '<a class="section-link g-see-all g-only" href="/clusters/">See all →</a>'
+    assert away.index("</ol>") < away.index(
+        '<a class="section-link g-see-all" href="/activity/" aria-label="See all activity">'
     )
+    assert html.index('id="clusters-rack-chassis"') < html.index(
+        '<a class="section-link g-see-all g-only" href="/clusters/" aria-label="See all clusters">'
+        "See all →</a>"
+    )
+
+
+def test_every_see_all_sits_inside_its_box(alice_client, alice, live):  # noqa: F811
+    host = make_host(alice, "box-1", "red", make_report())
+    add_events(host, 2)
+    html = page(alice_client)
+    chassis = html[
+        html.index('id="clusters-rack-chassis"') : html.index(
+            '<template id="cluster-unit-template"'
+        )
+    ]
+    link = chassis.index('class="section-link g-see-all g-only" href="/clusters/"')
+    assert chassis.rindex("</ul>") < link < chassis.rindex("</div>")  # under the bay, in the box
+    box = html[html.index('<div class="g-away">') :]
+    assert box.index('href="/activity/"') < box.index("</div>")
 
 
 def test_hero_count_equals_the_attention_cards(alice_client, alice, live):  # noqa: F811
@@ -308,3 +335,64 @@ def test_busy_preview_has_a_long_activity_list(client: Client):
 def test_unreleased_heading_is_not_taken_for_the_newest_version():
     sample = "# Changelog\n\n## [Unreleased]\n\n- x\n\n## [1.2.3] - 2026-01-01\n"
     assert NEWEST_VERSION_RE.search(sample).group(1) == "1.2.3"  # the real check's pattern
+
+
+# --- 8. No status dots on the host detail and Clusters pages, except findings and the header ---
+
+
+NO_DOTS_RULE = '[data-skin="glass"] .g-no-dots .status-icon::before'
+KEEP_DOTS_RULE = (
+    '[data-skin="glass"] .g-no-dots :is(.issue-line, .host-unit__title) .status-icon::before'
+)
+
+
+def test_the_no_dots_scope_hides_the_dot_and_only_that():
+    bodies = [body for selector, body in css_rules(glass_css()) if NO_DOTS_RULE in selector]
+    assert bodies and "display: none" in bodies[0]
+    # Nothing hides a lamp in that scope: an activity row keeps its dot wherever it appears.
+    assert not [s for s, _ in css_rules(glass_css()) if ".g-no-dots" in s and ".lamp" in s]
+
+
+def test_findings_and_the_header_keep_their_dot():
+    """Without it, red and yellow findings look the same to sighted users (words are hidden)."""
+    rules = dict(css_rules(glass_css()))
+    assert KEEP_DOTS_RULE in rules and "display: block" in rules[KEEP_DOTS_RULE]
+    css = no_comments(glass_css())
+    # Declared after the rule that hides the dots, and more specific than it.
+    assert css.index(NO_DOTS_RULE) < css.index(KEEP_DOTS_RULE)
+    # The gap next to a finding's dot stays; only state words lose theirs.
+    assert not [
+        s for s, _ in css_rules(glass_css()) if ".g-no-dots .issue-line" in s and "gap" in s
+    ]
+
+
+def main_tag(html):
+    return re.search(r'<main class="([^"]*)"', html).group(1)
+
+
+def test_host_detail_has_no_dots_and_keeps_the_words(alice_client, alice, live):  # noqa: F811
+    host = make_host(alice, "box-1", "red", make_report())
+    html = alice_client.get(f"/hosts/{host.pk}/").content.decode()
+    assert "g-no-dots" in main_tag(html)
+    assert '<span class="visually-hidden">Needs you</span>' in html
+
+
+def test_cluster_pages_have_no_dots_and_keep_the_words(alice_client, alice, live):  # noqa: F811
+    listing = alice_client.get("/clusters/").content.decode()
+    assert "g-no-dots" in main_tag(listing)
+    assert 'class="visually-hidden">' in listing
+    html = alice_client.get(f"/clusters/{live.pk}/").content.decode()
+    assert "g-no-dots" in main_tag(html)
+    assert 'class="visually-hidden">' in html
+
+
+def test_the_overview_and_other_pages_are_outside_the_scope(alice_client, alice, live):  # noqa: F811
+    make_host(alice, "box-1", "red", make_report())
+    assert "g-no-dots" not in main_tag(page(alice_client))
+    assert "g-no-dots" not in main_tag(alice_client.get("/activity/").content.decode())
+
+
+def test_labels_setting_still_shows_the_words_in_the_scope():
+    """The switch's rule isn't scoped, so it reaches the hidden words on these pages too."""
+    selectors = [s for s, _ in css_rules(glass_css()) if "> .visually-hidden" in s]
+    assert any('[data-labels="on"] .status-icon > .visually-hidden' in s for s in selectors)

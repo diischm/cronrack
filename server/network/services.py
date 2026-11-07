@@ -124,16 +124,18 @@ def _apply(network: Network, data: Mapping[str, Any], now: datetime) -> None:
         _threshold(network, "network.packet_loss", overrides, decide.DEFAULT_LOSS_PERCENT),
     )
 
-    # A short router outage that ended: an activity entry, never an alert.
-    router_down = verdict.state == decide.ROUTER_DOWN
-    if decide.router_rebooted(network.router_down_since, now, router_down):
-        took = _duration(now - network.router_down_since)
-        network.last_router_reboot_at = now
-        record_note(network, f"Router rebooted (unreachable for {took})")
-    if router_down:
-        network.router_down_since = network.router_down_since or now
-    else:
-        network.router_down_since = None
+    # A short router outage that ended: an activity entry, never an alert. With a point before
+    # the router down, this report can't say whether the router came back: keep counting.
+    if not verdict.router_untested:
+        router_down = verdict.state == decide.ROUTER_DOWN
+        if decide.router_rebooted(network.router_down_since, now, router_down):
+            took = _duration(now - network.router_down_since)
+            network.last_router_reboot_at = now
+            record_note(network, f"Router rebooted (unreachable for {took})")
+        if router_down:
+            network.router_down_since = network.router_down_since or now
+        else:
+            network.router_down_since = None
 
     ip = data.get("public_ip")
     ip_changed = bool(ip and network.public_ip and ip != network.public_ip)

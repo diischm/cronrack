@@ -4,19 +4,20 @@ classify()        one report's network data -> a Verdict (state + one status per
 hold()            flapping protection: a new state must be seen N reports in a row
 router_rebooted() a short router outage that ended: an activity entry, not an alert
 
-Points in path order: the router (gateway), up to 2 extra local points (e.g. the ISP box),
+Points in path order, which is the order of the report's list: up to 2 points before the
+router (e.g. a LAN switch), the router (gateway), up to 2 points after it (e.g. the ISP box),
 then the internet targets, which count as ONE point: it is down only when every target is
 down, and slow when even the best one is slow (one bad anycast target never makes the
 internet look down). Everything after the first point that is down is "untested": with
-the router gone nothing behind it can be measured.
+that point gone nothing behind it can be measured.
 
 Precedence, first match wins:
-  1 router down (or no default route)          router_down
-  2 a later local point down                   local_down ("<name> down")
-  3 every internet target down                 internet_down
-  4 DNS fails while the internet answers       dns_failing
-  5 best internet target slow (p95 or loss)    internet_slow
-  6 otherwise                                  ok
+  1 the first local point down, in path order  router_down for the router (or no default
+                                               route), else local_down ("<name> down")
+  2 every internet target down                 internet_down
+  3 DNS fails while the internet answers       dns_failing
+  4 best internet target slow (p95 or loss)    internet_slow
+  5 otherwise                                  ok
 """
 
 from collections.abc import Mapping
@@ -42,6 +43,9 @@ DEFAULT_LOSS_PERCENT = 5.0  # network.packet_loss threshold
 # A router that came back within this long rebooted (or was power-cycled).
 REBOOT_WINDOW = timedelta(minutes=10)
 
+# The strip's icon per kind of point.
+_POINT_KINDS = {"before": "switch", "gateway": "router", "local": "box"}
+
 # The strip's text per state; local_down uses the point's own name.
 STATE_TEXT = {
     STATE_OK: "Network OK",
@@ -60,6 +64,8 @@ class Verdict:
     # One status per point in path order: the local points, then the internet.
     chain: tuple[str, ...] = ()
     detail: Mapping[str, Any] = field(default_factory=dict)
+    # A point before the router is down, so this report says nothing about the router.
+    router_untested: bool = False
 
     def key(self) -> tuple[str, str]:
         return (self.state, self.point)
@@ -80,6 +86,17 @@ def _down(point: Mapping[str, Any]) -> bool:
     return not point.get("received")
 
 
+def local_path(network: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The local points in path order. Without a default route the router is still a point
+    on the path, one that can't answer; it keeps its place after the before-points."""
+    points = network.get("points") or []
+    before = [p for p in points if p["role"] == "before"]
+    rest = [p for p in points if p["role"] in ("gateway", "local")]
+    if not network.get("gateway_found"):
+        rest = [{"name": "Router", "role": "gateway"}, *rest]
+    return [*before, *rest]
+
+
 def classify(
     network: Mapping[str, Any],
     latency_ms: float = DEFAULT_LATENCY_MS,
@@ -87,7 +104,7 @@ def classify(
 ) -> Verdict:
     """The state of one report's "network" data (already validated by NetworkSerializer)."""
     points = list(network.get("points") or [])
-    local = [p for p in points if p["role"] in ("gateway", "local")]
+    local = local_path(network)
     internet = [p for p in points if p["role"] == "internet"]
     n = len(local) + 1  # + the internet point
 
@@ -95,13 +112,11 @@ def classify(
         """ok before point i, `status` at i, untested after it."""
         return (OK,) * i + (status,) + (UNTESTED,) * (n - i - 1)
 
-    if not network.get("gateway_found"):
-        # No default route: nothing past this host can be reached. Shown as the router.
-        return Verdict(ROUTER_DOWN, "Router", (DOWN,) + (UNTESTED,) * n)
     for i, point in enumerate(local):
         if _down(point):
             state = ROUTER_DOWN if point["role"] == "gateway" else LOCAL_DOWN
-            return Verdict(state, point["name"], chain_upto(i, DOWN))
+            untested = point["role"] == "before"
+            return Verdict(state, point["name"], chain_upto(i, DOWN), router_untested=untested)
     if not internet or all(_down(p) for p in internet):
         return Verdict(INTERNET_DOWN, "Internet", chain_upto(len(local), DOWN))
     best = min(
@@ -164,13 +179,9 @@ def points_for_display(
 
     No data, or a chain that doesn't fit: every point "untested" ("Network unknown").
     """
-    points = (network or {}).get("points") or []
-    local = [p for p in points if p["role"] in ("gateway", "local")]
-    if network is None or not network.get("gateway_found"):
-        local = [{"name": "Router", "role": "gateway"}, *local]
     shown = [{"name": "You", "kind": "you"}]
     shown += [
-        {"name": p["name"], "kind": "router" if p["role"] == "gateway" else "box"} for p in local
+        {"name": p["name"], "kind": _POINT_KINDS[p["role"]]} for p in local_path(network or {})
     ]
     shown.append({"name": "Internet", "kind": "internet"})
     if chain is None or len(chain) != len(shown) - 1:
@@ -187,19 +198,17 @@ def chain_for_held(
     """The chain to show for the HELD state (the strip follows it, not the latest report)."""
     if network is None or state == UNKNOWN:
         return None
-    points = network.get("points") or []
-    local = [p["name"] for p in points if p["role"] in ("gateway", "local")]
-    if not network.get("gateway_found"):
-        local = ["Router", *local]
+    local = local_path(network)
+    names = [p["name"] for p in local]
     n = len(local) + 1
 
     def upto(i: int, status: str) -> tuple[str, ...]:
         return (OK,) * i + (status,) + (UNTESTED,) * (n - i - 1)
 
     if state == ROUTER_DOWN:
-        return upto(0, DOWN)
+        return upto([p["role"] for p in local].index("gateway"), DOWN)
     if state == LOCAL_DOWN:
-        return upto(local.index(point), DOWN) if point in local else None
+        return upto(names.index(point), DOWN) if point in names else None
     if state == INTERNET_DOWN:
         return upto(n - 1, DOWN)
     if state == INTERNET_SLOW:

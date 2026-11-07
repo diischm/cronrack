@@ -28,7 +28,7 @@
         <tbody id="net-rows">
           {% for row in network.rows %}
           <tr data-point="{{ row.name }}">
-            <th scope="row">{{ row.name }}</th>
+            <th scope="row">{% if row.kind == "switch" %}<span class="net-row-icon">{% include "components/net_icon.html" with kind="switch" %}</span>{% endif %}{{ row.name }}</th>
             <td class="mono net-cell--address">{{ row.address|default:"—" }}</td>
             <td><span class="net-word net-word--{{ row.status }}">{{ row.word }}</span></td>
             <td class="mono net-cell--latency">{{ row.latency }}</td>

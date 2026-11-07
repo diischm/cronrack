@@ -1,5 +1,6 @@
 """Fixed sample data for the dev preview (cronrack.dev_views): the 5 states of
-design-ref/glass/network-minimal.html, in the shape of network.presenters. Documentation
+design-ref/glass/network-minimal.html plus the path with points before the router, in the
+shape of network.presenters. Documentation
 addresses only (RFC 5737), plus the default public resolvers. Nothing here is ever counted."""
 
 from network import decide
@@ -8,6 +9,9 @@ from network.presenters import _row, _sentence, with_words
 _ROUTER = {"name": "Router", "role": "gateway", "address": "192.0.2.1", "sent": 5}
 _BOX = {"name": "ISP box", "role": "local", "address": "192.0.2.254", "sent": 5}
 _NET = {"name": "1.1.1.1", "role": "internet", "address": "1.1.1.1", "sent": 5}
+_SWITCH = {"name": "Switch", "role": "before", "address": "192.0.2.2", "sent": 5}
+_AP = {"name": "Office access point", "role": "before", "address": "192.0.2.3", "sent": 5}
+_MODEM = {"name": "Fibre modem", "role": "local", "address": "192.0.2.253", "sent": 5}
 
 
 def _answers(point, median, p95, received=5):
@@ -44,6 +48,48 @@ _STATES = {
         "40 ms",
     ),
     "unknown": (decide.UNKNOWN, "", (*_OK_LOCAL, _answers(_NET, 18.0, 22.0)), {}, "12 ms"),
+    "switch": (
+        decide.LOCAL_DOWN,
+        "Switch",
+        (_silent(_SWITCH), _silent(_ROUTER), _silent(_BOX), _silent(_NET)),
+        {},
+        "failing",
+    ),
+    "switch-router": (
+        decide.ROUTER_DOWN,
+        "Router",
+        (_answers(_SWITCH, 1.0, 1.4), _silent(_ROUTER), _silent(_BOX), _silent(_NET)),
+        {},
+        "failing",
+    ),
+    "switch-internet": (
+        decide.INTERNET_DOWN,
+        "Internet",
+        (_answers(_SWITCH, 1.0, 1.4), *_OK_LOCAL, _silent(_NET)),
+        {},
+        "failing",
+    ),
+    "switch-slow": (
+        decide.INTERNET_SLOW,
+        "Internet",
+        (_answers(_SWITCH, 1.0, 1.4), *_OK_LOCAL, _answers(_NET, 210.0, 320.0, received=4)),
+        {"p95": 320.0, "loss": 20.0, "reason": "both"},
+        "40 ms",
+    ),
+    # The longest path: 2 before + the router + 2 after, with long names.
+    "max": (
+        decide.STATE_OK,
+        "",
+        (
+            _answers(_SWITCH, 1.0, 1.4),
+            _answers(_AP, 1.2, 1.6),
+            *_OK_LOCAL,
+            _answers(_MODEM, 5.0, 6.1),
+            _answers(_NET, 18.0, 22.0),
+        ),
+        {},
+        "12 ms",
+    ),
 }
 NETWORK_STATES = tuple(_STATES)
 
@@ -77,10 +123,12 @@ def sample_context(name: str) -> dict:
     rows = []
     for item in summary["points"][1:]:
         if item["kind"] == "internet":
-            row = _row("Internet", "1.1.1.1, 8.8.8.8", item["status"], by_name["1.1.1.1"])
+            row = _row(
+                "Internet", "1.1.1.1, 8.8.8.8", item["status"], by_name["1.1.1.1"], item["kind"]
+            )
         else:
             source = by_name[item["name"]]
-            row = _row(item["name"], source["address"], item["status"], source)
+            row = _row(item["name"], source["address"], item["status"], source, item["kind"])
         row["trend"] = _trend(len(rows) + 2)
         rows.append(row)
     return {

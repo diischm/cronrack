@@ -1,6 +1,8 @@
 """agent/network.py and the [network] table of agent.toml. No real packet is sent: the
 probes are replaced by fakes; the gateway comes from a fixture route table."""
 
+import io
+import logging
 import struct
 from pathlib import Path
 
@@ -56,6 +58,28 @@ def test_full_network_table():
         ({"hops": [{"name": "a", "address": "192.168.1.2"}] * 2}, "own name"),
         ({"hops": [{"name": "1.1.1.1", "address": "192.168.1.2"}]}, "not be an address"),
         ({"hops": [{"name": "a", "address": "240.0.0.1"}]}, "'hops'"),
+        ({"before": [{"name": "Switch", "address": "1.1.1.1"}]}, "'before'"),
+        ({"before": [{"name": "x", "address": "192.0.2.9", "port": 1}]}, "'before'"),
+        ({"before": "Switch"}, "'before'"),
+        ({"before": [{"name": "a\nb", "address": "192.0.2.9"}]}, "printable"),
+        ({"before": [{"name": "x" * 33, "address": "192.0.2.9"}]}, "printable"),
+        ({"before": [{"name": n, "address": "192.0.2.9"} for n in "abc"]}, "at most 2"),
+        ({"before": [{"name": "You", "address": "192.0.2.9"}]}, "own name"),
+        ({"before": [{"name": "router", "address": "192.0.2.9"}]}, "own name"),
+        ({"before": [{"name": "INTERNET", "address": "192.0.2.9"}]}, "own name"),
+        ({"before": [{"name": "a", "address": "192.0.2.9"}] * 2}, "own name"),
+        ({"before": [{"name": "1.1.1.1", "address": "192.0.2.9"}]}, "not be an address"),
+        (
+            {
+                "before": [{"name": "Same", "address": "192.0.2.2"}],
+                "hops": [{"name": "Same", "address": "192.0.2.3"}],
+            },
+            "own name",
+        ),
+        (
+            {"gateway": "192.0.2.1", "before": [{"name": "Switch", "address": "192.0.2.1"}]},
+            "router's address",
+        ),
         ({"internet": ["192.168.1.1"]}, "'internet'"),  # must be a public address
         ({"internet": ["198.51.100.53"]}, "'internet'"),  # documentation range: not public
         ({"internet": []}, "'internet'"),
@@ -68,7 +92,16 @@ def test_full_network_table():
 def test_bad_network_settings_are_refused(table, message):
     with pytest.raises(ConfigError, match=message) as error:
         _parse({"network": table})
-    assert "1.1.1.1" not in str(error.value) and "192.168" not in str(error.value)
+    for address in ("1.1.1.1", "192.168", "192.0.2"):  # errors name the key, never the value
+        assert address not in str(error.value)
+
+
+def test_before_points_keep_their_order():
+    config = _parse({"network": {"before": [
+        {"name": "Switch", "address": "192.0.2.2"}, {"name": "AP", "address": "192.0.2.3"},
+    ]}}).network  # fmt: skip
+    assert config.before == [NetworkHop("Switch", "192.0.2.2"), NetworkHop("AP", "192.0.2.3")]
+    assert _parse({}).network.before == []
 
 
 @pytest.mark.parametrize(
@@ -165,6 +198,79 @@ def test_tcp_probe_tries_the_next_port_then_gives_up(monkeypatch):
     assert tried == [53, 80]
 
 
+class FakeClock:
+    """Time that only moves when a fake connect or sleep says so."""
+
+    def __init__(self):
+        self.now = 100.0
+
+    def monotonic(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+def test_local_points_are_tried_on_dns_web_and_https_never_ssh():
+    assert network.LOCAL_TCP_PORTS == (53, 80, 443)
+    assert 22 not in network.LOCAL_TCP_PORTS + network.INTERNET_TCP_PORTS
+
+
+def test_a_point_answering_only_on_443_is_reachable(monkeypatch):
+    """A filtered port no longer eats the budget of the ports behind it."""
+    clock = FakeClock()
+    monkeypatch.setattr(network.time, "monotonic", clock.monotonic)
+
+    def only_443(address, timeout):
+        if address[1] != 443:
+            clock.advance(timeout)  # filtered: nothing comes back until the timeout
+            raise TimeoutError
+        clock.advance(0.002)
+        return io.BytesIO()
+
+    monkeypatch.setattr(network.socket, "create_connection", only_443)
+    assert network.tcp_probe("192.0.2.2", network.LOCAL_TCP_PORTS) is not None
+
+
+def test_a_fully_filtered_point_is_down_within_the_budget(monkeypatch):
+    clock = FakeClock()
+    monkeypatch.setattr(network.time, "monotonic", clock.monotonic)
+    tried = []
+
+    def drop(address, timeout):
+        tried.append(address[1])
+        clock.advance(timeout)
+        raise TimeoutError
+
+    monkeypatch.setattr(network.socket, "create_connection", drop)
+    start = clock.now
+    result = network.probe_target(
+        lambda _seq: network.tcp_probe("192.0.2.2", network.LOCAL_TCP_PORTS),
+        sleep=clock.advance,
+    )
+    took = clock.now - start
+    assert result["received"] == 0
+    assert tried == list(network.LOCAL_TCP_PORTS) * network.PROBES  # every port got its turn
+    assert took <= network.PROBES * network.PROBE_TIMEOUT + 0.01  # same cost as before
+    assert took < network.ROUND_DEADLINE
+
+
+def test_time_a_refused_port_saved_goes_to_the_next_ports(monkeypatch):
+    clock = FakeClock()
+    monkeypatch.setattr(network.time, "monotonic", clock.monotonic)
+    given = []
+
+    def drop(address, timeout):
+        given.append(timeout)
+        if len(given) > 1:
+            clock.advance(timeout)
+        raise TimeoutError  # the first one fails at once (e.g. no route)
+
+    monkeypatch.setattr(network.socket, "create_connection", drop)
+    assert network.tcp_probe("192.0.2.2", (53, 80, 443), timeout=0.9) is None
+    assert given == pytest.approx([0.3, 0.45, 0.45])
+
+
 # --- one round ------------------------------------------------------------------------------
 
 
@@ -200,6 +306,58 @@ def test_a_round_in_path_order(fake_probes, tmp_path: Path):
     assert result["method"] == "icmp" and result["gateway_found"] is True
     assert result["dns"] == {"ok": True, "ms": 5.0}
     assert result["public_ip"] is None  # public_ip_check is off: never asked
+
+
+def test_before_points_come_first_in_the_report(fake_probes, tmp_path: Path):
+    fake_probes.update({"192.0.2.2": 1.0, "192.0.2.3": None})
+    route = tmp_path / "route"
+    route.write_text(ROUTE)
+    config = NetworkConfig(
+        enabled=True,
+        before=[NetworkHop("Switch", "192.0.2.2"), NetworkHop("AP", "192.0.2.3")],
+        hops=[NetworkHop("ISP box", "192.0.2.254")],
+        internet=["198.51.100.53"],
+    )
+    result = network.collect_network(config, None, route_path=str(route))
+    assert [(p["name"], p["role"], p["received"]) for p in result["points"]] == [
+        ("Switch", "before", 5),
+        ("AP", "before", 0),
+        ("Router", "gateway", 5),
+        ("ISP box", "local", 0),
+        ("198.51.100.53", "internet", 5),
+    ]
+
+
+def test_before_points_are_still_sent_without_a_default_route(fake_probes, tmp_path: Path):
+    fake_probes["192.0.2.2"] = 1.0
+    route = tmp_path / "route"
+    route.write_text("Iface\tDestination\tGateway\tFlags\n")
+    config = NetworkConfig(
+        enabled=True, before=[NetworkHop("Switch", "192.0.2.2")], internet=["198.51.100.53"]
+    )
+    result = network.collect_network(config, None, route_path=str(route))
+    assert [p["role"] for p in result["points"]] == ["before", "internet"]
+    assert result["gateway_found"] is False
+
+
+def test_a_before_point_that_is_the_detected_router_is_dropped_with_one_warning(
+    fake_probes, tmp_path: Path, caplog, monkeypatch
+):
+    monkeypatch.setattr(network, "_warned_before_is_router", False)
+    route = tmp_path / "route"
+    route.write_text(ROUTE)  # default via 192.0.2.1
+    config = NetworkConfig(
+        enabled=True, before=[NetworkHop("Switch", "192.0.2.1")], internet=["198.51.100.53"]
+    )
+    with caplog.at_level(logging.INFO, logger="agent.network"):
+        first = network.collect_network(config, None, route_path=str(route))
+        second = network.collect_network(config, None, route_path=str(route))
+    for result in (first, second):
+        assert [p["name"] for p in result["points"]] == ["Router", "198.51.100.53"]
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "Switch" in warnings[0].getMessage()
+    assert "192.0.2.1" not in caplog.text  # addresses stay at DEBUG
 
 
 def test_targets_come_only_from_the_config(fake_probes, tmp_path: Path):

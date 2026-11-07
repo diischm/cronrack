@@ -7,7 +7,7 @@
 <section class="away legacy-only" id="away" aria-labelledby="away-title">
   <div class="section-head">
     <h2 class="section-title" id="away-title">While you were away</h2>
-    <a class="section-link" href="/activity/">See all</a>
+    <a class="section-link" href="/activity/" aria-label="See all activity">See all</a>
   </div>
   <ul class="surface activity rows" id="away-list">
     {% if not blank %}{% for entry in activity|slice:":3" %}

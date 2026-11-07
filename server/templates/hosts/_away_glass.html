@@ -11,6 +11,6 @@
     <ol class="g-away__list activity" id="g-away-list">
       {% if not blank %}{% for entry in activity %}{% include "components/activity_row.html" with entry=entry %}{% endfor %}{% endif %}
     </ol>
-    <a class="section-link g-see-all" href="/activity/">See all →</a>
+    <a class="section-link g-see-all" href="/activity/" aria-label="See all activity">See all →</a>
   </div>
 </section>

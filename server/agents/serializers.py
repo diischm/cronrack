@@ -482,15 +482,16 @@ class KubernetesSerializer(StrictSerializer):
 
 
 # --- network (agent/network.py collect_network) ------------------------------------------
-# The agent's own caps (agent/config.py): the router, at most 2 extra local points, at most
-# 4 internet targets. Addresses are re-checked here: extra local points private (RFC 1918,
-# link-local, CGNAT, documentation ranges), internet targets and the public IP global, the
-# router either.
+# The agent's own caps (agent/config.py): at most 2 points before the router, the router, at
+# most 2 local points after it, at most 4 internet targets, in that order: the list order IS
+# the path. Addresses are re-checked here: extra local points private (RFC 1918, link-local,
+# CGNAT, documentation ranges), internet targets and the public IP global, the router either.
 
-NET_MAX_POINTS = 1 + 2 + 4
+NET_MAX_POINTS = 2 + 1 + 2 + 4
 NET_MAX_PROBES = 10
 NET_MAX_MS = 60_000
 NET_MAX_NAME = 32
+NET_RESERVED_NAMES = frozenset({"router", "you", "internet"})  # the strip's own words
 _CGNAT = ipaddress.ip_network("100.64.0.0/10")
 
 
@@ -524,7 +525,7 @@ def _ms(**kwargs):
 
 class NetworkPointSerializer(StrictSerializer):
     name = StrictCharField(max_length=NET_MAX_NAME, min_length=1)
-    role = StrictChoiceField(choices=["gateway", "local", "internet"])
+    role = StrictChoiceField(choices=["before", "gateway", "local", "internet"])
     address = StrictCharField(max_length=15)
     sent = StrictIntegerField(min_value=1, max_value=NET_MAX_PROBES)
     received = StrictIntegerField(min_value=0, max_value=NET_MAX_PROBES)
@@ -535,9 +536,16 @@ class NetworkPointSerializer(StrictSerializer):
         kind = network_address_kind(attrs["address"])
         # A detected router is usually private, but a VPS or some ISP lines have a public
         # default gateway: refusing it would refuse the host's whole report.
-        wanted = {"gateway": ("local", "internet"), "local": ("local",), "internet": ("internet",)}
+        wanted = {
+            "before": ("local",),
+            "gateway": ("local", "internet"),
+            "local": ("local",),
+            "internet": ("internet",),
+        }
         if kind not in wanted[attrs["role"]]:
             raise serializers.ValidationError({"address": ["Not an expected IPv4 address."]})
+        if attrs["role"] in ("before", "local") and attrs["name"].casefold() in NET_RESERVED_NAMES:
+            raise serializers.ValidationError({"name": ["A reserved name."]})
         if attrs["received"] > attrs["sent"]:
             raise serializers.ValidationError({"received": ["More than sent."]})
         answered = attrs["received"] > 0
@@ -581,10 +589,15 @@ class NetworkSerializer(StrictSerializer):
 
     def validate(self, attrs):
         roles = [p["role"] for p in attrs["points"]]
-        order = {"gateway": 0, "local": 1, "internet": 2}
+        order = {"before": 0, "gateway": 1, "local": 2, "internet": 3}
         if roles != sorted(roles, key=order.__getitem__):
             raise serializers.ValidationError({"points": ["Not in path order."]})
-        if roles.count("gateway") > 1 or roles.count("local") > 2 or roles.count("internet") > 4:
+        if (
+            roles.count("before") > 2
+            or roles.count("gateway") > 1
+            or roles.count("local") > 2
+            or roles.count("internet") > 4
+        ):
             raise serializers.ValidationError({"points": ["Too many points of one kind."]})
         if attrs["gateway_found"] != ("gateway" in roles):
             raise serializers.ValidationError({"gateway_found": ["Doesn't match the points."]})

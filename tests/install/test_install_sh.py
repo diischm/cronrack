@@ -88,6 +88,8 @@ def test_upgrade_refuses_when_the_service_is_missing(box):
         "--network-gateway=192.0.2.1",
         "--network-hop ISP-box=192.0.2.254",
         "--network-hop=ISP-box=192.0.2.254",
+        "--network-before Switch=192.0.2.2",
+        "--network-before=Switch=192.0.2.2",
         "--uninstall",
     ],
 )
@@ -560,6 +562,163 @@ def test_two_extra_points_need_their_own_names(box):
 
     assert result.code == 2, result.out
     assert "two points named" in result.out
+
+
+@pytest.mark.parametrize(
+    "point",
+    [
+        "no-equals-sign",
+        "Switch=8.8.8.8",  # a point before the router is local: a private address
+        "x=192.0.2.300",
+        "x=010.0.0.1",
+        "Router=192.0.2.9",
+        "you=192.0.2.9",
+        "INTERNET=192.0.2.9",
+        "1.2.3.4=192.0.2.9",
+        'quote"d=192.0.2.9',
+        "=192.0.2.9",
+        "a-name-that-is-much-longer-than-32=192.0.2.9",
+    ],
+)
+def test_bad_points_before_the_router_are_refused_before_anything_happens(box, point):
+    result = box.sh(f"bash /install.sh --server https://localhost --network-before '{point}' <&-")
+
+    assert result.code == 2, result.out
+    assert "--network-before" in result.out
+    assert box.systemctl_calls() == []
+    assert not box.exists(CONFIG)
+
+
+def test_at_most_two_points_before_the_router(box):
+    points = " ".join(f"--network-before p{i}=192.0.2.{i}" for i in range(1, 4))
+    result = box.sh(f"bash /install.sh --server https://localhost {points} <&-")
+
+    assert result.code == 2, result.out
+    assert "at most 2" in result.out
+
+
+def test_a_name_can_only_be_used_once_across_both_lists(box):
+    result = box.sh(
+        "bash /install.sh --server https://localhost"
+        " --network-before a=192.0.2.2 --network-hop a=192.0.2.3 <&-"
+    )
+
+    assert result.code == 2, result.out
+    assert "two points named" in result.out
+
+
+def test_a_point_before_the_router_cant_be_the_router(box):
+    result = box.sh(
+        "bash /install.sh --server https://localhost --network-gateway 192.0.2.1"
+        " --network-before Switch=192.0.2.1 <&-"
+    )
+
+    assert result.code == 2, result.out
+    assert "router's address" in result.out
+    assert box.systemctl_calls() == []
+    assert not box.exists(CONFIG)
+
+
+def test_the_flag_is_in_the_usage_text(box):
+    assert "--network-before NAME=IP" in box.sh("bash /install.sh --help").out
+
+
+NETWORK_BEFORE = (
+    "import sys; sys.path.insert(0, '/opt/cronrack-agent/app');"
+    " from agent.config import load_config; n = load_config().network;"
+    " print([(h.name, h.address) for h in n.before], [(h.name, h.address) for h in n.hops])"
+)
+
+
+def agent_network_points(box) -> str:
+    return box.ok(
+        f'runuser -u cronrack -- /opt/cronrack-agent/venv/bin/python -c "{NETWORK_BEFORE}"'
+    ).strip()
+
+
+def test_points_before_the_router_are_written_in_order(box, packages):
+    box.install(
+        "--network-gateway auto"  # implies --network, like the flags below
+        ' --network-before "Switch=192.0.2.2" --network-before "Access point=192.0.2.3"'
+        ' --network-hop "ISP box=192.0.2.254"'
+    )
+
+    assert agent_network_points(box) == (
+        "[('Switch', '192.0.2.2'), ('Access point', '192.0.2.3')] [('ISP box', '192.0.2.254')]"
+    )
+    assert box.mode(CONFIG) == "root:cronrack 640"
+
+
+def test_a_rerun_replaces_only_the_list_it_was_given(box, packages):
+    box.install(
+        '--network-gateway auto --network-before "Switch=192.0.2.2"'
+        ' --network-hop "ISP box=192.0.2.254"'
+    )
+
+    box.install('--network-gateway auto --network-before "AP=192.0.2.3"')
+
+    assert agent_network_points(box) == "[('AP', '192.0.2.3')] [('ISP box', '192.0.2.254')]"
+    assert box.read(CONFIG).count("before =") == 1
+
+
+@pytest.mark.parametrize(
+    ("rerun", "agent_says"),
+    [
+        # A name the file's `before` list already uses, given as a point after the router.
+        ('--network-gateway auto --network-hop "Switch=192.0.2.3"', "needs its own name"),
+        # The mirror case: the file's `hops` list already uses the name.
+        ('--network-gateway auto --network-before "ISP box=192.0.2.3"', "needs its own name"),
+        # The router's address, which the file's `before` list already uses.
+        ("--network-gateway 192.0.2.2", "router's address"),
+    ],
+)
+def test_a_rerun_the_agent_would_refuse_changes_nothing(box, packages, rerun, agent_says):
+    box.install(
+        '--network-gateway auto --network-before "Switch=192.0.2.2"'
+        ' --network-hop "ISP box=192.0.2.254"'
+    )
+    before = snapshot(box)
+    box.clear_systemctl_calls()
+
+    result = box.interactive(f"--server https://localhost --ca-file /srv/tls/ca.crt {rerun}", "")
+
+    assert result.code == 1, result.out
+    assert agent_says in result.out  # the agent's own words, not a guess of the installer's
+    assert "put back" in result.out
+    assert "Done." not in result.out
+    assert snapshot(box) == before  # agent.toml is exactly as it was
+    assert restarts(box) == 0
+
+
+def test_a_name_the_agent_cant_print_is_refused_before_the_restart(box, packages):
+    box.install()
+    before = snapshot(box)
+    box.clear_systemctl_calls()
+
+    result = box.interactive(
+        "--server https://localhost --ca-file /srv/tls/ca.crt --network-gateway auto"
+        " --network-before 'a b=192.0.2.2'",  # a no-break space: bash lets it through
+        "",
+    )
+
+    assert result.code == 1, result.out
+    assert "printable" in result.out
+    assert "Done." not in result.out
+    assert snapshot(box) == before
+    assert restarts(box) == 0
+
+
+def test_upgrade_keeps_points_before_the_router_byte_for_byte(box, packages):
+    box.install('--network-gateway auto --network-before "Switch=192.0.2.2"')
+    before = snapshot(box)
+    box.use_package("next")
+
+    result = box.upgrade()
+
+    assert result.code == 0, result.out
+    assert_asked_nothing(result.out)
+    assert snapshot(box) == before
+    assert 'before = [{ name = "Switch", address = "192.0.2.2" }]' in box.read(CONFIG)
 
 
 def test_rerun_with_network_keeps_the_other_network_keys(box, packages):

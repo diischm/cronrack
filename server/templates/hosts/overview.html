@@ -44,7 +44,7 @@
   {% if network %}{% include "components/network_strip.html" with network=network %}{% endif %}
   <template id="net-strip-template">{% include "components/network_strip.html" with blank=True %}</template>
   <template id="net-point-template">{% include "components/network_point.html" with point=None %}</template>
-  <template id="net-icons"><span data-kind="you">{% include "components/net_icon.html" with kind="you" %}</span><span data-kind="router">{% include "components/net_icon.html" with kind="router" %}</span><span data-kind="box">{% include "components/net_icon.html" with kind="box" %}</span><span data-kind="internet">{% include "components/net_icon.html" with kind="internet" %}</span></template>
+  <template id="net-icons"><span data-kind="you">{% include "components/net_icon.html" with kind="you" %}</span><span data-kind="router">{% include "components/net_icon.html" with kind="router" %}</span><span data-kind="switch">{% include "components/net_icon.html" with kind="switch" %}</span><span data-kind="box">{% include "components/net_icon.html" with kind="box" %}</span><span data-kind="internet">{% include "components/net_icon.html" with kind="internet" %}</span></template>
   <p class="visually-hidden" id="net-announce" role="status" aria-live="polite"></p>
   <div class="page-head overview-head legacy-only">
     <div class="overview-head__text">
@@ -188,7 +188,7 @@
       {% if clusters %}
         <div class="section-head overview-clusters__head" id="clusters-head">
           <h2 class="section-title" id="clusters-title">Clusters<span class="section-count g-only" id="clusters-count"> {{ clusters|length }}</span></h2>
-          <a class="section-link legacy-only" href="/clusters/">See all</a>
+          <a class="section-link legacy-only" href="/clusters/" aria-label="See all clusters">See all</a>
         </div>
         <div class="rack-chassis surface overview-clusters__rack" id="clusters-rack-chassis">
           <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
@@ -198,8 +198,8 @@
             {% endfor %}
           </ul>
           <span class="rack-ear" aria-hidden="true"><span class="rack-screw"></span><span class="rack-screw"></span></span>
+          <a class="section-link g-see-all g-only" href="/clusters/" aria-label="See all clusters">See all →</a>
         </div>
-        <a class="section-link g-see-all g-only" href="/clusters/">See all →</a>
         <template id="cluster-unit-template">{% include "components/cluster_unit.html" with blank=True %}</template>
       {% endif %}
     </section>
