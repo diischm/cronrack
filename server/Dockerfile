@@ -6,14 +6,14 @@
 # the final stage copies only that venv and our code. pip, build caches and
 # anything else from the build stage never reach the final image.
 
-# The exact Python image, pinned by digest (the digest covers amd64 and arm64).
-# Upgrade on purpose: change the tag AND the digest together
+# The exact Python image, pinned by digest (the digest covers amd64 and arm64). It is
+# written out in BOTH FROM lines (not via an ARG) so Dependabot can read and bump it
+# (.github/dependabot.yml). Keep the two lines identical; change tag AND digest together
 # (docker buildx imagetools inspect python:<tag> prints the digest).
-ARG PYTHON_IMAGE=python:3.12.15-slim-trixie@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 
 
 # --- stage 1: build the virtual environment --------------------------------------------
-FROM ${PYTHON_IMAGE} AS build
+FROM python:3.12.16-slim-trixie@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54 AS build
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -28,7 +28,7 @@ RUN /opt/venv/bin/pip install --only-binary=:all: -r /tmp/requirements.txt \
 
 
 # --- stage 2: the image that actually runs ----------------------------------------------
-FROM ${PYTHON_IMAGE}
+FROM python:3.12.16-slim-trixie@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
 
 # PATH: use the venv's python/uvicorn. PYTHONDONTWRITEBYTECODE: the filesystem is
 # read-only at runtime (bytecode is compiled below instead). PYTHONUNBUFFERED: logs
@@ -41,9 +41,18 @@ ENV PATH=/opt/venv/bin:$PATH \
 
 # Debian security fixes can land before the next python image does. Trade-off: builds are
 # slightly less reproducible (package versions depend on when this layer was built), but
-# the image ships patched packages. A cached layer only refreshes on a digest bump or a
-# cache miss, so bump the digest above to pick up newer fixes.
-RUN apt-get update \
+# the image ships patched packages.
+#
+# APT_REFRESH: Docker reuses a cached RUN layer whenever its command text and parent layer
+# are unchanged; it never checks whether apt would now fetch something newer. So a layer
+# built before a Debian fix was published would be reused forever. CI sets APT_REFRESH to
+# its run id (.github/workflows/image.yml), so every CI run builds this layer fresh. It is
+# declared here, in the runtime stage only, so the pip layers in the build stage above
+# still come from the cache. Local builds leave it empty: use --no-cache, or
+# --build-arg APT_REFRESH="$(date +%s)", to get the latest fixes.
+ARG APT_REFRESH=""
+RUN echo "apt refresh: ${APT_REFRESH:-none}" \
+    && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 

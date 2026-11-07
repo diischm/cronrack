@@ -1,0 +1,16 @@
+# Dependabot opens pull requests that bump pinned versions; every one of them goes
+# through the normal CI checks (including the image Trivy gate) before it can be merged.
+version: 2
+updates:
+  # The python base image in server/Dockerfile (tag + digest, both FROM lines).
+  # A new digest for the same tag usually means Debian security fixes were rebuilt in.
+  - package-ecosystem: docker
+    directory: /server
+    schedule:
+      interval: weekly
+    # Stay on Python 3.12: moving to 3.13+ is a deliberate upgrade, not a weekly bump.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    commit-message:
+      prefix: "deps(docker)"
