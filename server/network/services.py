@@ -97,9 +97,9 @@ def set_view_host(network: Network, host: Host | None) -> None:
     )  # fmt: skip
 
 
-def _threshold(network: Network, rule_id: str, overrides, default: float) -> float:
+def _threshold(network: Network, rule_id: str, overrides, default: float, notify=None) -> float:
     value = resolve_override(
-        network.owner_id, rule_id, network, overrides=overrides, scope="network"
+        network.owner_id, rule_id, network, overrides=overrides, scope="network", notify=notify
     ).threshold
     return default if value is None else float(value)
 
@@ -117,11 +117,15 @@ def _duration(delta: timedelta) -> str:
 
 
 def _apply(network: Network, data: Mapping[str, Any], now: datetime) -> None:
+    from notifications import dispatch
+    from notifications.config import load_config
+
     overrides = load_network_overrides(network)
+    notify = load_config(network.owner_id)
     verdict = decide.classify(
         data,
-        _threshold(network, "network.internet_slow", overrides, decide.DEFAULT_LATENCY_MS),
-        _threshold(network, "network.packet_loss", overrides, decide.DEFAULT_LOSS_PERCENT),
+        _threshold(network, "network.internet_slow", overrides, decide.DEFAULT_LATENCY_MS, notify),
+        _threshold(network, "network.packet_loss", overrides, decide.DEFAULT_LOSS_PERCENT, notify),
     )
 
     # A short router outage that ended: an activity entry, never an alert. With a point before
@@ -174,6 +178,7 @@ def _apply(network: Network, data: Mapping[str, Any], now: datetime) -> None:
         },
         now,
         overrides,
+        notify=notify,
     )
     if any(f.rule_id == "network.public_ip_changed" for f in findings):
         record_note(network, "Public IP changed")
@@ -190,6 +195,8 @@ def _apply(network: Network, data: Mapping[str, Any], now: datetime) -> None:
     first_ok = old_status == Host.Status.WAITING and new_status == Host.Status.GREEN
     if new_status != old_status and not first_ok:
         record_status_change(network, old_status, new_status, colour)
+    dispatch.sync(network, findings, now, config=notify)
+    dispatch.after_commit(network, now)
 
 
 def save_network(host: Host, data: Any, now: datetime | None = None) -> None:

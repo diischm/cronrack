@@ -98,14 +98,6 @@ class ClusterResult:
     findings: list[Finding]
 
 
-def _active_findings(cluster, snapshot, now, overrides, suppressions, latest):
-    findings = evaluate_cluster(cluster, snapshot, now, overrides=overrides, latest=latest)
-    active, _ = apply_suppressions(
-        findings, cluster, now, suppressions=suppressions, scope="cluster"
-    )
-    return active
-
-
 CREATE_ATTEMPTS = 3
 
 
@@ -205,6 +197,8 @@ def save_cluster_snapshot(
         now = timezone.now()
     # Imported here: activity.events -> alerts -> prefs would otherwise load too early.
     from activity.events import record_status_change
+    from notifications import dispatch
+    from notifications.config import load_config
 
     with transaction.atomic():
         uid = snapshot.get("uid")
@@ -226,12 +220,18 @@ def save_cluster_snapshot(
         overrides = load_cluster_overrides(cluster)
         suppressions = load_cluster_suppressions(cluster)
         latest = latest_versions(cluster.owner_id)
+        notify = load_config(cluster.owner_id)
         old_status = cluster.status
         cluster.latest_snapshot = snapshot
         cluster.snapshot_received_at = now
         cluster.last_seen_at = now
         cluster.reporter = host
-        active = _active_findings(cluster, snapshot, now, overrides, suppressions, latest)
+        found = evaluate_cluster(
+            cluster, snapshot, now, overrides=overrides, latest=latest, notify=notify
+        )
+        active, hidden = apply_suppressions(
+            found, cluster, now, suppressions=suppressions, scope="cluster"
+        )
         cluster.status = compute_status(active, cluster, now)
         cluster.save(
             update_fields=[
@@ -245,6 +245,10 @@ def save_cluster_snapshot(
         link_nodes(cluster, snapshot)
         if old_status != cluster.status:
             record_status_change(cluster, old_status, cluster.status, top_issues(active))
+        dispatch.sync(
+            cluster, active, now, config=notify, suppressed=[f.fingerprint for f in hidden]
+        )
+        dispatch.after_commit(cluster, now)
     return ClusterResult(cluster, old_status, cluster.status, active)
 
 
@@ -321,6 +325,7 @@ def mark_silent_clusters_offline(now: datetime | None = None) -> list[Cluster]:
     exactly one event and one alert. The next snapshot brings the cluster back.
     """
     from activity.events import record_status_change
+    from notifications import dispatch
     from prefs.models import Prefs
     from rules.models import RuleOverride
 
@@ -348,8 +353,9 @@ def mark_silent_clusters_offline(now: datetime | None = None) -> list[Cluster]:
             old_status = cluster.status
             cluster.status = Host.Status.OFFLINE
             cluster.save(update_fields=["status"])
-            record_status_change(
-                cluster, old_status, cluster.status, [_offline_finding(cluster, reason)]
-            )
+            offline = _offline_finding(cluster, reason)
+            record_status_change(cluster, old_status, cluster.status, [offline])
+            dispatch.sync(cluster, [offline], now, complete=False)
+            dispatch.after_commit(cluster, now)
         marked.append(cluster)
     return marked

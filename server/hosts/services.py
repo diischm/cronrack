@@ -48,8 +48,10 @@ class ReportResult:
     findings: list[Finding]  # every active (not suppressed) finding
 
 
-def _active_findings(host: Host, report: dict | None, now: datetime, overrides, suppressions):
-    findings = evaluate(host, report, now, overrides=overrides)
+def _active_findings(
+    host: Host, report: dict | None, now: datetime, overrides, suppressions, notify=None
+):
+    findings = evaluate(host, report, now, overrides=overrides, notify=notify)
     active, _suppressed = apply_suppressions(findings, host, now, suppressions=suppressions)
     return active
 
@@ -61,12 +63,17 @@ def save_report(host: Host, data: dict[str, Any], now: datetime | None = None) -
     produced are always saved together. `data` must already have passed
     ReportSerializer; `host` must come from the agent's token, never from the report.
     """
+    # Imported here: notifications.dispatch imports this app's models and the rule engine.
+    from notifications import dispatch
+    from notifications.config import load_config
+
     if now is None:
         now = timezone.now()
     with transaction.atomic():
         host = Host.objects.select_for_update().get(pk=host.pk)
         overrides = load_overrides(host)
         suppressions = load_suppressions(host)
+        notify = load_config(host.owner_id)
         old_status = host.status
 
         # The previous report is re-evaluated (not stored as findings), so "new"
@@ -75,15 +82,21 @@ def save_report(host: Host, data: dict[str, Any], now: datetime | None = None) -
         if host.latest_report is not None:
             previous = {
                 f.fingerprint
-                for f in _active_findings(host, host.latest_report, now, overrides, suppressions)
+                for f in _active_findings(
+                    host, host.latest_report, now, overrides, suppressions, notify
+                )
             }
 
         host.latest_report = data
         host.report_received_at = now
         host.last_seen_at = now
-        active = _active_findings(host, data, now, overrides, suppressions)
+        found = evaluate(host, data, now, overrides=overrides, notify=notify)
+        active, hidden = apply_suppressions(found, host, now, suppressions=suppressions)
         host.status = compute_status(active, host, now)
         host.save(update_fields=["latest_report", "report_received_at", "last_seen_at", "status"])
+        # One FindingState row per problem; the message goes out after the commit.
+        dispatch.sync(host, active, now, config=notify, suppressed=[f.fingerprint for f in hidden])
+        dispatch.after_commit(host, now)
 
     return ReportResult(
         old_status=old_status,
@@ -182,6 +195,7 @@ def mark_silent_hosts_offline(now: datetime | None = None) -> list[Host]:
     # Imported here: activity.events -> alerts -> prefs would otherwise load during
     # hosts app setup.
     from activity.events import record_status_change
+    from notifications import dispatch
     from prefs.models import Prefs
 
     if now is None:
@@ -211,6 +225,9 @@ def mark_silent_hosts_offline(now: datetime | None = None) -> list[Host]:
             # its next report sets the flag again (agents.consumers.ingest_report).
             host.connected = False
             host.save(update_fields=["status", "connected"])
-            record_status_change(host, old_status, host.status, [_offline_finding(host, reason)])
+            offline = _offline_finding(host, reason)
+            record_status_change(host, old_status, host.status, [offline])
+            dispatch.sync(host, [offline], now, complete=False)
+            dispatch.after_commit(host, now)
         marked.append(host)
     return marked

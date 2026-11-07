@@ -1,8 +1,10 @@
 """The scheduler: `python manage.py check_hosts --loop --every 30`.
 
 Each pass marks hosts and clusters that stopped checking in as offline (the dead-man's
-switch), which records a status event and sends the alert. It then sends alerts that the
-cooldown held back, with the current status (alerts.discord), and, only for users who
+switch), which records a status event and sends the alert. It then runs the notification
+jobs (notifications.dispatch): resolves offline findings whose host is back, sends what the
+cooldown or maintenance held back, the quiet-hours bundle, the daily summary, and prunes
+old resolved findings. Then, only for users who
 turned it on, looks up the newest k3s, Argo CD and Helm versions (clusters.updates, at
 most once a day). Runs as its own small process
 next to the web server. `--once` (the default without --loop) runs a single pass.
@@ -27,7 +29,6 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections
 from django.utils import timezone
 
-from alerts.discord import send_pending_alerts
 from clusters.services import mark_silent_clusters_offline
 from clusters.updates import maybe_check_updates
 from hosts.services import mark_silent_hosts_offline
@@ -122,11 +123,32 @@ class Command(BaseCommand):
             self.stdout.write(f"{host.name}: offline")
         for cluster in mark_silent_clusters_offline(now):
             self.stdout.write(f"{cluster.name}: cluster offline")
-        for subject in send_pending_alerts(now):
-            self.stdout.write(f"{subject.name}: held-back alert sent ({subject.status})")
+        self.run_notifications(now)
         # Its own try/except: looking up versions must never fail the dead-man's switch.
         try:
             for source in maybe_check_updates(now):
                 self.stdout.write(f"{source}: newest version updated")
         except Exception:
             logger.exception("update check failed")
+
+    def run_notifications(self, now) -> None:
+        """The notification jobs (notifications.dispatch / .summary). Each has its own
+        try/except: one failing must never stop the others or the dead-man's switch."""
+        from notifications import dispatch
+        from notifications.summary import send_daily_summaries
+
+        jobs = (
+            ("offline findings resolved", dispatch.sweep_offline),
+            ("held-back alerts sent", dispatch.deliver_pending),
+            ("quiet-hours bundles sent", dispatch.send_quiet_bundles),
+            ("daily summaries sent", send_daily_summaries),
+            ("old findings pruned", dispatch.prune),
+        )
+        for label, job in jobs:
+            try:
+                count = job(now)
+            except Exception:
+                logger.exception("notification job failed: %s", label)
+                continue
+            if count:
+                self.stdout.write(f"{count} {label}")

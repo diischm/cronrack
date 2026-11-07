@@ -475,20 +475,22 @@ def test_alerts_go_through_the_existing_path(alice, host, django_capture_on_comm
     assert text.endswith("Network: ISP box down")
     assert BOX_IP not in text  # the point's name is enough
     network = network_of(alice)
-    assert network.last_alert_status == "red"
+    assert network.last_alert_at is not None  # the cooldown started
 
 
-def test_alert_cooldown_and_coalescing_cover_the_network(alice, host):
+def test_alert_cooldown_covers_the_network(alice, host):
+    from notifications import dispatch
+
     Prefs.objects.create(owner=alice, discord_webhook_url="https://discord.com/api/webhooks/1/abc")
     send(host, [net()])
     now = timezone.now()
-    Network.objects.filter(owner=alice).update(
-        status="red", last_alert_status="green", last_alert_at=now - timedelta(minutes=5)
-    )
+    Network.objects.filter(owner=alice).update(last_alert_at=now)  # cooling down
     with mock.patch.object(discord, "send_discord", return_value=True) as sender:
-        sent = discord.send_pending_alerts(now)
-    assert [type(s) for s in sent] == [Network]
-    assert sender.call_args.args[1].endswith("Network is red now (after several quick changes)")
+        send(host, [net(box=0)] * 3, start=now)
+        assert dispatch.deliver_pending(now + timedelta(seconds=30)) == 0  # held back
+        assert dispatch.deliver_pending(now + timedelta(minutes=5)) == 1
+    sender.assert_called_once()
+    assert sender.call_args.args[1].endswith("Network: ISP box down")
 
 
 def test_a_router_reboot_is_an_activity_entry_not_an_alert(

@@ -35,7 +35,12 @@ def active_cluster_findings(cluster: Cluster, now: datetime, data: OwnerData) ->
     if cluster.latest_snapshot is None:
         return []
     findings = evaluate_cluster(
-        cluster, cluster.latest_snapshot, now, overrides=data.overrides, latest=data.latest
+        cluster,
+        cluster.latest_snapshot,
+        now,
+        overrides=data.overrides,
+        latest=data.latest,
+        notify=data.notify,
     )
     active, _ = apply_suppressions(
         findings, cluster, now, suppressions=data.suppressions, scope="cluster"
@@ -66,7 +71,9 @@ def cluster_summary(cluster: Cluster, now: datetime, data: OwnerData) -> dict[st
         "name": cluster.name,
         **status,
         "summary": finding_summary(status["status"], issues),
-        "issues": [{"text": f.text, "severity": f.severity} for f in issues],
+        "issues": [
+            {"text": f.text, "severity": f.severity, "fingerprint": f.fingerprint} for f in issues
+        ],
         "last_seen_human": ago(cluster.last_seen_at, now),
         "url": reverse("cluster-detail", args=[cluster.pk]),
         "nodes": {"ready": sum(1 for n in nodes if n["ready"]), "total": len(nodes)},
