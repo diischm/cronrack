@@ -77,13 +77,24 @@ def load_cluster_suppressions(cluster) -> list:
 
 
 def resolve_override(
-    owner, rule_id: str, host, subject: str = "", overrides=None, scope: str = "host"
+    owner,
+    rule_id: str,
+    host,
+    subject: str = "",
+    overrides=None,
+    scope: str = "host",
+    notify=None,
 ) -> EffectiveRule:
     """The rule's settings for this host and subject, with the user's overrides applied.
 
     Most specific wins, field by field (an empty field means "keep the less specific
-    value"):  host + subject -> host -> all hosts + subject -> all hosts -> code default.
+    value"):  host + subject -> host -> all hosts + subject -> all hosts -> Settings →
+    Notifications (`notify`, a notifications.config.NotifyConfig) -> code default.
     So a host-wide "severity: info" and a global "threshold: 90" both apply.
+    From Notifications: level "off" (or "Applies to" leaving this host out) disables the
+    rule, a changed "Counts as" sets the severity, a "Limit" choice sets the threshold.
+    notify=None: no notification layer (the preset defaults change nothing, so that is
+    the same as Balanced without overrides).
 
     scope="cluster": `host` is a cluster (or its ID) and "host" in the chain above reads
     "cluster". Overrides of the other kind (a host's, for a cluster) never apply.
@@ -145,13 +156,18 @@ def resolve_override(
     enabled = pick("enabled", None)
     severity = pick("severity", "")
     threshold = pick("threshold", None)
-    notify = pick("notify", "")
+    if notify is not None:
+        if enabled is None:
+            enabled = notify.enabled(rule_id, scope, host_id)
+        if not severity:
+            severity = notify.severity_override(rule_id)
+        if threshold is None:
+            threshold = notify.limit_value(rule_id)
     return EffectiveRule(
         enabled=True if enabled is None else enabled,
         severity=severity or rule.default_severity,
         severity_overridden=bool(severity),
         threshold=rule.default_threshold if threshold is None else threshold,
-        notify=notify or "",
         threshold_overridden=threshold is not None,
     )
 
@@ -161,12 +177,20 @@ def _has_privileged_data(report: Mapping[str, Any]) -> bool:
     return isinstance(security, Mapping) and security.get("privileged_data") is True
 
 
-def _run_rules(rules, ctx, report, subject_obj, overrides, scope, learning=False, privileged=True):
+def _run_rules(
+    rules, ctx, report, subject_obj, overrides, scope, learning=False, privileged=True, notify=None
+):
     """Run `rules` with a context; disabled findings are dropped, severity overrides applied."""
 
     def settings(rule_id: str, subject: str) -> EffectiveRule:
         return resolve_override(
-            subject_obj.owner_id, rule_id, subject_obj, subject, overrides=overrides, scope=scope
+            subject_obj.owner_id,
+            rule_id,
+            subject_obj,
+            subject,
+            overrides=overrides,
+            scope=scope,
+            notify=notify,
         )
 
     ctx = replace(ctx, settings=settings)
@@ -190,18 +214,32 @@ def _no_settings(rule_id: str, subject: str) -> EffectiveRule:  # replaced by _r
     raise RuntimeError("settings are filled in by _run_rules")
 
 
+def _load_notify(owner_id: int):
+    from notifications.config import load_config
+
+    return load_config(owner_id)
+
+
 def evaluate(
-    host, report: Mapping[str, Any] | None, now: datetime, overrides=None, latest=None
+    host,
+    report: Mapping[str, Any] | None,
+    now: datetime,
+    overrides=None,
+    latest=None,
+    notify=None,
 ) -> list[Finding]:
     """Run every rule against the report and return the findings, overrides applied.
 
     Skips privileged rules without the root helper's data, and deviation rules while
     the host is still learning. Disabled findings are dropped; an override severity
     replaces the rule's own. `latest` holds the newest released versions for the
-    version rules (omitted = those rules stay quiet).
+    version rules (omitted = those rules stay quiet). `notify` is the owner's
+    notifications.config.NotifyConfig; loaded here when `overrides` is too.
     """
     if overrides is None:
         overrides = load_overrides(host)
+        if notify is None:
+            notify = _load_notify(host.owner_id)
     report = report or {}
     ctx = RuleContext(
         host_id=host.pk,
@@ -220,6 +258,7 @@ def evaluate(
         "host",
         learning=host.learning_until is not None and host.learning_until > now,
         privileged=_has_privileged_data(report),
+        notify=notify,
     )
 
 
@@ -235,11 +274,13 @@ def load_network_overrides(network) -> list:
 
 
 def evaluate_network(
-    network, held: Mapping[str, Any], now: datetime, overrides=None
+    network, held: Mapping[str, Any], now: datetime, overrides=None, notify=None
 ) -> list[Finding]:
     """The network rules against the network's held state (network/services.py)."""
     if overrides is None:
         overrides = load_network_overrides(network)
+        if notify is None:
+            notify = _load_notify(network.owner_id)
     ctx = RuleContext(
         host_id=network.pk,
         now=now,
@@ -248,15 +289,24 @@ def evaluate_network(
         settings=_no_settings,
         scope_prefix="n",
     )
-    return _run_rules(NETWORK_RULES.values(), ctx, held, network, overrides, "network")
+    return _run_rules(
+        NETWORK_RULES.values(), ctx, held, network, overrides, "network", notify=notify
+    )
 
 
 def evaluate_cluster(
-    cluster, snapshot: Mapping[str, Any] | None, now: datetime, overrides=None, latest=None
+    cluster,
+    snapshot: Mapping[str, Any] | None,
+    now: datetime,
+    overrides=None,
+    latest=None,
+    notify=None,
 ) -> list[Finding]:
     """The cluster rules against the cluster snapshot (the agent's cluster view)."""
     if overrides is None:
         overrides = load_cluster_overrides(cluster)
+        if notify is None:
+            notify = _load_notify(cluster.owner_id)
     ctx = RuleContext(
         host_id=cluster.pk,
         now=now,
@@ -266,7 +316,9 @@ def evaluate_cluster(
         scope_prefix="c",
         latest=latest or {},
     )
-    return _run_rules(CLUSTER_RULES.values(), ctx, snapshot or {}, cluster, overrides, "cluster")
+    return _run_rules(
+        CLUSTER_RULES.values(), ctx, snapshot or {}, cluster, overrides, "cluster", notify=notify
+    )
 
 
 def _suppression_active(suppression, now: datetime) -> bool:
