@@ -318,7 +318,7 @@ def test_no_override_gives_code_defaults():
     assert effective.severity == "yellow"
     assert effective.severity_overridden is False
     assert effective.threshold == 85
-    assert effective.notify == ""
+    assert effective.threshold_overridden is False
 
 
 def test_override_precedence_most_specific_wins():

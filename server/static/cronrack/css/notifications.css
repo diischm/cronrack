@@ -1,0 +1,197 @@
+/* PLACEHOLDER — Apo owns the final version
+   Settings → Notifications (templates/prefs/notifications.html), after
+   design-ref/glass/notifications-mockup.html. Loaded on that page only.
+
+   Glass calm: no dots, nothing that shines, no colours of its own. Every colour is an existing token
+   (tokens.css for Legacy, glass.css for Glass), mapped once below to --n-* names so the rest
+   reads the same in both skins. Orange is used in exactly three places: the active "Alert"
+   choice, the ✓ of the active preset, and switches that are on.
+   Class names: .notify-<block>__<part>, modifiers .is-open / .is-dim / --<variant>. */
+
+.notify {
+  --n-text: var(--text);
+  --n-text-2: var(--text-muted);
+  --n-text-3: var(--text-faint);
+  --n-line: var(--rim-dark);
+  --n-line-hi: var(--lip-side);
+  --n-fill: var(--surface-lo);
+  --n-fill-hi: var(--surface-hi);
+  --n-well: var(--well);
+  --n-accent: var(--accent);
+  --n-accent-text: var(--accent-text);
+  --n-radius: var(--radius-key);
+  --n-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-skin="glass"] .notify {
+  --n-text: var(--g-text);
+  --n-text-2: var(--g-text-2);
+  --n-text-3: var(--g-text-3);
+  --n-line: var(--g-edge);
+  --n-line-hi: var(--g-edge-2);
+  --n-fill: var(--g-fill);
+  --n-fill-hi: var(--g-fill-hi);
+  --n-well: var(--g-well);
+  --n-accent: var(--g-accent);
+  --n-accent-text: var(--g-accent-text);
+  --n-radius: var(--g-radius);
+  --n-ease: var(--g-ease);
+}
+
+/* --- cards --------------------------------------------------------------------------------- */
+.notify-card { margin-bottom: 16px; }
+.notify-lead { margin: 0 0 4px; font-size: 16px; font-weight: 650; color: var(--n-text); }
+.notify-hint { margin: 0; font-size: 13px; color: var(--n-text-3); }
+.notify-hint--small { margin-top: 10px; font-size: 12.5px; }
+
+.notify-errors { margin: 0 0 16px; }
+.notify-errors__title { margin: 0 0 4px; font-weight: 600; }
+
+/* --- presets ------------------------------------------------------------------------------- */
+.notify-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.notify-preset {
+  display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; min-height: 44px;
+  text-align: left; font: inherit; color: var(--n-text); cursor: pointer;
+  border: 1px solid var(--n-line); border-radius: 12px; background: var(--n-well);
+  transition: border-color 250ms, background 250ms, transform 150ms var(--n-ease);
+}
+.notify-preset:hover { background: var(--n-fill-hi); }
+.notify-preset:active { transform: scale(0.98); }
+.notify-preset:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.notify-preset[aria-pressed="true"] { border-color: var(--n-line-hi); background: var(--n-fill-hi); }
+.notify-preset__name { font-size: 14.5px; font-weight: 650; }
+.notify-preset__text { font-size: 12.5px; color: var(--n-text-3); }
+.notify-preset__tick { display: none; color: var(--n-accent-text); }
+.notify-preset[aria-pressed="true"] .notify-preset__tick { display: inline; }
+
+/* --- general rows (test alert, quiet hours, summary, sounds) -------------------------------- */
+.notify-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 0; border-top: 1px solid var(--n-line);
+}
+.notify-general .notify-row:first-of-type { border-top: 0; padding-top: 0; }
+.notify-general .notify-row:last-of-type { padding-bottom: 0; }
+.notify-row__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notify-row__title { font-size: 14.5px; font-weight: 600; color: var(--n-text); }
+.notify-row__hint { font-size: 12.5px; color: var(--n-text-3); }
+.notify-row__hint a { color: inherit; text-decoration: underline; }
+.notify-row__controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
+/* Wraps on phones: two native time inputs don't fit side by side at 390 px. */
+.notify-row__group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; transition: opacity 250ms; }
+/* Still usable (the values are kept), so only slightly dimmed: text keeps its contrast. */
+.notify-row__group.is-dim { opacity: 0.7; }
+.notify-autosave { margin: 22px 4px 0; }
+.notify-row__to { font-size: 13px; color: var(--n-text-2); }
+
+.notify-input { min-height: 36px; padding: 0 10px; font: inherit; font-size: 14px; color: var(--n-text); border-radius: 10px; }
+.notify-range { width: 120px; accent-color: var(--n-accent); }
+
+/* The house switch, sized for a row and orange when on (on this page only). */
+.notify-switch, [data-skin="glass"] .notify-switch { width: auto; flex: 0 0 auto; }
+.notify-switch .switch__input:checked + .switch__track { background: var(--n-accent); }
+[data-skin="glass"] .notify-switch .switch__input:checked + .switch__track { background: var(--g-accent); }
+[data-skin="glass"] .notify-switch .switch__input:checked + .switch__track .switch__thumb { background: var(--g-on-accent); }
+
+/* --- search -------------------------------------------------------------------------------- */
+.notify-tools { margin: 26px 0 6px; }
+.notify-search { width: 100%; min-height: 40px; padding: 0 14px; font: inherit; color: var(--n-text); border-radius: 12px; }
+.notify-search-result { min-height: 1.2em; margin: 4px 4px 0; }
+
+/* --- groups (<details>) -------------------------------------------------------------------- */
+.notify-group { margin-top: 14px; }
+.notify-group__title {
+  display: flex; align-items: center; gap: 6px; min-height: 32px; margin: 0 4px 6px; cursor: pointer;
+  list-style: none; font-size: 11.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--n-text-3);
+}
+.notify-group__title::-webkit-details-marker { display: none; }
+.notify-group__title::after {
+  content: ""; width: 7px; height: 7px; margin-left: 4px; border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 300ms var(--n-ease);
+}
+.notify-group[open] > .notify-group__title::after { transform: rotate(45deg); }
+.notify-group__title:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+.notify-group__count { letter-spacing: 0; text-transform: none; font-weight: 500; }
+
+.notify-list { border: 1px solid var(--n-line); border-radius: var(--n-radius); background: var(--n-fill); overflow: hidden; }
+
+/* --- one rule ------------------------------------------------------------------------------ */
+.notify-rule { border-top: 1px solid var(--n-line); }
+.notify-rule:first-child { border-top: 0; }
+.notify-rule__head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 32px; align-items: center; gap: 16px;
+  padding: 11px 16px;
+}
+.notify-form:not(.notify--js) .notify-rule__head { grid-template-columns: minmax(0, 1fr) auto; }
+.notify-rule__name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notify-rule__label { font-size: 14.5px; font-weight: 600; color: var(--n-text); }
+.notify-rule__changed { margin-left: 6px; font-size: 11.5px; font-weight: 500; color: var(--n-text-2); }
+.notify-rule__desc { font-size: 12.5px; color: var(--n-text-3); }
+
+/* The 3-way control: three real radios in a fieldset, drawn as a segmented track. */
+.notify-seg {
+  display: inline-flex; margin: 0; padding: 3px; min-width: 0; border: 1px solid var(--n-line);
+  border-radius: 11px; background: var(--n-well);
+}
+.notify-seg__opt {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 0 11px;
+  border-radius: 8px; font-size: 12.5px; color: var(--n-text-2); cursor: pointer; white-space: nowrap;
+  transition: background 250ms, color 250ms;
+}
+.notify-seg__opt:hover { color: var(--n-text); }
+.notify-seg__opt:has(.notify-seg__input:checked) { background: var(--n-fill-hi); color: var(--n-text); font-weight: 650; box-shadow: inset 0 0 0 1px var(--n-line-hi); }
+.notify-seg__opt--alert:has(.notify-seg__input:checked) { color: var(--n-text); background: color-mix(in srgb, var(--n-accent) 28%, var(--n-well)); }
+.notify-seg__opt:has(.notify-seg__input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.notify-rule__more {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+  border: 0; border-radius: 8px; background: none; color: var(--n-text-3); cursor: pointer;
+}
+.notify-rule__more:hover { color: var(--n-text); }
+.notify-rule__more:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.notify-rule__more svg { transition: transform 400ms var(--n-ease); }
+.notify-rule.is-open .notify-rule__more svg { transform: rotate(180deg); }
+
+/* The expand panel: the smooth grid-rows trick (0fr -> 1fr). Without JS it stays open. */
+.notify-more { display: grid; grid-template-rows: 1fr; }
+.notify--js .notify-more { grid-template-rows: 0fr; }
+/* Animated only after the first frame (notify--ready), so the page doesn't load "closing". */
+.notify--ready .notify-more { transition: grid-template-rows 450ms var(--n-ease); }
+.notify--js .notify-rule.is-open .notify-more { grid-template-rows: 1fr; }
+.notify-more__clip { min-height: 0; overflow: hidden; }
+.notify-more__in {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px 26px; padding: 2px 16px 14px;
+  font-size: 13px; color: var(--n-text-2);
+}
+.notify-field { display: flex; flex-direction: column; gap: 5px; }
+.notify-field__label { font-size: 12.5px; color: var(--n-text-2); }
+.notify-targets { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; padding: 0; border: 0; flex-basis: 100%; }
+.notify-targets legend { margin-bottom: 4px; padding: 0; }
+.notify-target { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; color: var(--n-text); }
+.notify-more__note { flex-basis: 100%; }
+
+.notify-save { margin-top: 18px; }
+
+/* --- phone: stack the rows; the 3-way control goes full width under the label -------------- */
+@media (max-width: 720px) {
+  .notify-presets { grid-template-columns: minmax(0, 1fr); }
+  .notify-row { flex-direction: column; align-items: flex-start; }
+  .notify-row__controls { justify-content: flex-start; }
+  .notify-rule__head { grid-template-columns: minmax(0, 1fr) 32px; gap: 10px 12px; }
+  .notify-form:not(.notify--js) .notify-rule__head { grid-template-columns: minmax(0, 1fr); }
+  .notify-seg { grid-column: 1 / -1; grid-row: 2; display: flex; width: 100%; }
+  .notify-seg__opt { flex: 1 1 0; min-height: 44px; }
+  .notify-rule__more { width: 44px; height: 44px; }
+  .notify-rule__head { grid-template-columns: minmax(0, 1fr) 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notify *, .notify *::after, .notify--ready .notify-more { transition: none !important; }
+}
+[data-motion="off"] .notify *, [data-motion="off"] .notify *::after,
+[data-motion="off"] .notify--ready .notify-more { transition: none !important; }
+
+@media (forced-colors: active) {
+  .notify-switch .switch__input:checked + .switch__track { forced-color-adjust: none; background: Highlight; }
+  .notify-seg__opt:has(.notify-seg__input:checked) { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .notify-preset[aria-pressed="true"] { outline: 2px solid Highlight; }
+}

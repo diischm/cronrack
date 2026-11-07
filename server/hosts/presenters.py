@@ -19,6 +19,7 @@ from clusters.services import node_key
 from clusters.updates import latest_versions
 from hosts.humanize import ago, clock, day, user_zone
 from hosts.models import Host
+from notifications.config import load_config
 from prefs.models import Prefs
 from rules.base import Finding
 from rules.engine import (
@@ -59,6 +60,8 @@ class OwnerData:
         self.tz = user_zone(self.prefs.timezone)
         self.overrides = list(RuleOverride.objects.filter(owner=owner))
         self.suppressions = list(Suppression.objects.filter(owner=owner))
+        # Settings → Notifications: "off" rules are hidden on the pages too.
+        self.notify = load_config(owner.pk)
         self._owner = owner
         self._latest = None
 
@@ -84,7 +87,14 @@ def active_findings(host: Host, now: datetime, data: OwnerData) -> list[Finding]
     """
     if host.latest_report is None:
         return []
-    findings = evaluate(host, host.latest_report, now, overrides=data.overrides, latest=data.latest)
+    findings = evaluate(
+        host,
+        host.latest_report,
+        now,
+        overrides=data.overrides,
+        latest=data.latest,
+        notify=data.notify,
+    )
     active, _ = apply_suppressions(findings, host, now, suppressions=data.suppressions)
     return [f for f in active if f.rule_id != OFFLINE_RULE]
 
@@ -210,7 +220,10 @@ def host_summary(host: Host, now: datetime, data: OwnerData) -> dict[str, Any]:
         "status": status,
         "status_label": STATUS_LABELS.get(status, status),
         "summary": finding_summary(status, issues),
-        "issues": [{"text": f.text, "severity": f.severity} for f in issues],
+        # The fingerprint lets sound.js tell a new red issue from one it already saw.
+        "issues": [
+            {"text": f.text, "severity": f.severity, "fingerprint": f.fingerprint} for f in issues
+        ],
         "last_seen_human": ago(host.last_seen_at, now),
         "url": reverse("host-detail", args=[host.pk]),
         "k8s_role": k8s_role(host.latest_report),

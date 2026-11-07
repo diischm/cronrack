@@ -16,12 +16,13 @@
   outside the grid) through the button's form= attribute, so it isn't nested in the prefs
   form; actions.js sends it with fetch and shows the result as a toast.
   The webhook URL is only ever in its own input: no toast or message repeats it.
-  Appearance is browser-only (theme.js, localStorage), so it's hidden until JS shows it.
+  This is the Account tab; Notifications and Appearance have their own pages (prefs/_tabs.html).
 {% endcomment %}
 {% block content %}
   <div class="page-head">
     <h1 class="page-title">Settings</h1>
   </div>
+  {% include "prefs/_tabs.html" %}
 
   <div class="settings-grid">
     <form class="settings-prefs" method="post" action="{% url 'prefs' %}" novalidate>
@@ -31,7 +32,7 @@
       <section class="surface panel form" aria-labelledby="alerts-title">
         <h2 class="section-title" id="alerts-title">Alerts</h2>
         {% include "components/form_errors.html" with form=prefs_form %}
-        <p class="muted">CronRack posts to Discord when a host's status changes.</p>
+        <p class="muted">CronRack posts to Discord when a problem opens, turns red or is resolved. Choose which ones under Notifications.</p>
         {% with field=prefs_form.discord_webhook_url %}
           <div class="field">
             <label class="field__label" for="{{ field.auto_id }}">{{ field.label }}</label>
@@ -82,51 +83,6 @@
         <div class="form-keys"><button type="submit" class="btn">Save</button></div>
       </section>
     </form>
-
-    <section class="surface panel form panel--fit" aria-labelledby="appearance-title">
-      <h2 class="section-title" id="appearance-title">Appearance</h2>
-      {% comment %}
-        theme.js shows the pickers and hides the note. Theme: Glass (default) | Legacy. Legacy's
-        Light / Dark / System picker shows only while Legacy is chosen (it stays in sync with
-        the top-bar key, which only Legacy has); the two switches only while Glass is.
-        All of it is saved in this browser only (localStorage).
-      {% endcomment %}
-      <fieldset class="theme-picker" id="skin-picker" hidden>
-        <legend class="field__label">Theme</legend>
-        <div class="seg-track well skin-seg">
-          <label class="seg seg--radio"><input class="visually-hidden" type="radio" name="skin" value="glass" aria-describedby="skin-help">Glass</label>
-          <label class="seg seg--radio"><input class="visually-hidden" type="radio" name="skin" value="legacy" aria-describedby="skin-help">Legacy</label>
-        </div>
-        <p class="field__help" id="skin-help">Glass: dark graphite, frosted glass, orange accent. Legacy: the original look, light or dark.</p>
-      </fieldset>
-      <fieldset class="theme-picker" id="theme-picker" hidden>
-        <legend class="field__label">Legacy colours</legend>
-        <div class="seg-track well theme-seg">
-          <label class="seg seg--radio"><input class="visually-hidden" type="radio" name="theme" value="light" aria-describedby="theme-help">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
-            Light</label>
-          <label class="seg seg--radio"><input class="visually-hidden" type="radio" name="theme" value="dark" aria-describedby="theme-help">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
-            Dark</label>
-          <label class="seg seg--radio"><input class="visually-hidden" type="radio" name="theme" value="system" aria-describedby="theme-help">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg>
-            System</label>
-        </div>
-        <p class="field__help" id="theme-help">System follows your device's light or dark setting. Saved in this browser only.</p>
-      </fieldset>
-      {# Glass only: native checkboxes with role="switch" (keyboard and screen readers for free). #}
-      <div class="glass-prefs" id="glass-prefs" hidden>
-        <div class="field">
-          <label class="switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" id="pref-reduce-motion" aria-describedby="pref-reduce-motion-help"><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span><span class="switch__label">Reduce animations</span></label>
-          <p class="field__help" id="pref-reduce-motion-help">Turns off the decorative motion (tilting cards, rolling numbers, sliding lists, the status ring). Opening and closing still work, just instantly. Always on when your device asks for reduced motion.</p>
-        </div>
-        <div class="field">
-          <label class="switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" id="pref-labels" aria-describedby="pref-labels-help"><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span><span class="switch__label">Show status labels</span></label>
-          <p class="field__help" id="pref-labels-help">Adds the word next to each status dot (Needs you, Heads up, All good, Offline). Helpful if red and green look alike.</p>
-        </div>
-      </div>
-      <p class="muted" id="theme-nojs">Switching the theme needs JavaScript.</p>
-    </section>
 
     <section class="surface panel panel--fit" aria-labelledby="account-title">
       <h2 class="section-title" id="account-title">Account</h2>

@@ -11,13 +11,7 @@ from django.utils import timezone
 from activity.events import record_status_change
 from activity.models import StatusEvent
 from activity.views import activity_page
-from alerts.discord import (
-    ALERT_COOLDOWN_SECONDS,
-    format_alert,
-    format_current,
-    notify,
-    send_pending_alerts,
-)
+from alerts.discord import ALERT_COOLDOWN_SECONDS
 from clusters.models import Cluster
 from clusters.services import (
     cluster_offline_threshold,
@@ -25,8 +19,10 @@ from clusters.services import (
     mark_silent_clusters_offline,
 )
 from cronrack.dev_views import XSS_IMG, XSS_SCRIPT
-from hosts.models import Host
+from notifications import dispatch
+from notifications.text import escape_markdown
 from prefs.models import Prefs
+from rules.base import Finding, fingerprint
 from rules.engine import CLUSTER_OFFLINE_RULE
 from rules.models import RuleOverride
 from rules.registry import get_rule
@@ -60,25 +56,24 @@ def live(cluster):
     return cluster
 
 
-class Clock:
-    def __init__(self):
-        self.now = timezone.now()
+def node_down(cluster, node="node-a") -> Finding:
+    rule_id = "k8s.node_not_ready"
+    subject = f"node:{node}"
+    return Finding(
+        rule_id=rule_id,
+        subject=subject,
+        severity="red",
+        text=f"Node {node} not ready",
+        why="",
+        fix="",
+        fingerprint=fingerprint(rule_id, f"c{cluster.pk}", subject),
+    )
 
-    def tick(self, seconds):
-        self.now += timedelta(seconds=seconds)
 
-
-@pytest.fixture
-def clock(monkeypatch):
-    fake = Clock()
-    monkeypatch.setattr("alerts.discord.timezone.now", lambda: fake.now)
-    return fake
-
-
-def change(cluster, old, new):
-    Cluster.objects.filter(pk=cluster.pk).update(status=new)
-    cluster.refresh_from_db()
-    return notify(record_status_change(cluster, old, new, []))
+def evaluate(subject, now, *findings) -> int:
+    """One evaluation of `subject` with these findings, then its delivery."""
+    dispatch.sync(subject, list(findings), now)
+    return dispatch.deliver(subject, now)
 
 
 # --- the activity list --------------------------------------------------------------------------
@@ -99,82 +94,69 @@ def test_hostile_cluster_names_are_plain_text_in_activity_and_discord(alice, web
         evil = Cluster.objects.create(
             owner=alice, uid=f"{number}" * 8 + "-0000-0000-0000-" + f"{number}" * 12, name=name
         )
-        event = record_status_change(evil, "green", "red", [])
-        assert name in format_alert(event)
-        assert name in format_current(evil)
+        record_status_change(evil, "green", "red", [])
+        with mock.patch("alerts.discord.send_discord", return_value=True) as send:
+            evaluate(evil, NOW, node_down(evil))
+        text = send.call_args.args[1]
+        # Plain text for Discord: no markdown survives (<, = and quotes mean nothing there).
+        assert escape_markdown(name) in text
     items = activity_page(alice, 1)["items"]
     assert {i["text"] for i in items} == {f"{XSS_SCRIPT} went red", f"{XSS_IMG} went red"}
 
 
-def test_alert_text_for_a_cluster_event(cluster):
+def test_activity_text_for_a_cluster_event(cluster):
     event = StatusEvent.objects.create(
         cluster=cluster, old_status="green", new_status="red", summary="api down"
     )
-    assert format_alert(event) == "🔴 lab went red: api down"
+    assert event.describe() == "lab went red: api down"
 
 
-# --- Discord: cooldown and coalescing -------------------------------------------------------------
+# --- Discord: one message per problem, cooldown -----------------------------------------------
 
 
-def test_a_cluster_change_sends_one_alert_to_its_owners_webhook(cluster, webhook):
+def test_a_cluster_problem_sends_one_alert_to_its_owners_webhook(cluster, webhook):
     with mock.patch("alerts.discord.send_discord", return_value=True) as send:
-        assert change(cluster, "green", "red") is True
+        assert evaluate(cluster, NOW, node_down(cluster)) == 1
+        assert evaluate(cluster, NOW + timedelta(minutes=1), node_down(cluster)) == 0
 
-    send.assert_called_once_with(GOOD_URL, "🔴 lab went red")
+    send.assert_called_once_with(GOOD_URL, "🔴 lab: Node node-a not ready")
 
 
 def test_no_webhook_no_alert(cluster):
     with mock.patch("alerts.discord.send_discord") as send:
-        assert change(cluster, "green", "red") is False
+        assert evaluate(cluster, NOW, node_down(cluster)) == 0
     send.assert_not_called()
 
 
 def test_another_users_webhook_is_never_used(alice, bob, cluster):
     Prefs.objects.create(owner=bob, discord_webhook_url=GOOD_URL)
     with mock.patch("alerts.discord.send_discord") as send:
-        assert change(cluster, "green", "red") is False
+        assert evaluate(cluster, NOW, node_down(cluster)) == 0
     send.assert_not_called()
 
 
 def test_cluster_cooldown_holds_back_the_second_alert(cluster, webhook):
     with mock.patch("alerts.discord.send_discord", return_value=True) as send:
-        assert change(cluster, "green", "red") is True
-        assert change(cluster, "red", "green") is False
-    assert send.call_count == 1
-    cluster.refresh_from_db()
-    assert cluster.last_alert_status == "red"
+        assert evaluate(cluster, NOW, node_down(cluster)) == 1
+        later = NOW + timedelta(seconds=10)
+        assert evaluate(cluster, later, node_down(cluster), node_down(cluster, "node-b")) == 0
+        assert dispatch.deliver_pending(later) == 0
+        assert dispatch.deliver_pending(NOW + timedelta(seconds=ALERT_COOLDOWN_SECONDS)) == 1
+
+    texts = [c.args[1] for c in send.call_args_list]
+    assert texts == ["🔴 lab: Node node-a not ready", "🔴 lab: Node node-b not ready"]
 
 
 def test_cooldown_of_a_cluster_and_a_host_are_independent(cluster, webhook, host):
+    from hosts.services import save_report
+
+    from .sample import make_report
+
     with mock.patch("alerts.discord.send_discord", return_value=True) as send:
-        notify(record_status_change(host, "green", "red", []))
-        assert change(cluster, "green", "red") is True
+        save_report(host, make_report(failed_units=["x.service"]), now=NOW)
+        assert dispatch.deliver(host, NOW) == 1
+        assert evaluate(cluster, NOW, node_down(cluster)) == 1
     assert send.call_count == 2
-
-
-def test_held_back_cluster_change_is_sent_after_the_cooldown(cluster, webhook, clock):
-    with mock.patch("alerts.discord.send_discord", return_value=True) as send:
-        assert change(cluster, "green", "red") is True
-        clock.tick(20)
-        assert change(cluster, "red", "green") is False
-        assert send_pending_alerts(clock.now) == []
-        clock.tick(ALERT_COOLDOWN_SECONDS)
-        assert [c.pk for c in send_pending_alerts(clock.now)] == [cluster.pk]
-        assert send_pending_alerts(clock.now) == []  # once
-
-    texts = [c.args[1] for c in send.call_args_list]
-    assert texts == ["🔴 lab went red", "🟢 lab is green now (after several quick changes)"]
-
-
-def test_pending_alerts_cover_hosts_and_clusters_together(cluster, host, webhook, clock):
-    with mock.patch("alerts.discord.send_discord", return_value=True):
-        notify(record_status_change(host, "green", "red", []))
-        change(cluster, "green", "red")
-        Host.objects.filter(pk=host.pk).update(status="green")
-        Cluster.objects.filter(pk=cluster.pk).update(status="green")
-        clock.tick(ALERT_COOLDOWN_SECONDS + 1)
-        sent = send_pending_alerts(clock.now)
-    assert {type(s).__name__ for s in sent} == {"Host", "Cluster"}
 
 
 # --- the dead-man's switch ----------------------------------------------------------------------------

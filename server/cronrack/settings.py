@@ -142,6 +142,7 @@ INSTALLED_APPS = [
     "network",
     "prefs",
     "rules",
+    "notifications",
 ]
 
 MIDDLEWARE = [

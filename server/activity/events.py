@@ -4,10 +4,7 @@ list)."""
 from collections.abc import Iterable
 from typing import Any
 
-from django.db import transaction
-
 from activity.models import StatusEvent
-from alerts.discord import notify
 from clusters.models import Cluster
 from hosts.models import Host
 from network.models import Network
@@ -38,19 +35,16 @@ def record_note(network: Network, summary: str) -> StatusEvent:
 def record_status_change(
     subject: Host | Cluster | Network, old: str, new: str, issues: Iterable[Finding]
 ) -> StatusEvent:
-    """Save a StatusEvent for a host's, a cluster's or the network's status change, then hand
-    it to the alerts.
+    """Save a StatusEvent for a host's, a cluster's or the network's status change: the
+    activity list ("While you were away").
 
-    The alert is sent only after the database transaction commits: the HTTP call
-    to Discord (up to 5s) must not hold the database lock, and if the transaction
-    rolls back there was no status change to announce.
+    Discord alerts are not sent from here any more: they are per problem, not per colour
+    change (notifications.dispatch, called next to every evaluation).
     """
     if isinstance(subject, Network):
         owner: dict[str, Any] = {"network": subject}
     else:
         owner = {"cluster": subject} if isinstance(subject, Cluster) else {"host": subject}
-    event = StatusEvent.objects.create(
+    return StatusEvent.objects.create(
         **owner, old_status=old, new_status=new, summary=summarize(issues)
     )
-    transaction.on_commit(lambda: notify(event), robust=True)
-    return event

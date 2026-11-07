@@ -27,9 +27,11 @@
   <script src="{% static 'cronrack/js/copy.js' %}" defer></script>
   <script src="{% static 'cronrack/js/actions.js' %}" defer></script>
   <script src="{% static 'cronrack/js/nav.js' %}" defer></script>
+  {% if user.is_authenticated %}<script src="{% static 'cronrack/js/sound.js' %}" defer></script>{% endif %}
   {% block extra_head %}{% endblock %}
 </head>
-<body>
+{# data-sound-volume only when the user turned in-app sounds on (Settings → Notifications). #}
+<body{% if shell_sound.on %} data-sound-volume="{{ shell_sound.volume }}"{% endif %}>
   {% comment %}
     Glass only (glass.css hides .g-only in Legacy; all of it is decorative, aria-hidden):
     - the progressive blur under the sticky top bar (shown once the page scrolls, glass.js)

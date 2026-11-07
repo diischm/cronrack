@@ -1,0 +1,199 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Notifications · Settings · CronRack{% endblock %}
+{% block nav_settings %}aria-current="page"{% endblock %}
+{% block main_class %}app-main--settings{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="{% static 'cronrack/css/notifications.css' %}">
+  <script src="{% static 'cronrack/js/notifications.js' %}" defer></script>
+{% endblock %}
+
+{% comment %}
+  Settings → Notifications (design-ref/glass/notifications-mockup.html).
+
+  One <form> holds everything except the preset keys and "Send test alert", which belong to
+  their own small forms below (linked with form=, so no form is nested in another).
+  Without JS it is a normal form: change things, press Save. notifications.js adds the
+  autosave (it posts the same form with fetch), the search, the expand arrows and the
+  instant preset switch; the server answers the same either way.
+
+  - The 3-way control is a real radio group per rule (a <fieldset> with a hidden legend),
+    so arrow keys and screen readers work as usual.
+  - Switches are native checkboxes with role="switch", like everywhere else in CronRack:
+    the same keyboard and screen-reader support, and they still submit without JS.
+  - Groups are <details>: Hosts, Services & containers and Network start open, Kubernetes
+    starts closed with its count. The search opens every group that has a match.
+  - Every name (rules, hosts, clusters) is printed by the template, so it is escaped.
+    The JS never builds markup from data.
+{% endcomment %}
+{% block content %}
+<div class="notify">
+  <div class="page-head">
+    <h1 class="page-title">Settings</h1>
+  </div>
+  {% include "prefs/_tabs.html" %}
+
+  {% if errors %}
+    <div class="notify-errors" role="alert">
+      <p class="notify-errors__title">Nothing was saved:</p>
+      {% for error in errors %}<p class="field__error">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+
+  <section class="surface panel notify-card" aria-labelledby="notify-lead">
+    <h2 class="notify-lead" id="notify-lead">How much should CronRack bother you?</h2>
+    <p class="notify-hint">Pick a starting point. You can still change single rules below.</p>
+    <div class="notify-presets" role="group" aria-label="Presets">
+      {% for key, name, text, current in presets %}
+        <button type="submit" class="notify-preset" form="notify-preset-form" name="preset" value="{{ key }}" aria-pressed="{{ current|yesno:'true,false' }}">
+          <span class="notify-preset__name">{{ name }}<span class="notify-preset__tick" aria-hidden="true"> ✓</span></span>
+          <span class="notify-preset__text">{{ text }}</span>
+        </button>
+      {% endfor %}
+    </div>
+    <p class="notify-hint notify-hint--small">Picking a preset resets every rule below to that preset.</p>
+  </section>
+
+  <form class="notify-form" id="notify-form" method="post" action="{% url 'notifications' %}" novalidate>
+    {% csrf_token %}
+
+    <section class="surface panel notify-card notify-general" aria-labelledby="notify-general-title">
+      <h2 class="visually-hidden" id="notify-general-title">General</h2>
+
+      <div class="notify-row">
+        <div class="notify-row__text">
+          <span class="notify-row__title">Discord alerts</span>
+          <span class="notify-row__hint">Where alerts are sent. Change the webhook under <a href="{% url 'prefs' %}">Account</a>.</span>
+        </div>
+        <div class="notify-row__controls">
+          <button type="submit" class="btn" form="test-alert-form">Send test alert</button>
+        </div>
+      </div>
+
+      <div class="notify-row">
+        <div class="notify-row__text">
+          <span class="notify-row__title" id="qh-title">Quiet hours</span>
+          <span class="notify-row__hint" id="qh-hint">Only "Needs you" alerts get through. Everything else waits until morning.</span>
+        </div>
+        <div class="notify-row__controls">
+          <span class="notify-row__group" data-switch-for="qh">
+            <input type="time" class="well notify-input" name="quiet_hours_start" value="{{ prefs.quiet_hours_start|time:'H:i' }}" aria-label="Quiet hours start" required>
+            <span class="notify-row__to">to</span>
+            <input type="time" class="well notify-input" name="quiet_hours_end" value="{{ prefs.quiet_hours_end|time:'H:i' }}" aria-label="Quiet hours end" required>
+          </span>
+          <label class="switch notify-switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" id="qh" name="quiet_hours_enabled" aria-labelledby="qh-title" aria-describedby="qh-hint"{% if prefs.quiet_hours_enabled %} checked{% endif %}><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span></label>
+        </div>
+      </div>
+
+      <div class="notify-row">
+        <div class="notify-row__text">
+          <span class="notify-row__title" id="dg-title">Daily summary</span>
+          <span class="notify-row__hint" id="dg-hint">One message a day with everything that was "show only".</span>
+        </div>
+        <div class="notify-row__controls">
+          <span class="notify-row__group" data-switch-for="dg">
+            <input type="time" class="well notify-input" name="digest_time" value="{{ prefs.digest_time|time:'H:i' }}" aria-label="Summary time" required>
+          </span>
+          <label class="switch notify-switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" id="dg" name="digest_enabled" aria-labelledby="dg-title" aria-describedby="dg-hint"{% if prefs.digest_enabled %} checked{% endif %}><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span></label>
+        </div>
+      </div>
+
+      <div class="notify-row">
+        <div class="notify-row__text">
+          <span class="notify-row__title" id="snd-title">Sounds in the app</span>
+          <span class="notify-row__hint" id="snd-hint">A soft tone when something new needs you while the overview is open.</span>
+        </div>
+        <div class="notify-row__controls">
+          <span class="notify-row__group" data-switch-for="snd">
+            <input type="range" class="notify-range" name="sound_volume" id="notify-volume" min="0" max="100" step="1" value="{{ prefs.sound_volume }}" aria-label="Volume">
+            <button type="button" class="btn" id="notify-play" hidden>Play</button>
+          </span>
+          <label class="switch notify-switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" id="snd" name="sounds_enabled" aria-labelledby="snd-title" aria-describedby="snd-hint"{% if prefs.sounds_enabled %} checked{% endif %}><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span></label>
+        </div>
+      </div>
+    </section>
+
+    <p class="notify-hint notify-autosave" id="notify-autosave" hidden>Changes save automatically.</p>
+    <div class="notify-tools" id="notify-tools" hidden>
+      <input class="well notify-search" id="notify-search" type="search" placeholder="Find a rule… (e.g. disk, reboot, router)" aria-label="Find a rule" autocomplete="off" spellcheck="false">
+    </div>
+    <p class="notify-hint notify-search-result" id="notify-search-result" role="status" aria-live="polite"></p>
+
+    <div class="notify-groups" id="notify-groups">
+      {% for group in groups %}
+        <details class="notify-group" data-group="{{ group.slug }}"{% if group.open %} open{% endif %}>
+          <summary class="notify-group__title">{{ group.name }} <span class="notify-group__count">· {{ group.rows|length }}</span><span class="visually-hidden"> rules</span></summary>
+          <div class="notify-list">
+            {% for row in group.rows %}{% with spec=row.spec %}
+              <div class="notify-rule" data-rule="{{ spec.id }}" data-search="{{ spec.search_text }}" data-quiet="{{ spec.defaults.quiet }}" data-balanced="{{ spec.defaults.balanced }}" data-everything="{{ spec.defaults.everything }}" data-counts="{{ spec.counts_as }}" data-limit="{{ spec.limit.default|default:'' }}">
+                <div class="notify-rule__head">
+                  <div class="notify-rule__name">
+                    <span class="notify-rule__line"><span class="notify-rule__label" id="r-{{ row.slug }}">{{ spec.label }}</span> <span class="notify-rule__changed"{% if not row.changed %} hidden{% endif %}>changed</span></span>
+                    <span class="notify-rule__desc" id="d-{{ row.slug }}">{{ spec.description }}</span>
+                  </div>
+                  <fieldset class="notify-seg" aria-describedby="d-{{ row.slug }}">
+                    <legend class="visually-hidden">{{ spec.label }}</legend>
+                    {% for value, label, checked in row.levels %}<label class="notify-seg__opt notify-seg__opt--{{ value }}"><input class="notify-seg__input visually-hidden" type="radio" name="level:{{ spec.id }}" value="{{ value }}"{% if checked %} checked{% endif %}><span class="notify-seg__text">{{ label }}</span></label>{% endfor %}
+                  </fieldset>
+                  <button type="button" class="notify-rule__more" aria-expanded="false" aria-controls="m-{{ row.slug }}" aria-label="More options for {{ spec.label }}" hidden>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"></path></svg>
+                  </button>
+                </div>
+                <div class="notify-more" id="m-{{ row.slug }}" role="group" aria-labelledby="r-{{ row.slug }}">
+                  <div class="notify-more__clip">
+                    <div class="notify-more__in">
+                      <label class="notify-field"><span class="notify-field__label">Counts as</span>
+                        <select class="well notify-input" name="counts:{{ spec.id }}">{% for value, label, selected in row.counts %}<option value="{{ value }}"{% if selected %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+                      </label>
+                      {% if spec.limit %}
+                        <label class="notify-field"><span class="notify-field__label">Limit</span>
+                          <select class="well notify-input" name="limit:{{ spec.id }}">{% for choice in spec.limit.choices %}<option value="{{ choice.key }}"{% if choice.key == row.limit_key %} selected{% endif %}>{{ choice.label }}</option>{% endfor %}</select>
+                        </label>
+                      {% endif %}
+                      {% if row.target_kind %}
+                        <label class="notify-field"><span class="notify-field__label">Applies to</span>
+                          <select class="well notify-input notify-applies" name="applies:{{ spec.id }}" aria-controls="t-{{ row.slug }}">
+                            <option value="all"{% if row.applies_to == "all" %} selected{% endif %}>All {{ row.target_kind }}</option>
+                            <option value="selected"{% if row.applies_to == "selected" %} selected{% endif %}>Only the {{ row.target_kind }} I choose</option>
+                          </select>
+                        </label>
+                        <fieldset class="notify-targets" id="t-{{ row.slug }}">
+                          <legend class="notify-field__label">Choose {{ row.target_kind }}</legend>
+                          {% for pk, name, checked in row.targets %}
+                            <label class="notify-target"><input type="checkbox" name="{{ row.target_kind }}:{{ spec.id }}" value="{{ pk }}"{% if checked %} checked{% endif %}><span>{{ name }}</span></label>
+                          {% empty %}
+                            <p class="notify-hint">No {{ row.target_kind }} yet.</p>
+                          {% endfor %}
+                        </fieldset>
+                      {% endif %}
+                      <p class="notify-hint notify-more__note">"Show only" keeps it on the dashboard and in the daily summary, without a Discord message. "Off" hides it everywhere.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endwith %}{% endfor %}
+          </div>
+        </details>
+      {% endfor %}
+    </div>
+
+    <div class="notify-save" id="notify-save">
+      <button type="submit" class="btn">Save</button>
+    </div>
+  </form>
+
+  {# The preset keys' form (they sit in the card above, linked with form=). Without JS: the #}
+  {# server switches the preset and redirects back here. #}
+  <form id="notify-preset-form" method="post" action="{% url 'notifications-preset' %}" hidden>
+    {% csrf_token %}
+  </form>
+  {# "Send test alert": actions.js sends it with fetch and shows a toast; without JS the #}
+  {# server redirects back here with a flash message. #}
+  <form id="test-alert-form" class="js-fetch-action" method="post" action="{% url 'test-alert' %}" data-action="test-alert" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="back" value="notifications">
+  </form>
+</div>
+{% endblock %}

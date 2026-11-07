@@ -403,6 +403,15 @@ html, body { overflow-x: hidden; }
    hosts/settings.html, prefs/index.html. The wide layout (up to --page-max): the panels sit in
    a grid, 2 columns from 900px, stacked on phones. Inputs keep a readable width. */
 /* Panels in one row are equally tall; their keys sit at the bottom, so they line up. */
+/* Settings sections (prefs/_tabs.html): Account | Notifications | Appearance, plain links. */
+.settings-tabs { display: flex; flex-wrap: wrap; gap: 4px; width: max-content; max-width: 100%; padding: 4px;
+  margin: 0 0 var(--stack-gap); border-radius: 14px; background: var(--well); }
+.settings-tabs__tab { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px;
+  border-radius: 10px; color: var(--text-muted); font-size: 14px; font-weight: 500; text-decoration: none; }
+.settings-tabs__tab:hover { color: var(--text); }
+.settings-tabs__tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.settings-tabs__tab[aria-current="page"] { color: var(--text); background: var(--surface-hi); font-weight: 600; }
+
 .settings-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--stack-gap);
   align-items: stretch; }
 .settings-grid .panel > .form-keys:last-child { margin-top: auto; }

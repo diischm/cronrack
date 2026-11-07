@@ -230,8 +230,12 @@ def test_overview_json_shape_and_order(alice_client: Client, alice, bob):
         assert set(h) == HOST_KEYS
         assert h["url"] == f"/hosts/{h['id']}/"
         for issue in h["issues"]:
-            assert set(issue) == {"text", "severity"}
-    assert data["hosts"][1]["issues"] == [{"text": "x.service failed", "severity": "red"}]
+            # fingerprint: sound.js tells a new "needs you" issue from one it already saw.
+            assert set(issue) == {"text", "severity", "fingerprint"}
+            assert re.fullmatch(r"[0-9a-f]{64}", issue["fingerprint"])
+    assert [(i["text"], i["severity"]) for i in data["hosts"][1]["issues"]] == [
+        ("x.service failed", "red")
+    ]
     assert data["hosts"][1]["status_label"] == "Needs you"
     assert data["activity"] == [
         {"text": "b-red went red: x", "time_human": mock.ANY, "status": "red"}
@@ -400,8 +404,11 @@ def test_online_host_issues_are_unchanged(alice_client: Client, alice):
         {"text": "Reboot required", "severity": "yellow"},
     ]
 
-    assert overview_context(alice, now)["hosts"][0]["issues"] == expected
-    assert alice_client.get("/api/v1/overview.json").json()["hosts"][0]["issues"] == expected
+    def words(issues):
+        return [{"text": i["text"], "severity": i["severity"]} for i in issues]
+
+    assert words(overview_context(alice, now)["hosts"][0]["issues"]) == expected
+    assert words(alice_client.get("/api/v1/overview.json").json()["hosts"][0]["issues"]) == expected
     detail_issues = detail_context(host, now)["issues"]
     assert [{"text": i["text"], "severity": i["severity"]} for i in detail_issues] == expected
 

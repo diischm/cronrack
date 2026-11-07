@@ -13,7 +13,6 @@ class RuleOverrideAdmin(admin.ModelAdmin):
         "subject",
         "enabled",
         "severity",
-        "notify",
     )
     list_filter = ("severity", "enabled")
     search_fields = ("rule_id", "subject")
