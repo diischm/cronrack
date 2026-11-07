@@ -3,15 +3,14 @@ from datetime import time
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator
 from django.db import models
 
-
-class Route(models.TextChoices):
-    """Where a finding's notification goes."""
-
-    INSTANT = "instant", "Instant alert"
-    DIGEST = "digest", "Daily digest"
-    DASHBOARD = "dashboard", "Dashboard only"
+PRESET_CHOICES = (
+    ("quiet", "Quiet"),
+    ("balanced", "Balanced"),
+    ("everything", "Everything"),
+)
 
 
 def validate_timezone(value: str) -> None:
@@ -30,13 +29,19 @@ class Prefs(models.Model):
     timezone = models.CharField(
         max_length=64, default="Europe/Skopje", validators=[validate_timezone]
     )
-    quiet_hours_start = models.TimeField(null=True, blank=True)
-    quiet_hours_end = models.TimeField(null=True, blank=True)
+    # Settings → Notifications. Times are in `timezone` above, the user's own.
+    notify_preset = models.CharField(max_length=16, choices=PRESET_CHOICES, default="balanced")
+    # On for new users. Users who had CronRack before this setting existed start with it
+    # off (prefs migration 0003), so nothing they relied on changes by itself.
+    quiet_hours_enabled = models.BooleanField(default=True)
+    quiet_hours_start = models.TimeField(default=time(23, 0))
+    quiet_hours_end = models.TimeField(default=time(8, 0))
     digest_enabled = models.BooleanField(default=False)
-    digest_time = models.TimeField(default=time(17, 30))
-    route_red = models.CharField(max_length=16, choices=Route.choices, default=Route.INSTANT)
-    route_yellow = models.CharField(max_length=16, choices=Route.choices, default=Route.DIGEST)
-    route_info = models.CharField(max_length=16, choices=Route.choices, default=Route.DASHBOARD)
+    digest_time = models.TimeField(default=time(9, 0))
+    # The user's local date of the last daily summary, so a pass sends it once a day.
+    digest_sent_on = models.DateField(null=True, blank=True, editable=False)
+    sounds_enabled = models.BooleanField(default=False)
+    sound_volume = models.PositiveSmallIntegerField(default=40, validators=[MaxValueValidator(100)])
     # Off by default: CronRack contacts the internet only if the user asks for it.
     check_updates_online = models.BooleanField(
         default=False,

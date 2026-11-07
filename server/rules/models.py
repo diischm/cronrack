@@ -6,7 +6,6 @@ from django.utils import timezone
 
 from clusters.models import Cluster
 from hosts.models import Host
-from prefs.models import Route
 from rules.base import fingerprint
 
 # Rule IDs look like "disk.usage" or "docker.container_restarting".
@@ -73,7 +72,6 @@ class RuleOverride(models.Model):
     enabled = models.BooleanField(null=True, blank=True)
     severity = models.CharField(max_length=8, choices=Severity.choices, blank=True)
     threshold = models.FloatField(null=True, blank=True)
-    notify = models.CharField(max_length=16, choices=Route.choices, blank=True)
 
     class Meta:
         constraints = (
