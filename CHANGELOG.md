@@ -25,8 +25,29 @@ before 1.0.0, any release may change things that worked before, and the notes sa
   a dead switch reads "Switch down" and not "Router down". Agent **0.3.0**. **Upgrade the server
   first:** an older server refuses reports with these points. Without them, old and new agents
   and servers work together as before.
+- **Settings → Notifications** (`/settings/notifications/`). Three presets (Quiet, Balanced,
+  Everything) and, per rule, Alert / Show only / Off, with "Counts as" (Needs you or Heads up),
+  a fixed list of limits where a rule has one (disk 80–95 %, certificate 7–60 days, latency,
+  packet loss) and "Applies to" chosen hosts or clusters. Quiet hours (only "Needs you" gets
+  through; the rest comes in one "while you were asleep" message), a daily summary of the
+  "show only" findings, a rate-limited test alert, and an optional soft tone in the app when
+  something new needs you. Saves as you go; works as a plain form without JavaScript. Every
+  check has a rule here, and a test makes sure new checks add one (docs/adding-a-check.md).
+- **Settings tabs:** Account, Notifications, Appearance, each its own page.
 
 ### Changed
+
+- **Discord alerts are per problem, not per colour change.** One message when a problem opens,
+  one "now red" if it gets worse, one "resolved" when it has been gone for 2 checks. A second
+  problem on a host that is already red now alerts too (it used to be silent). Coming back
+  within 15 minutes sends nothing new, so flapping stays quiet. Offline and back online work as
+  before. Host, container and service names are Markdown-escaped in messages. The 60-second
+  cooldown per host stays. After upgrading, problems that are already open are recorded
+  silently: no burst of alerts.
+- **Balanced (the default) alerts on exactly what alerted before.** Quiet hours start off for
+  existing users (on for new ones), the daily summary and sounds start off.
+- "Off" in Notifications hides a rule on the pages too; changing "Counts as" changes the host's
+  colour.
 
 - **TCP fallback probes differently, also for existing hops:** when ping isn't allowed, local
   points are tried on ports 53, 80 and now 443, and the 1 s per probe is shared across the ports
