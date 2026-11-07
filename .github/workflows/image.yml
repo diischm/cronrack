@@ -7,21 +7,33 @@ name: Image
 #   push to main      build, push ghcr.io/diischm/cronrack:sha-<short sha>, scan it, then
 #                     open a deploy PR in the GitOps repo (promote, docs/kubernetes.md)
 #   tag vX.Y.Z        the same, also tagged X.Y.Z and X.Y
+#   weekly (cron)     rebuild both platforms from scratch (no cache) and run the same
+#                     Trivy gate on each, so new Debian fixes are noticed even when no
+#                     PR is opened; nothing is pushed, no registry login, no secrets.
+#                     Also runnable by hand (Actions tab → Image → Run workflow).
 #
 # There is no `latest` tag on purpose: a deployment names the exact version it runs.
+#
+# APT_REFRESH (a build arg, see server/Dockerfile) is set to the run id on every build,
+# so the apt-get upgrade layer is never reused from an older run's cache.
 
 on:
   pull_request:
   push:
     branches: [main]
     tags: ["v*"]
+  schedule:
+    - cron: "17 4 * * 1"  # Mondays 04:17 UTC
+  workflow_dispatch:
 
 # Nothing by default; each job asks for exactly what it needs.
 permissions:
   contents: read
 
+# event_name is part of the group so a weekly run never cancels, or waits behind, a
+# push to main (both run on refs/heads/main).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -61,10 +73,12 @@ jobs:
           file: server/Dockerfile
           platforms: ${{ env.PLATFORMS }}
           push: false
+          build-args: APT_REFRESH=${{ github.run_id }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       # The same build again (from the cache), loaded into Docker so Trivy can read it.
+      # Same APT_REFRESH as above, so this reuses the layers the step above just built.
       - name: Load the amd64 image for scanning
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
@@ -73,6 +87,7 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: cronrack-server:pr
+          build-args: APT_REFRESH=${{ github.run_id }}
           cache-from: type=gha
 
       - name: Install Trivy
@@ -140,6 +155,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: APT_REFRESH=${{ github.run_id }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -200,6 +216,61 @@ jobs:
         run: >-
           trivy image --no-progress --platform "$PLATFORM" --ignore-unfixed
           --severity HIGH,CRITICAL --exit-code 1 "${IMAGE}@${DIGEST}"
+
+  # --- weekly: rebuild from scratch and gate, per platform ----------------------------------
+  # No cache is read or written, so this sees exactly what a fresh build would ship today.
+  # A failure here means a fix is out that the next build must pick up (or the build broke);
+  # GitHub emails the failure to whoever last changed the cron line.
+  rebuild:
+    name: Weekly rebuild + scan (${{ matrix.platform }})
+    # main only: a manual run from another branch could carry an edited copy of this job.
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
+        if: matrix.platform == 'linux/arm64'
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+
+      - name: Build from scratch
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: ${{ matrix.platform }}
+          no-cache: true
+          load: true
+          tags: cronrack-server:weekly
+          build-args: APT_REFRESH=${{ github.run_id }}
+
+      - name: Install Trivy
+        run: |
+          cd /tmp
+          FILE="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sSLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${FILE}"
+          echo "${TRIVY_SHA256}  ${FILE}" | sha256sum --check
+          tar -xzf "${FILE}" trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+
+      - name: Scan (fail on HIGH/CRITICAL with a fix available)
+        run: >-
+          trivy image --no-progress --ignore-unfixed --severity HIGH,CRITICAL
+          --exit-code 1 cronrack-server:weekly
 
   # --- main only: open a deploy PR in the GitOps repo -------------------------------------------
   # Sets image.tag in the GitOps repo's values file to the tag pushed above and opens a
