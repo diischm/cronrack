@@ -187,7 +187,7 @@ def test_server_and_agent_versions():
     from cronrack import SERVER_VERSION
 
     assert SERVER_VERSION == "0.2.0"
-    assert AGENT_VERSION == "0.2.0"
+    assert AGENT_VERSION == "0.3.0"
 
 
 # The first "## [x.y.z]" heading is the newest release; "## [Unreleased]" doesn't match.
@@ -219,25 +219,24 @@ def test_no_pod_line_outside_kubernetes(alice_client, monkeypatch):
 @pytest.mark.parametrize("missing", ["POD_NAME", "NODE_NAME"])
 def test_no_pod_line_with_only_one_of_the_two(alice_client, monkeypatch, missing):
     monkeypatch.setenv("POD_NAME", "cronrack-web-7d9f-x2k4p")
-    monkeypatch.setenv("NODE_NAME", "dimiserver")
+    monkeypatch.setenv("NODE_NAME", "node-a")
     monkeypatch.setenv(missing, "")
     assert "Served by pod" not in alice_client.get("/").content.decode()
 
 
 def test_pod_line_in_kubernetes(alice_client, monkeypatch):
     monkeypatch.setenv("POD_NAME", "cronrack-web-7d9f-x2k4p")
-    monkeypatch.setenv("NODE_NAME", "dimiserver")
+    monkeypatch.setenv("NODE_NAME", "node-a")
     html = alice_client.get("/").content.decode()
     assert (
-        '<p class="side-version">Served by pod cronrack-web-7d9f-x2k4p on node dimiserver</p>'
-        in html
+        '<p class="side-version">Served by pod cronrack-web-7d9f-x2k4p on node node-a</p>' in html
     )
 
 
 def test_namespace_is_optional_and_not_shown(alice_client, monkeypatch):
     monkeypatch.setenv("POD_NAME", "cronrack-web-7d9f-x2k4p")
     monkeypatch.setenv("POD_NAMESPACE", "cronrack-ns")
-    monkeypatch.setenv("NODE_NAME", "dimiserver")
+    monkeypatch.setenv("NODE_NAME", "node-a")
     response = alice_client.get("/")
     assert response.context["pod_identity"]["namespace"] == "cronrack-ns"
     assert "cronrack-ns" not in response.content.decode()
@@ -253,7 +252,7 @@ def test_pod_line_is_escaped(alice_client, monkeypatch):
 
 def test_pod_line_is_only_for_logged_in_users(client, alice, monkeypatch):
     monkeypatch.setenv("POD_NAME", "cronrack-web-7d9f-x2k4p")
-    monkeypatch.setenv("NODE_NAME", "dimiserver")
+    monkeypatch.setenv("NODE_NAME", "node-a")
     assert "Served by pod" not in client.get("/login/").content.decode()
 
 

@@ -449,7 +449,7 @@ you pass `--new-token`. It needs a terminal, because it may ask questions.
 | change the CA certificate | `--ca-file new-ca.crt` |
 | turn Docker checks on or off | nothing extra; it asks about Docker again |
 | turn on Kubernetes | `--k8s` or `--k8s-cluster-view` ([kubernetes-monitoring.md](kubernetes-monitoring.md)) |
-| turn on network checks | `--network`, optionally `--network-hop "NAME=IP"` ([network-monitoring.md](network-monitoring.md)) |
+| turn on network checks | `--network`, optionally `--network-before "NAME=IP"` (a switch before the router; **upgrade the server first**, an older server refuses reports with these points) and `--network-hop "NAME=IP"` (a box after the router) ([network-monitoring.md](network-monitoring.md)) |
 
 The questions, in this order (each only when it applies):
 

@@ -68,7 +68,7 @@
   const FILTERS = ["all", "red", "yellow", "green", "offline"];
   const NET_STATUSES = ["ok", "down", "slow", "untested"];
   const NET_LINES = ["ok", "slow", "off"];
-  const NET_KINDS = ["you", "router", "box", "internet"];
+  const NET_KINDS = ["you", "switch", "router", "box", "internet"];
 
   const root = document.documentElement;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");

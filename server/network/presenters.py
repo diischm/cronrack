@@ -103,7 +103,7 @@ def network_summary(user, now: datetime, data: OwnerData | None = None) -> dict[
 
 def _sentence(state: str, point: str, detail: Mapping[str, Any]) -> str:
     if state == decide.LOCAL_DOWN:
-        return f"Your router is fine; {point} isn't answering (down or rebooting)."
+        return f"{point} isn't answering (down or rebooting), so nothing after it can be tested."
     if state == decide.INTERNET_SLOW:
         p95, loss = detail.get("p95"), detail.get("loss")
         reason = detail.get("reason")
@@ -119,7 +119,9 @@ def _ms(value: float | None) -> str:
     return "—" if value is None else f"{value:.0f} ms" if value >= 10 else f"{value:.1f} ms"
 
 
-def _row(name: str, address: str, status: str, point: Mapping[str, Any] | None) -> dict[str, Any]:
+def _row(
+    name: str, address: str, status: str, point: Mapping[str, Any] | None, kind: str = "box"
+) -> dict[str, Any]:
     tested = status != decide.UNTESTED and point is not None
     answered = tested and point.get("received")
     latency = "—"
@@ -129,6 +131,7 @@ def _row(name: str, address: str, status: str, point: Mapping[str, Any] | None) 
         latency = _ms(point.get("median_ms"))
     return {
         "name": name,
+        "kind": kind,
         "address": address,
         "status": status,
         "word": STATUS_WORDS[status],
@@ -154,11 +157,19 @@ def _rows(latest: Mapping[str, Any] | None, shown: list[dict[str, str]]) -> list
     for item in shown[1:]:
         if item["kind"] == "internet":
             addresses = ", ".join(p["address"] for p in points if p["role"] == "internet")
-            rows.append(_row("Internet", addresses, item["status"], _best_internet(points)))
+            rows.append(
+                _row("Internet", addresses, item["status"], _best_internet(points), item["kind"])
+            )
         else:
             point = by_name.get(item["name"])
             rows.append(
-                _row(item["name"], point["address"] if point else "", item["status"], point)
+                _row(
+                    item["name"],
+                    point["address"] if point else "",
+                    item["status"],
+                    point,
+                    item["kind"],
+                )
             )
     return rows
 

@@ -42,7 +42,8 @@ FORBIDDEN_KUBE_DIR = "/etc/rancher"
 DEFAULT_INTERNET_TARGETS = ("1.1.1.1", "8.8.8.8")
 DEFAULT_DNS_NAME = "example.com"
 DEFAULT_PUBLIC_IP_URL = "https://api.ipify.org"
-MAX_NETWORK_HOPS = 2
+MAX_NETWORK_BEFORE = 2  # points between this host and the router, e.g. a LAN switch
+MAX_NETWORK_HOPS = 2  # points after the router, e.g. the ISP box
 MAX_INTERNET_TARGETS = 4
 MAX_POINT_NAME = 32
 RESERVED_POINT_NAMES = frozenset({"router", "you", "internet"})
@@ -78,7 +79,7 @@ class KubernetesConfig:
 
 @dataclass
 class NetworkHop:
-    """An extra local point after the router, e.g. the ISP box."""
+    """An extra local point on the path: before the router (a switch) or after it (ISP box)."""
 
     name: str
     address: str
@@ -90,7 +91,8 @@ class NetworkConfig:
 
     enabled: bool = False
     gateway: str = "auto"  # "auto" = the default route in /proc/net/route, or an address
-    hops: list[NetworkHop] = field(default_factory=list)
+    before: list[NetworkHop] = field(default_factory=list)  # in path order, up to the router
+    hops: list[NetworkHop] = field(default_factory=list)  # in path order, after the router
     internet: list[str] = field(default_factory=lambda: list(DEFAULT_INTERNET_TARGETS))
     dns: bool = True
     dns_name: str = DEFAULT_DNS_NAME
@@ -328,16 +330,33 @@ def _point_name(value: Any, key: str) -> str:
     return name
 
 
-def _hop_name(value: Any, others: list[NetworkHop]) -> str:
+def _hop_name(value: Any, key: str, others: list[NetworkHop]) -> str:
     """Point names are unique in a report: the strip's own words and addresses are taken."""
-    name = _point_name(value, "hops name")
+    name = _point_name(value, f"{key} name")
     if name.casefold() in RESERVED_POINT_NAMES or any(h.name == name for h in others):
-        raise ConfigError("each of 'hops' needs its own name (not Router, You or Internet)")
+        raise ConfigError(f"each of '{key}' needs its own name (not Router, You or Internet)")
     try:
         ipaddress.ip_address(name)
     except ValueError:
         return name
-    raise ConfigError("a name in 'hops' must not be an address")
+    raise ConfigError(f"a name in '{key}' must not be an address")
+
+
+def _parse_points(
+    value: Any, key: str, limit: int, taken: list[NetworkHop] | None = None
+) -> list[NetworkHop]:
+    """The `before` or `hops` list; `taken` holds names already used by the other list."""
+    if not isinstance(value, list) or len(value) > limit:
+        raise ConfigError(f"'{key}' must be a list of at most {limit} points")
+    points: list[NetworkHop] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"name", "address"}:
+            raise ConfigError(f'each of \'{key}\' must be {{ name = "...", address = "..." }}')
+        if not isinstance(item["address"], str) or not is_local_address(item["address"]):
+            raise ConfigError(f"'{key}' addresses must be private IPv4 addresses")
+        name = _hop_name(item["name"], key, [*(taken or []), *points])
+        points.append(NetworkHop(name, item["address"]))
+    return points
 
 
 def check_public_ip_url(url: str) -> str:
@@ -361,6 +380,7 @@ def _parse_network(data: Any) -> NetworkConfig:
     known = {
         "enabled",
         "gateway",
+        "before",
         "hops",
         "internet",
         "dns",
@@ -384,16 +404,14 @@ def _parse_network(data: Any) -> NetworkConfig:
         if not isinstance(gateway, str) or not (gateway == "auto" or is_local_address(gateway)):
             raise ConfigError("'gateway' must be \"auto\" or a private IPv4 address")
         config.gateway = gateway
+    if "before" in data:
+        config.before = _parse_points(data["before"], "before", MAX_NETWORK_BEFORE)
+        # With gateway = "auto" the router is only known at runtime: agent/network.py drops
+        # such a point there.
+        if any(point.address == config.gateway for point in config.before):
+            raise ConfigError("a point in 'before' can't have the router's address")
     if "hops" in data:
-        hops = data["hops"]
-        if not isinstance(hops, list) or len(hops) > MAX_NETWORK_HOPS:
-            raise ConfigError(f"'hops' must be a list of at most {MAX_NETWORK_HOPS} points")
-        for hop in hops:
-            if not isinstance(hop, dict) or set(hop) != {"name", "address"}:
-                raise ConfigError('each of \'hops\' must be { name = "...", address = "..." }')
-            if not isinstance(hop["address"], str) or not is_local_address(hop["address"]):
-                raise ConfigError("'hops' addresses must be private IPv4 addresses")
-            config.hops.append(NetworkHop(_hop_name(hop["name"], config.hops), hop["address"]))
+        config.hops = _parse_points(data["hops"], "hops", MAX_NETWORK_HOPS, config.before)
     if "internet" in data:
         targets = data["internet"]
         if (

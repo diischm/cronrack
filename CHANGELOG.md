@@ -20,9 +20,18 @@ before 1.0.0, any release may change things that worked before, and the notes sa
   latency, packet loss and a 24 h trend, DNS, last router reboot, which agent measures it.
   Default: the agent on the CronRack server's own machine, because it can still report during
   an outage.
+- **Points before the router.** `install.sh --network-before "Switch=IP"` (or `before = [...]` in
+  `[network]`, at most 2) adds a LAN switch or access point between the host and the router, so
+  a dead switch reads "Switch down" and not "Router down". Agent **0.3.0**. **Upgrade the server
+  first:** an older server refuses reports with these points. Without them, old and new agents
+  and servers work together as before.
 
 ### Changed
 
+- **TCP fallback probes differently, also for existing hops:** when ping isn't allowed, local
+  points are tried on ports 53, 80 and now 443, and the 1 s per probe is shared across the ports
+  (a filtered port used to eat all of it). A box answering only on 443 now counts as reachable;
+  the time a round takes doesn't change.
 - **Glass overview:** the network strip comes first, and there's no header row any more: no
   headline, no "Check all now" (Check now on cards and units stays), "updated …" moved to the
   top bar. "+ Add host" sits on the chips row. No visible section titles (they stay for screen

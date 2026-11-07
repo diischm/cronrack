@@ -37,6 +37,10 @@
 #                          default gateway, detected and confirmed), optional extra points,
 #                          then 1.1.1.1 and 8.8.8.8. Use it on ONE host, ideally the CronRack
 #                          server's own machine (it can still report during an outage).
+#   --network-before NAME=IP  a point between this host and the router, e.g. a LAN switch with
+#                          its own address: "Switch=192.0.2.2" (repeatable, at most 2, in
+#                          path order). Implies --network. Needs a server that knows these
+#                          points: an older one refuses the reports (upgrade it first).
 #   --network-hop NAME=IP  an extra local point after the router, e.g. "ISP box=192.0.2.254"
 #                          (repeatable, at most 2, in path order). Implies --network.
 #   --network-gateway IP   the router's address instead of asking ("auto" = always use the
@@ -80,6 +84,7 @@ K8S_TOKEN_FILE="$CONFIG_DIR/k8s-token"
 K8S_CA_DEST="$CONFIG_DIR/k8s-ca.crt"
 K8S_CA_DEFAULT=/var/lib/rancher/k3s/server/tls/server-ca.crt
 ROUTE_FILE=/proc/net/route
+MAX_NETWORK_BEFORE=2
 MAX_NETWORK_HOPS=2
 UNIT_NAME=cronrack-agent.service
 UNIT_FILE="/etc/systemd/system/$UNIT_NAME"
@@ -137,7 +142,8 @@ usage() {
   cat <<'USAGE'
 Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
                   [--k8s | --k8s-cluster-view [--k8s-ca PATH] [--k8s-api URL]]
-                  [--network [--network-gateway IP|auto] [--network-hop NAME=IP]...]
+                  [--network [--network-gateway IP|auto] [--network-before NAME=IP]...
+                             [--network-hop NAME=IP]...]
        install.sh --server https://SERVER --upgrade [--server-change] [--ca-file PATH]
        install.sh --uninstall
 
@@ -160,6 +166,11 @@ Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
   --network-gateway IP|auto
                    The router's private IPv4 address, or "auto" (follow the default
                    route). Skips the question; needed without a terminal.
+  --network-before NAME=IP
+                   A point between this host and the router, e.g. a LAN switch with its
+                   own address: "Switch=192.0.2.2". Repeatable (at most 2, in path order);
+                   replaces the existing ones. Upgrade the server first: an older server
+                   refuses reports with these points.
   --network-hop NAME=IP
                    An extra local point after the router, e.g. "ISP box=192.0.2.254".
                    Repeatable (at most 2, in path order); replaces the existing hops.
@@ -212,7 +223,8 @@ K8S_CA=""
 K8S_API=""
 NETWORK=0
 NETWORK_GATEWAY=""
-NETWORK_HOPS=()  # "NAME=IP", in path order
+NETWORK_BEFORE=()  # "NAME=IP", in path order: between this host and the router
+NETWORK_HOPS=()  # "NAME=IP", in path order: after the router
 SERVER_CHANGE=0
 SETTING_FLAGS=()  # options that change settings: refused together with --upgrade
 while [ $# -gt 0 ]; do
@@ -231,6 +243,8 @@ while [ $# -gt 0 ]; do
     --network) NETWORK=1; SETTING_FLAGS+=(--network); shift ;;
     --network-gateway) [ $# -ge 2 ] || die_usage "--network-gateway needs an address or auto"; NETWORK=1; NETWORK_GATEWAY="$2"; SETTING_FLAGS+=(--network-gateway); shift 2 ;;
     --network-gateway=*) NETWORK=1; NETWORK_GATEWAY="${1#--network-gateway=}"; SETTING_FLAGS+=(--network-gateway); shift ;;
+    --network-before) [ $# -ge 2 ] || die_usage "--network-before needs NAME=IP"; NETWORK=1; NETWORK_BEFORE+=("$2"); SETTING_FLAGS+=(--network-before); shift 2 ;;
+    --network-before=*) NETWORK=1; NETWORK_BEFORE+=("${1#--network-before=}"); SETTING_FLAGS+=(--network-before); shift ;;
     --network-hop) [ $# -ge 2 ] || die_usage "--network-hop needs NAME=IP"; NETWORK=1; NETWORK_HOPS+=("$2"); SETTING_FLAGS+=(--network-hop); shift 2 ;;
     --network-hop=*) NETWORK=1; NETWORK_HOPS+=("${1#--network-hop=}"); SETTING_FLAGS+=(--network-hop); shift ;;
     --uninstall) UNINSTALL=1; SETTING_FLAGS+=(--uninstall); shift ;;
@@ -358,33 +372,49 @@ default_gateway() {
     return 0
   done <"$ROUTE_FILE"
 }
+# parse_network_point FLAG NAME=IP: check one point and add it to NETWORK_POINT_LINES as a TOML
+# inline table. The agent refuses the same things, so a bad point never reaches the config.
+NETWORK_POINT_LINES=()  # both lists: point names are unique across the whole path
+parse_network_point() {
+  local flag="$1" point="$2" name ip seen
+  name="${point%=*}"
+  ip="${point##*=}"
+  [ "$name" != "$point" ] || die_usage "$flag needs NAME=IP, e.g. \"Switch=192.0.2.2\""
+  # Trim spaces around the name.
+  name="${name#"${name%%[![:space:]]*}"}"
+  name="${name%"${name##*[![:space:]]}"}"
+  if [ "${#name}" -lt 1 ] || [ "${#name}" -gt 32 ] || [[ "$name" =~ [\"\\[:cntrl:]] ]]; then
+    die_usage "$flag: the name must be 1-32 characters without quotes or backslashes"
+  fi
+  is_local_ipv4 "$ip" || die_usage "$flag: $ip is not a private IPv4 address"
+  # The agent refuses these too: point names are unique, and these words are taken.
+  case "${name,,}" in
+    router|you|internet) die_usage "$flag: \"$name\" is taken; use another name" ;;
+  esac
+  [[ ! "$name" =~ ^[0-9.:]+$ ]] || die_usage "$flag: the name must not be an address"
+  for seen in "${NETWORK_POINT_LINES[@]}"; do
+    [[ "$seen" != "{ name = \"$name\","* ]] || die_usage "$flag: two points named \"$name\""
+  done
+  NETWORK_POINT_LINES+=("{ name = \"$name\", address = \"$ip\" }")
+}
+
+NETWORK_BEFORE_LINES=()  # TOML inline tables, built from NETWORK_BEFORE
 NETWORK_HOP_LINES=()  # TOML inline tables, built from NETWORK_HOPS
 if [ "$NETWORK" -eq 1 ]; then
   if [ -n "$NETWORK_GATEWAY" ] && [ "$NETWORK_GATEWAY" != "auto" ] && ! is_local_ipv4 "$NETWORK_GATEWAY"; then
     die_usage "--network-gateway must be auto or a private IPv4 address (e.g. 192.0.2.1)"
   fi
+  [ "${#NETWORK_BEFORE[@]}" -le "$MAX_NETWORK_BEFORE" ] \
+    || die_usage "--network-before: at most $MAX_NETWORK_BEFORE points"
   [ "${#NETWORK_HOPS[@]}" -le "$MAX_NETWORK_HOPS" ] \
     || die_usage "--network-hop: at most $MAX_NETWORK_HOPS extra points"
-  for hop in "${NETWORK_HOPS[@]}"; do
-    hop_name="${hop%=*}"
-    hop_ip="${hop##*=}"
-    [ "$hop_name" != "$hop" ] || die_usage "--network-hop needs NAME=IP, e.g. \"ISP box=192.0.2.254\""
-    # Trim spaces around the name.
-    hop_name="${hop_name#"${hop_name%%[![:space:]]*}"}"
-    hop_name="${hop_name%"${hop_name##*[![:space:]]}"}"
-    if [ "${#hop_name}" -lt 1 ] || [ "${#hop_name}" -gt 32 ] || [[ "$hop_name" =~ [\"\\[:cntrl:]] ]]; then
-      die_usage "--network-hop: the name must be 1-32 characters without quotes or backslashes"
-    fi
-    is_local_ipv4 "$hop_ip" || die_usage "--network-hop: $hop_ip is not a private IPv4 address"
-    # The agent refuses these too: point names are unique, and these words are taken.
-    case "${hop_name,,}" in
-      router|you|internet) die_usage "--network-hop: \"$hop_name\" is taken; use another name" ;;
-    esac
-    [[ ! "$hop_name" =~ ^[0-9.:]+$ ]] || die_usage "--network-hop: the name must not be an address"
-    for seen in "${NETWORK_HOP_LINES[@]}"; do
-      [[ "$seen" != "{ name = \"$hop_name\","* ]] || die_usage "--network-hop: two points named \"$hop_name\""
-    done
-    NETWORK_HOP_LINES+=("{ name = \"$hop_name\", address = \"$hop_ip\" }")
+  for point in "${NETWORK_BEFORE[@]}"; do
+    parse_network_point --network-before "$point"
+    NETWORK_BEFORE_LINES+=("${NETWORK_POINT_LINES[-1]}")
+  done
+  for point in "${NETWORK_HOPS[@]}"; do
+    parse_network_point --network-hop "$point"
+    NETWORK_HOP_LINES+=("${NETWORK_POINT_LINES[-1]}")
   done
   # The router: asked now, before anything is downloaded or written.
   if [ -z "$NETWORK_GATEWAY" ]; then
@@ -399,6 +429,11 @@ if [ "$NETWORK" -eq 1 ]; then
       is_local_ipv4 "$NETWORK_GATEWAY" || die_usage "that is not a private IPv4 address; nothing was changed"
     fi
   fi
+  # With "auto" the router is only known at runtime: the agent drops such a point there.
+  for point in "${NETWORK_BEFORE_LINES[@]}"; do
+    [[ "$point" != *"address = \"$NETWORK_GATEWAY\" }" ]] \
+      || die_usage "--network-before: a point can't have the router's address"
+  done
 fi
 
 # curl trusts exactly this CA (not the system's) when --ca-file is given.
@@ -811,6 +846,12 @@ fix_config_permissions() {
 }
 
 install -d -m 0750 -o root -g "$AGENT_USER" "$CONFIG_DIR"
+# A copy of the config as it was, put back if the agent would refuse the new one (see the
+# check after this step). cp -p keeps root:cronrack 0640: the token is never more readable.
+CONFIG_BEFORE="$CONFIG_DIR/.agent.toml.before"
+if [ "$UPGRADE" -eq 0 ] && [ -f "$CONFIG_FILE" ]; then
+  cp -p "$CONFIG_FILE" "$CONFIG_BEFORE" || die "cannot keep a copy of $CONFIG_FILE"
+fi
 if [ "$UPGRADE" -eq 1 ]; then
   # --upgrade: agent.toml, the token, the CA and the Kubernetes files stay byte for byte
   # as they are; only server_url (with --server-change) and ca_file (with --ca-file) change.
@@ -877,13 +918,18 @@ fi
 
 if [ "$NETWORK" -eq 1 ]; then
   network_keys=('enabled = true' "gateway = \"$NETWORK_GATEWAY\"")
+  if [ "${#NETWORK_BEFORE_LINES[@]}" -gt 0 ]; then
+    before_toml=""
+    for point in "${NETWORK_BEFORE_LINES[@]}"; do before_toml+="${before_toml:+, }$point"; done
+    network_keys+=("before = [$before_toml]")
+  fi
   if [ "${#NETWORK_HOP_LINES[@]}" -gt 0 ]; then
     hops_toml=""
     for hop in "${NETWORK_HOP_LINES[@]}"; do hops_toml+="${hops_toml:+, }$hop"; done
     network_keys+=("hops = [$hops_toml]")
   fi
   set_table network "${network_keys[@]}"
-  say "Network checks on ([network] enabled = true, gateway = \"$NETWORK_GATEWAY\", ${#NETWORK_HOP_LINES[@]} extra point(s))"
+  say "Network checks on ([network] enabled = true, gateway = \"$NETWORK_GATEWAY\", ${#NETWORK_BEFORE_LINES[@]} point(s) before the router, ${#NETWORK_HOP_LINES[@]} after it)"
   # Ping without root needs the agent's group inside net.ipv4.ping_group_range (systemd's
   # default allows every group). Only reported: changing it is your decision.
   agent_gid="$(id -g "$AGENT_USER")"
@@ -892,6 +938,36 @@ if [ "$NETWORK" -eq 1 ]; then
     say "Note: net.ipv4.ping_group_range ($ping_low $ping_high) doesn't include the $AGENT_USER group,"
     echo "    so the agent measures with TCP connects instead of ping (less exact)."
   fi
+fi
+
+# The agent reads the config with these exact rules when it starts. A re-run only replaces
+# the keys it was given, so the result can clash with what was already there (a name used in
+# both `before` and `hops`, or a `before` point at the router's new address). Ask the agent's
+# own loader, as the agent user, before anything is restarted. --upgrade doesn't change the
+# settings, and it has its own check (the rollback).
+if [ "$UPGRADE" -eq 0 ]; then
+  # -I: nothing from the current directory or PYTHONPATH is imported. The error text names
+  # the setting, never its value (agent/config.py), so it's safe to print.
+  if ! config_error="$(runuser -u "$AGENT_USER" -- "$VENV_DIR/bin/python" -I -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+from agent.config import ConfigError, load_config
+try:
+    load_config(sys.argv[2])
+except ConfigError as error:
+    print(error)
+    sys.exit(1)
+' "$APP_DIR" "$CONFIG_FILE" 2>&1)"; then
+    config_error="$(printf '%s' "$config_error" | tail -n 1)"
+    if [ -f "$CONFIG_BEFORE" ]; then
+      mv -f "$CONFIG_BEFORE" "$CONFIG_FILE"
+      die "the agent would refuse this config: $config_error
+       $CONFIG_FILE was put back as it was; nothing was restarted."
+    fi
+    die "the agent would refuse this config: $config_error
+       Run the installer again with corrected options; nothing was started."
+  fi
+  rm -f "$CONFIG_BEFORE"
 fi
 
 # The config is complete. From here on, nothing optional may stop the install:

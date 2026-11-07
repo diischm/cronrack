@@ -75,8 +75,8 @@ _NETWORK_RULES = (
         default_severity=RED,
         check=check_local_down,
         why=(
-            "Your router answers, but the next box on the way out (such as the ISP's box) "
-            "doesn't. It may be down or rebooting."
+            "A box on the way out (such as a switch or the ISP's box) doesn't answer. It may "
+            "be down or rebooting, and nothing after it can be tested."
         ),
         fix_template="ping -c 3 {address}",
     ),

@@ -9,10 +9,12 @@ Probing needs no root and no capability:
   systemd sets to every group by default. The `ping` binary would need the same thing:
   under NoNewPrivileges its file capability is ignored.
 - Otherwise a TCP connect to a few well-known ports, per target. "Connection refused"
-  counts as an answer: the box replied.
+  counts as an answer: the box replied. Never port 22: repeated SSH connects look like
+  login attempts and can get this host banned by fail2ban on the device.
 
 Bounded everywhere: 5 probes per target, 200 ms apart, 1 s timeout each, all targets at
-once; DNS 2 s, public IP 5 s; one round never takes more than ROUND_DEADLINE seconds, and
+once (a dead point never delays the points behind it; the report's list order is the path
+order, not the order answers came in); DNS 2 s, public IP 5 s; one round never takes more than ROUND_DEADLINE seconds, and
 rounds are at least MIN_ROUND_GAP apart however often reports are asked for (the result
 of the last round is reused in between). Addresses are logged at DEBUG only.
 """
@@ -32,7 +34,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
 
-from agent.config import NetworkConfig, is_internet_address, is_local_address
+from agent.config import NetworkConfig, NetworkHop, is_internet_address, is_local_address
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +47,13 @@ PUBLIC_IP_TIMEOUT = 5.0
 ROUND_DEADLINE = 8.0
 MIN_ROUND_GAP = 30.0  # seconds; the most often a round runs, whatever asks for reports
 MAX_PUBLIC_IP_BYTES = 64
-# TCP fallback: ports a router / ISP box usually answers on (DNS forwarder, web UI), and
-# public resolvers (DNS, HTTPS). A refusal counts as an answer.
-LOCAL_TCP_PORTS = (53, 80)
+# TCP fallback: ports a router, ISP box or managed switch usually answers on (DNS forwarder,
+# web UI), and public resolvers (DNS, HTTPS). A refusal counts as an answer.
+LOCAL_TCP_PORTS = (53, 80, 443)
 INTERNET_TCP_PORTS = (53, 443)
 RTF_UP = 0x1
 RTF_GATEWAY = 0x2
+_warned_before_is_router = False  # logged once per run, not once per round
 
 
 # --- the default gateway -------------------------------------------------------------------
@@ -130,14 +133,18 @@ def icmp_probe(address: str, seq: int, timeout: float = PROBE_TIMEOUT) -> float 
 
 
 def tcp_probe(address: str, ports: tuple[int, ...], timeout: float = PROBE_TIMEOUT) -> float | None:
-    """Milliseconds until the first port answered (accepted or refused), or None."""
+    """Milliseconds until the first port answered (accepted or refused), or None.
+
+    The budget is shared: each port gets an equal part of what is left, so one filtered
+    port can't use it all up before the next port is tried.
+    """
     start = time.monotonic()
-    for port in ports:
+    for index, port in enumerate(ports):
         left = timeout - (time.monotonic() - start)
         if left <= 0:
             return None
         try:
-            with socket.create_connection((address, port), timeout=left):
+            with socket.create_connection((address, port), timeout=left / (len(ports) - index)):
                 pass
         except ConnectionRefusedError:
             pass  # a RST: the box is there
@@ -255,8 +262,22 @@ def server_is_local(server_url: str | None) -> bool:
 # --- one round -----------------------------------------------------------------------------
 
 
+def _before_points(config: NetworkConfig, gateway: str | None) -> list[NetworkHop]:
+    """`before`, without a point that turns out to be the detected router (gateway = "auto")."""
+    global _warned_before_is_router
+    kept = [hop for hop in config.before if hop.address != gateway]
+    if len(kept) != len(config.before) and not _warned_before_is_router:
+        _warned_before_is_router = True
+        names = ", ".join(hop.name for hop in config.before if hop.address == gateway)
+        logger.warning("network: ignoring 'before' point(s) that are the router: %s", names)
+    return kept
+
+
 def _points(config: NetworkConfig, gateway: str | None) -> list[dict[str, Any]]:
+    """Every point in path order. This list IS the chain order the server reads."""
     points: list[dict[str, Any]] = []
+    for hop in _before_points(config, gateway):
+        points.append({"name": hop.name, "role": "before", "address": hop.address})
     if gateway:
         points.append({"name": "Router", "role": "gateway", "address": gateway})
     for hop in config.hops:

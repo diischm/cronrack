@@ -472,6 +472,20 @@ html, body { overflow-x: hidden; }
 .net-ln { flex: 1 1 auto; min-width: 8px; height: 2px; margin: 0 6px 20px; background: var(--status-good); }
 .net-ln--slow { background: var(--status-warn); }
 .net-ln--off { background: repeating-linear-gradient(90deg, var(--status-muted) 0 5px, transparent 5px 10px); }
+/* A chain with points before the router can be long: it stays one line, labels shorten (the
+   accessible name keeps the whole word: only the visible label is clipped). */
+:root:not([data-skin="glass"]) .net-chain:has(> [data-kind="switch"]) { min-width: 0; }
+:root:not([data-skin="glass"]) .net-chain:has(> [data-kind="switch"]) > .net-pt { flex: 0 1 auto; min-width: 24px; }
+:root:not([data-skin="glass"]) .net-chain:has(> [data-kind="switch"]) .net-pt__name { max-width: 100%; }
+:root:not([data-skin="glass"]) .net-chain:has(> [data-kind="switch"]) .net-pt__label { display: block; overflow: hidden; text-overflow: ellipsis; }
+:root:not([data-skin="glass"]) .net-chain:has(> [data-kind="switch"]) > .net-ln { flex: 1 1 4px; min-width: 4px; margin-inline: 2px; }
+/* 6 or more points on a phone (11+ points and lines): equal widths, so one long name can't leave "R…". */
+@media (max-width: 699.98px) {
+  :root:not([data-skin="glass"]) .net-chain:has(> [data-kind="switch"]):has(> :nth-child(11)) > .net-pt { flex: 1 1 0; min-width: 0; }
+  :root:not([data-skin="glass"]) .net-chain:has(> [data-kind="switch"]):has(> :nth-child(11)) > .net-ln { flex: 0 0 4px; }
+}
+.net-row-icon { display: inline-block; margin-right: var(--space-2); vertical-align: middle; }
+.net-row-icon svg { display: block; width: 16px; height: 16px; }
 .net-points { width: 100%; border-collapse: collapse; }
 .net-points th, .net-points td { padding: var(--space-2); text-align: left; white-space: nowrap; }
 .net-word { font-weight: 800; }

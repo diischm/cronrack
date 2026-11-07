@@ -3,7 +3,7 @@
 {% load static %}
 
 {% block title %}{{ host.name }} · CronRack{% endblock %}
-{% block main_class %}app-main--detail{% endblock %}
+{% block main_class %}app-main--detail g-no-dots{% endblock %}
 {% block extra_head %}<script src="{% static 'cronrack/js/disclosure.js' %}" defer></script>
 {# Glass only: groups the sections below into tabs (Legacy keeps one column). #}
 <script src="{% static 'cronrack/js/glass-tabs.js' %}" defer></script>{% endblock %}
