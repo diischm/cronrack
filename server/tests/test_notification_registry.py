@@ -8,6 +8,7 @@ import pytest
 
 from notifications.rules import (
     ALERT,
+    BALANCED_SHOW_ONLY,
     GROUPS,
     HEADS_UP,
     LEVELS,
@@ -43,9 +44,10 @@ def test_guard_no_rule_spec_without_a_real_check():
     assert not invented, f"RuleSpecs without a check: {invented}"
 
 
-def test_there_are_43_rules_today():
+def test_there_are_50_rules_today():
     # Not a rule for the future, just a check that nothing was lost or doubled.
-    assert len(SPECS) == 43
+    # 43 before host metrics, plus the 7 resource rules (rules/resources.py).
+    assert len(SPECS) == 50
 
 
 @pytest.mark.parametrize("rule_id", sorted(SPECS))
@@ -61,11 +63,46 @@ def test_each_spec_is_complete(rule_id):
 
 @pytest.mark.parametrize("rule_id", sorted(SPECS))
 def test_balanced_keeps_todays_behaviour(rule_id):
-    """Upgrading must not change what alerts: red and yellow alerted, info never did."""
+    """Upgrading must not change what alerts: red and yellow alerted, info never did.
+
+    The only exceptions are new heads-up rules that are deliberately show-only on
+    Balanced (BALANCED_SHOW_ONLY); they can't change an existing behaviour.
+    """
     spec, rule = SPECS[rule_id], get_rule(rule_id)
-    expected = SHOW if rule.default_severity == INFO else ALERT
+    expected = SHOW if rule.default_severity == INFO or rule_id in BALANCED_SHOW_ONLY else ALERT
     assert spec.defaults["balanced"] == expected
     assert spec.counts_as == (NEEDS_YOU if rule.default_severity == RED else HEADS_UP)
+
+
+def test_the_show_only_exceptions_are_exactly_the_two_new_noisy_rules():
+    assert frozenset({"host.swap_high", "docker.container_cpu_high"}) == BALANCED_SHOW_ONLY
+    for rule_id in BALANCED_SHOW_ONLY:
+        assert get_rule(rule_id).default_severity == YELLOW
+        assert SPECS[rule_id].defaults == {"quiet": OFF, "balanced": SHOW, "everything": ALERT}
+
+
+# id -> (quiet, balanced, everything, counts_as, limit values, default limit)
+RESOURCE_SPECS = {
+    "host.cpu_high": (SHOW, ALERT, ALERT, HEADS_UP, [80, 90, 95], 90),
+    "host.memory_high": (SHOW, ALERT, ALERT, HEADS_UP, [15, 10, 5], 10),
+    "host.swap_high": (OFF, SHOW, ALERT, HEADS_UP, [50, 75, 90], 75),
+    "host.cpu_temp_high": (SHOW, ALERT, ALERT, HEADS_UP, [70, 80, 85], 80),
+    "disk.inodes_low": (SHOW, ALERT, ALERT, HEADS_UP, [85, 90, 95], 90),
+    "docker.container_cpu_high": (OFF, SHOW, ALERT, HEADS_UP, [80, 90, 95], 90),
+    "docker.container_memory_near_limit": (SHOW, ALERT, ALERT, HEADS_UP, [85, 90, 95], 90),
+}
+
+
+@pytest.mark.parametrize("rule_id", sorted(RESOURCE_SPECS))
+def test_resource_rule_presets_and_limits(rule_id):
+    quiet, balanced, everything, counts_as, values, default = RESOURCE_SPECS[rule_id]
+    spec = SPECS[rule_id]
+    assert spec.defaults == {"quiet": quiet, "balanced": balanced, "everything": everything}
+    assert spec.counts_as == counts_as
+    assert [c.value for c in spec.limit.choices] == values
+    assert spec.limit.value(spec.limit.default) == default == get_rule(rule_id).default_threshold
+    assert spec.applies_to == "hosts"
+    assert spec.group == ("Services & containers" if rule_id.startswith("docker.") else "Hosts")
 
 
 @pytest.mark.parametrize("rule_id", sorted(SPECS))

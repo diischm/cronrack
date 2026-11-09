@@ -97,12 +97,17 @@ def _spec(
     quiet: str | None = None,
     limit: Limit | None = None,
     search: str = "",
+    balanced: str | None = None,
 ) -> RuleSpec:
     """Defaults follow the rule's own severity, so Balanced keeps today's behaviour:
     red and yellow alerted, info never did. Quiet keeps red, shows yellow and drops info,
-    unless `quiet` says otherwise. Everything alerts on all of it."""
+    unless `quiet` says otherwise. Everything alerts on all of it.
+
+    `balanced` is only for rules added after that rule was set (BALANCED_SHOW_ONLY): a
+    heads-up that is worth seeing but not worth a message by default."""
     severity = get_rule(rule_id).default_severity
-    balanced = SHOW if severity == INFO else ALERT
+    if balanced is None:
+        balanced = SHOW if severity == INFO else ALERT
     if quiet is None:
         quiet = ALERT if severity == RED else SHOW if balanced == ALERT else OFF
     if rule_id in CLUSTER_RULES:
@@ -139,6 +144,16 @@ _SPECS = (
           search="apt upgrade"),
     _spec("updates.reboot_required", H, "Reboot required", "Updates need a restart", quiet=OFF,
           search="restart kernel"),
+    _spec("host.cpu_high", H, "CPU busy", "The processor stays busy for 10 minutes",
+          limit=_limit("%", (80, 90, 95), 90), search="load processor slow"),
+    _spec("host.memory_high", H, "Memory running out", "Little memory left for 5 minutes",
+          limit=_limit("% free", (15, 10, 5), 10), search="ram oom memavailable"),
+    _spec("host.swap_high", H, "Swap filling up", "A lot of memory moved to disk",
+          quiet=OFF, balanced=SHOW, limit=_limit("%", (50, 75, 90), 75), search="ram"),
+    _spec("host.cpu_temp_high", H, "CPU running hot", "The processor is hot for 5 minutes",
+          limit=_limit(" °C", (70, 80, 85), 80), search="temperature heat pi throttle"),
+    _spec("disk.inodes_low", H, "Disk out of inodes", "No room for new files soon",
+          limit=_limit("%", (85, 90, 95), 90), search="inode files df"),
     # --- Services & containers ---------------------------------------------------------------
     _spec("systemd.unit_failed", S, "Service failed", "A systemd service stopped with an error",
           search="unit timer"),
@@ -148,6 +163,12 @@ _SPECS = (
           "A container keeps restarting", search="docker crash loop"),
     _spec("docker.container_unhealthy", S, "Container unhealthy",
           "Its own health check is failing", search="docker health"),
+    _spec("docker.container_cpu_high", S, "Container CPU busy",
+          "A container uses most of the CPU for 10 minutes", quiet=OFF, balanced=SHOW,
+          limit=_limit("% of the host", (80, 90, 95), 90), search="docker load processor"),
+    _spec("docker.container_memory_near_limit", S, "Container near its memory limit",
+          "A container with a memory limit is close to it",
+          limit=_limit("% of its limit", (85, 90, 95), 90), search="docker ram oom"),
     # --- Kubernetes (cluster rules, and the Helm command on a host) --------------------------
     _spec("k8s.node_not_ready", K, "Node not ready", "A cluster node stopped working"),
     _spec("k8s.pod_crashloop", K, "Pods crash-looping", "Pods keep crashing"),
@@ -217,6 +238,10 @@ _SPECS = (
 # fmt: on
 
 SPECS: dict[str, RuleSpec] = {spec.id: spec for spec in _SPECS}
+
+# Heads-up rules whose Balanced default is "show" instead of "alert" (the guard test
+# checks these explicitly; every other rule keeps the severity-based default).
+BALANCED_SHOW_ONLY = frozenset({"host.swap_high", "docker.container_cpu_high"})
 
 # Every rule the engine evaluates; the guard test compares these with SPECS.
 ALL_RULE_IDS = frozenset(RULES) | frozenset(CLUSTER_RULES) | frozenset(NETWORK_RULES)
