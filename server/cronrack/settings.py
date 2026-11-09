@@ -143,6 +143,7 @@ INSTALLED_APPS = [
     "prefs",
     "rules",
     "notifications",
+    "metrics",
 ]
 
 MIDDLEWARE = [

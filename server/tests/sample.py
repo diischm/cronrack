@@ -138,3 +138,77 @@ def make_cluster(**changes: Any) -> dict[str, Any]:
     cluster = copy.deepcopy(SAMPLE_KUBERNETES["cluster"])
     cluster.update(changes)
     return cluster
+
+
+GIB = 1024**3
+
+# The `metrics` key of a report (agent/metrics.py, agent 0.4.0): a calm host with two
+# mounts and two containers, one of them with a memory limit.
+SAMPLE_METRICS: dict[str, Any] = {
+    "interval_s": 60,
+    "cpu": {
+        "busy_pct": 23.4,
+        "iowait_pct": 1.2,
+        "load": [0.42, 0.38, 0.3],
+        "cores": 4,
+        "temp_c": 52.1,
+    },
+    "memory": {
+        "total": 8 * GIB,
+        "available": 5 * GIB,
+        "swap_total": 2 * GIB,
+        "swap_used": GIB // 4,
+    },
+    "mounts": [
+        {
+            "mount": "/",
+            "fs": "ext4",
+            "size": 120 * GIB,
+            "free": 46 * GIB,
+            "used_pct": 61.6,
+            "inodes_pct": 12.4,
+        },
+        {
+            "mount": "/srv/media",
+            "fs": "btrfs",
+            "size": 3800 * GIB,
+            "free": 1900 * GIB,
+            "used_pct": 50.0,
+            "inodes_pct": None,
+        },
+    ],
+    "disk_io": {"read_bps": 184320, "write_bps": 921600},
+    "containers": [
+        {
+            "name": "jellyfin",
+            "cpu_pct": 4.1,
+            "mem": GIB,
+            "mem_limit": None,
+            "rx_bps": 10342,
+            "tx_bps": 2214,
+        },
+        {
+            "name": "immich-server",
+            "cpu_pct": 1.5,
+            "mem": GIB,
+            "mem_limit": 2 * GIB,
+            "rx_bps": 500,
+            "tx_bps": 250,
+        },
+    ],
+    "containers_truncated": False,
+}
+
+
+def make_metrics(**changes: Any) -> dict[str, Any]:
+    """A deep copy of SAMPLE_METRICS with top-level keys replaced."""
+    data = copy.deepcopy(SAMPLE_METRICS)
+    data.update(changes)
+    return data
+
+
+def make_metrics_report(metrics: Any = ..., **changes: Any) -> dict[str, Any]:
+    """A valid 0.4.0 report with a `metrics` key (SAMPLE_METRICS unless given)."""
+    return make_report(
+        agent_version="0.4.0", metrics=make_metrics() if metrics is ... else metrics, **changes
+    )

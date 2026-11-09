@@ -19,7 +19,7 @@ from cronrack.asgi import application
 from hosts.models import AgentToken, Host
 from hosts.services import close_agent, request_collect
 
-from .sample import make_kube_report, make_report
+from .sample import SAMPLE_METRICS, make_kube_report, make_metrics, make_metrics_report, make_report
 from .ws import WebSocketClient
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
@@ -276,6 +276,45 @@ async def test_report_with_a_cluster_view_is_split_between_host_and_cluster(host
     assert set(fresh.latest_report["kubernetes"]["cluster"]) == {"uid", "truncated"}
     cluster = await database_sync_to_async(Cluster.objects.get)(owner=host.owner)
     assert cluster.latest_snapshot == report["kubernetes"]["cluster"]
+    await comm.disconnect()
+
+
+async def test_welcome_announces_metrics():
+    # A 0.4.0 agent only sends `metrics` to a server that lists it (an older one refuses it).
+    assert "metrics" in ENABLED_CHECKS
+
+
+async def test_report_with_metrics_stores_samples_and_the_report(host, token):
+    from metrics.models import ContainerSample, HostSample
+
+    comm = await connected_agent(token)
+    report = make_metrics_report()
+
+    await comm.send_json_to({"type": "report", "report": report})
+
+    assert await comm.receive_nothing(timeout=0.2)
+    fresh = await get_host(host.pk)
+    assert fresh.latest_report["metrics"] == SAMPLE_METRICS
+    assert await database_sync_to_async(HostSample.objects.filter(host=host).count)() == 1
+    assert await database_sync_to_async(ContainerSample.objects.filter(host=host).count)() == 2
+    await comm.disconnect()
+
+
+async def test_invalid_metrics_are_dropped_but_the_report_is_saved(host, token):
+    from metrics.models import HostSample
+
+    comm = await connected_agent(token)
+    bad = make_metrics(cpu={"busy_pct": "lots"})
+    report = make_metrics_report(bad, updates={"total": 3, "security": 2})
+
+    await comm.send_json_to({"type": "report", "report": report})
+
+    assert await comm.receive_nothing(timeout=0.2)  # no error notice: the report is fine
+    fresh = await get_host(host.pk)
+    assert fresh.latest_report["metrics"] is None
+    assert fresh.latest_report["updates"] == {"total": 3, "security": 2}
+    assert fresh.status == "red"
+    assert not await database_sync_to_async(HostSample.objects.exists)()
     await comm.disconnect()
 
 
