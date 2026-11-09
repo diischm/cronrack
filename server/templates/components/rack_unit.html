@@ -59,6 +59,8 @@
         {% if blank or host.issues %}<ul class="g-unit-more__issues">{% for issue in host.issues %}{% include "components/issue_line.html" with issue=issue %}{% endfor %}</ul>{% endif %}
         {% if blank or not host.issues %}<p class="g-unit-more__note">{% if blank %}{% elif host.status == "offline" %}No report since {{ host.last_seen_human }}.{% elif host.status == "waiting" %}Waiting for the first report.{% else %}No issues. Every check passed.{% endif %}</p>{% endif %}
         <dl class="g-unit-more__facts">
+          {# The meters' values (a tap on a phone shows them here); overview.js rebuilds them. #}
+          {% for m in host.meters %}<div class="g-unit-more__fact g-unit-more__fact--metric"><dt>{{ m.label }}</dt><dd>{{ m.percent }}%</dd></div>{% endfor %}
           <div class="g-unit-more__fact"><dt>Last report</dt><dd class="g-unit-more__seen">{{ host.last_seen_human }}</dd></div>
         </dl>
         <div class="g-unit-more__keys">

@@ -250,28 +250,63 @@
     }
   }
 
-  function fillDisk(face, percent, fill) {
-    const value = face.querySelector(".rack-unit__disk");
-    const holder = face.querySelector(".readout__meter");
-    if (!Number.isFinite(percent)) {
-      value.textContent = "n/a";
-      holder.remove();
-      return;
-    }
-    const p = Math.min(100, Math.max(0, Math.round(percent)));
-    value.textContent = p + "%";
-    const meter = holder.querySelector("meter");
-    meter.setAttribute("value", String(p));
-    meter.textContent = p + "%";
-    meter.classList.toggle("meter--red", p >= 95);
-    meter.classList.toggle("meter--amber", p >= 85 && p < 95);
-    const bar = holder.querySelector(".g-meter");
-    if (bar) {
-      bar.setAttribute("data-percent", String(p));
-      bar.style.setProperty("--g-v", String(p));
-      bar.classList.toggle("g-meter--hot", p >= 85);
-      bar.classList.toggle("g-meter--fill", fill);
-    }
+  // --- The three thin meters (components/metric_meters.html) ------------------------------------
+  // CPU, memory, fullest disk. Grey unless the server says that rule's finding is active
+  // ("yellow" / "red"): the colour comes from the server, never from a number here.
+  const METER_KEYS = ["cpu", "ram", "disk"];
+
+  function meterList(row) {
+    const list = Array.isArray(row.meters) ? row.meters : [];
+    return list.filter((m) => m && METER_KEYS.includes(m.key) && Number.isFinite(m.percent));
+  }
+
+  function meterPercent(m) {
+    return Math.min(100, Math.max(0, Math.round(m.percent)));
+  }
+
+  function fillMeters(face, row, isNew) {
+    const list = meterList(row);
+    face.querySelectorAll(".mmeters").forEach((box) => {
+      const words = [];
+      METER_KEYS.forEach((key) => {
+        const el = box.querySelector(".mmeter--" + key);
+        const m = list.find((item) => item.key === key);
+        if (!el) {
+          return;
+        }
+        if (!m) {
+          el.remove(); // the host doesn't report it (an agent before 0.4.0: disk only)
+          return;
+        }
+        const p = meterPercent(m);
+        const bar = el.querySelector("meter");
+        bar.setAttribute("value", String(p));
+        bar.classList.toggle("meter--amber", m.level === "yellow");
+        bar.classList.toggle("meter--red", m.level === "red");
+        el.querySelector(".mmeter__tip").textContent = text(m.label) + " " + p + "%";
+        words.push(", " + text(m.label) + " " + p + "%" + (m.level ? " (over the limit)" : ""));
+      });
+      box.querySelector(".mmeters__words").textContent = words.join("");
+      box.classList.toggle("mmeters--fill", isNew && motionOK());
+    });
+  }
+
+  // The meters' values as facts in an expand region, before `before` (the next fact).
+  function metricFacts(dl, row, factClass, before, skipDisk) {
+    dl.querySelectorAll("." + factClass + "--metric").forEach((el) => el.remove());
+    meterList(row).forEach((m) => {
+      if (skipDisk && m.key === "disk") {
+        return;
+      }
+      const div = document.createElement("div");
+      div.className = factClass + " " + factClass + "--metric";
+      const dt = document.createElement("dt");
+      dt.textContent = text(m.label);
+      const dd = document.createElement("dd");
+      dd.textContent = meterPercent(m) + "%";
+      div.append(dt, dd);
+      dl.insertBefore(div, before);
+    });
   }
 
   function fillHostFace(face, host, isNew) {
@@ -305,7 +340,7 @@
     face.querySelector(".rack-unit__summary-text").textContent = text(host.summary);
     face.querySelector(".rack-unit__updates").textContent = updatesText(host.updates);
     face.querySelector(".rack-unit__containers").textContent = containersText(host.containers);
-    fillDisk(face, host.disk_max_percent, isNew && motionOK());
+    fillMeters(face, host, isNew);
   }
 
   function fillClusterFace(face, cluster) {
@@ -365,7 +400,11 @@
       list.remove();
       note.textContent = noteText;
     }
-    more.querySelector(".g-unit-more__seen").textContent = text(row.last_seen_human);
+    const seen = more.querySelector(".g-unit-more__seen");
+    seen.textContent = text(row.last_seen_human);
+    if (kind === "host") {
+      metricFacts(seen.closest("dl"), row, "g-unit-more__fact", seen.parentElement, false);
+    }
     more.querySelector(".g-unit-more__open").setAttribute("href", kind === "cluster" ? clusterUrl(row) : hostUrl(row));
     return more;
   }
@@ -509,6 +548,8 @@
     clusterFacts.remove();
     const disk = row.disk_max_percent;
     fact(hostFacts, ".g-attn-more__disk", Number.isFinite(disk) ? Math.round(disk) + "%" : "n/a");
+    // CPU and memory before the Disk fact (Disk is already listed, from the disks check).
+    metricFacts(hostFacts, row, "g-attn-more__fact", hostFacts.firstElementChild, true);
     fact(hostFacts, ".g-attn-more__updates", updatesText(row.updates));
     fact(hostFacts, ".g-attn-more__seen", text(row.last_seen_human));
     if (status === "offline") {

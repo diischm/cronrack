@@ -20,8 +20,9 @@
   Clusters: Legacy shows the issue line and the facts line under the name, exactly as
   before; Glass shows the summary and the Nodes / Pods / k3s readouts instead (.g-only, so
   Legacy never draws them).
-  Disk: Legacy's native <meter>; Glass hides it and draws .g-meter (glass.js sets its width
-  from data-percent through a CSS custom property (CSSOM), so it can fill on load with no inline style).
+  Meters (hosts): CPU, memory and the fullest disk as three thin native <meter>s with small
+  icons and no numbers (components/metric_meters.html), in the panel on desktop and, in
+  Glass, beside the name on phones. Grey unless that rule's finding is active.
 {% endcomment %}
 {% if not glass %}<span class="rack-unit__lamp" aria-hidden="true">{% if blank %}{% elif unit.status == "offline" or unit.status == "waiting" %}{% include "components/lamp.html" with status="off" %}{% else %}{% include "components/lamp.html" with status=unit.status %}{% endif %}</span>{% endif %}
 {% if kind == "cluster" %}
@@ -50,7 +51,10 @@
     <span class="rack-unit__panel well desk-only">
       <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Updates</span> <span class="readout__value rack-unit__updates">{% if blank %}{% elif unit.updates is None %}n/a{% else %}{{ unit.updates.total }}{% if unit.updates.security %} ({{ unit.updates.security }} security){% endif %}{% endif %}</span></span>
       <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Containers</span> <span class="readout__value rack-unit__containers">{% if blank %}{% elif unit.containers is None %}n/a{% elif unit.containers.failing %}{{ unit.containers.total }} · {{ unit.containers.failing }} failing{% else %}{{ unit.containers.running }} running{% endif %}</span></span>
-      <span class="readout"><span class="visually-hidden">, </span><span class="readout__label">Disk</span> <span class="readout__value"><span class="rack-unit__disk">{% if blank %}{% elif unit.disk_max_percent is None %}n/a{% else %}{{ unit.disk_max_percent }}%{% endif %}</span>{% if blank or unit.disk_max_percent is not None %}<span class="readout__meter" aria-hidden="true">{% include "components/meter.html" with percent=unit.disk_max_percent|default:0 label="Largest disk" %}<span class="g-meter g-only{% if unit.disk_max_percent >= 85 %} g-meter--hot{% endif %}"{% if not blank %} data-percent="{{ unit.disk_max_percent|default:0 }}"{% endif %}><span class="g-meter__fill"></span></span></span>{% endif %}</span></span>
+      {# CPU, memory, fullest disk: thin meters without numbers (components/metric_meters.html). #}
+      <span class="readout readout--meters">{% include "components/metric_meters.html" with meters=unit.meters blank=blank %}</span>
     </span>
+    {# Phones (Glass): the same meters beside the name; the panel above is desktop only. #}
+    {% if glass %}{% include "components/metric_meters.html" with meters=unit.meters blank=blank phone=True %}{% endif %}
 {% endif %}
     <span class="rack-unit__vents" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>

@@ -765,7 +765,19 @@
   [data-skin="glass"] .g-unit-more__body { margin-left: 14px; grid-template-columns: minmax(0, 1fr); }
   [data-skin="glass"] .rack-unit--example .rack-unit__issues { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2;
     -webkit-box-orient: vertical; }
+  /* The meters sit beside the name, so the card keeps its height. */
+  [data-skin="glass"] .mmeters--phone { display: block; grid-column: 1; grid-row: 1 / span 2; justify-self: end; align-self: center;
+    width: 62px; }
+  [data-skin="glass"] .g-unit .rack-unit__head, [data-skin="glass"] .g-unit .rack-unit__summary { padding-right: 72px; }
 }
+/* Metric bars: in Glass the shared --meter-red is yellow; here red has to mean red. */
+[data-skin="glass"] .mmeter__bar.meter--red, [data-skin="glass"] .mct__bar.meter--red { --meter-color: var(--g-red); }
+[data-skin="glass"] .mmeter__bar, [data-skin="glass"] .mct__bar { background: rgba(255, 255, 255, 0.08); }
+[data-skin="glass"] .mmeter__tip { background: #1c1d22; border: 1px solid rgba(255, 255, 255, 0.08); }
+[data-skin="glass"] .mchips .mchip { border-color: rgba(255, 255, 255, 0.08); }
+[data-skin="glass"] .mct__item { border-top-color: rgba(255, 255, 255, 0.06); }
+[data-skin="glass"] .mchart { padding: 14px 16px 10px; border-radius: 14px; background: var(--g-well); }
+[data-skin="glass"] .mct__more .mchart { padding: 10px 12px 8px; }
 
 /* The overview's racks: the Clusters rack spans the full width after the Hosts row (layout above). */
 /* pages.css gives Legacy's split body align-items: start; here every section takes the full width. */
@@ -1077,7 +1089,11 @@
 [data-skin="glass"] .g-tabpanel[hidden] { display: none; }
 [data-skin="glass"] .g-tabpanel:focus-visible { outline: 2px solid var(--focus); outline-offset: 6px; border-radius: 8px; }
 @media (max-width: 599.98px) {
-  [data-skin="glass"] .g-tab { font-size: 13px; padding: 0 4px; }
+  /* Up to five tabs: the strip scrolls sideways instead of cutting the words short. */
+  [data-skin="glass"] .g-tabs { grid-auto-columns: max-content; overflow-x: auto; scrollbar-width: none; }
+  [data-skin="glass"] .g-tabs::-webkit-scrollbar { display: none; }
+  [data-skin="glass"] .g-tab { font-size: 13px; padding: 0 12px; overflow: visible; }
+  [data-skin="glass"] .g-tab:focus-visible { outline-offset: -2px; }  /* the strip clips outside */
 }
 @media (min-width: 900px) {
   [data-skin="glass"] .g-tabpanel { grid-template-columns: repeat(2, minmax(0, 1fr)); }

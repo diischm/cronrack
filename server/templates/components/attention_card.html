@@ -40,6 +40,7 @@
           {% if blank or not unit.issues %}<p class="g-attn-more__note">{% if blank %}{% elif unit.status != "offline" %}No issues. Every check passed.{% elif kind == "cluster" %}No current data since {{ unit.last_seen_human }}.{% else %}No report since {{ unit.last_seen_human }}.{% endif %}</p>{% endif %}
           {% if blank or kind == "host" %}
           <dl class="g-attn-more__facts g-attn-more__facts--host">
+            {% for m in unit.meters %}{% if m.key != "disk" %}<div class="g-attn-more__fact g-attn-more__fact--metric"><dt>{{ m.label }}</dt><dd>{{ m.percent }}%</dd></div>{% endif %}{% endfor %}
             <div class="g-attn-more__fact"><dt>Disk</dt><dd class="g-attn-more__disk">{% if blank %}{% elif unit.disk_max_percent is None %}n/a{% else %}{{ unit.disk_max_percent }}%{% endif %}</dd></div>
             <div class="g-attn-more__fact"><dt>Updates</dt><dd class="g-attn-more__updates">{% if blank %}{% elif unit.updates is None %}n/a{% else %}{{ unit.updates.total }}{% if unit.updates.security %} ({{ unit.updates.security }} security){% endif %}{% endif %}</dd></div>
             <div class="g-attn-more__fact"><dt>Last report</dt><dd class="g-attn-more__seen">{{ unit.last_seen_human }}</dd></div>

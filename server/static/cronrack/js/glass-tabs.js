@@ -6,7 +6,7 @@
 //
 // Groups the page's existing sections into tabs (WAI-ARIA tabs pattern):
 //   Overview    "Needs your attention" + System + Disks
-//   Docker / Systemd / Kubernetes   that app's panel, when the host has it
+//   Metrics / Docker / Systemd / Kubernetes   that app's panel, when the host has it
 // Fewer than two groups: no tabs. Each group's sections move into one role="tabpanel"; the
 // tabs are buttons in a role="tablist" with a roving tabindex (Left / Right / Home / End,
 // automatic activation). A sliding indicator follows the selected tab (--g-ind-x / --g-ind-w
@@ -32,6 +32,7 @@
 
   const groups = [
     { key: "overview", label: "Overview", sections: [attention, panel("system"), panel("disks")] },
+    { key: "metrics", label: "Metrics", sections: [panel("metrics")] },
     { key: "docker", label: "Docker", sections: [panel("docker")] },
     { key: "systemd", label: "Systemd", sections: [panel("systemd")] },
     { key: "kubernetes", label: "Kubernetes", sections: [panel("kubernetes")] },
@@ -98,6 +99,8 @@
       tabpanels[i].hidden = !on;
     });
     moveIndicator(tabs[index]);
+    // On a phone the strip scrolls sideways: never leave the selected tab half hidden.
+    tabs[index].scrollIntoView({ inline: "nearest", block: "nearest" });
     if (focus) {
       tabs[index].focus();
     }
@@ -137,6 +140,14 @@
     start = 0;
   }
   select(start, false);
+  // A time range link reloads the page with #panel-metrics. The browser tried to scroll there
+  // while the panel was still hidden, so do it now that the tab is open.
+  if (window.location.hash === "#panel-metrics") {
+    const metricsTitle = document.getElementById("panel-metrics");
+    if (metricsTitle) {
+      metricsTitle.scrollIntoView({ block: "center" });
+    }
+  }
   // From now on the indicator slides; on load it is simply in place.
   window.requestAnimationFrame(() => list.classList.add("g-tabs--live"));
 

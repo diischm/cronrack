@@ -141,6 +141,7 @@ sudo journalctl -u cronrack-agent -n 50 --no-pager</pre>
     {% regroup issues|dictsort:"category" by category as issue_groups %}
     <div class="app-panels">
       {% include "components/panels/system.html" with app="system" title="System" category="updates" data=updates %}
+      {% if metrics %}{% include "components/panels/metrics.html" with app="metrics" title="Metrics" category="resources" data=metrics %}{% endif %}
       {% include "components/panels/docker.html" with app="docker" title="Docker" category="docker" data=containers %}
       {% include "components/panels/systemd.html" with app="systemd" title="Systemd" category="systemd" data=failed_units|default_if_none:timers %}
       {% include "components/panels/disks.html" with app="disks" title="Disks" category="disk" data=disks %}

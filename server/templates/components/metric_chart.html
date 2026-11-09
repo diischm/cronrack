@@ -1,0 +1,25 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  One server-rendered chart (metrics/charts.py). The path data is numbers computed on the
+  server; there is no inline style or script (strict CSP). Neutral line; the part above the
+  limit, and only that part, takes the status colour. Screen readers get the SVG's label;
+  everyone gets the same numbers as text under the chart.
+
+    {% include "components/metric_chart.html" with chart=chart %}
+    small=True  the per-container size
+{% endcomment %}
+<figure class="mchart{% if small %} mchart--small{% endif %}{% if chart.level == 'red' %} mchart--red{% endif %}">
+  <figcaption class="mchart__head"><span class="mchart__title">{{ chart.title }}</span>{% if chart.limit_label %}<span class="mchart__limit">limit {{ chart.limit_label }}</span>{% endif %}{% if not chart.empty %}<span class="mchart__now">{{ chart.now }}</span>{% endif %}</figcaption>
+  {% if chart.empty %}
+    <p class="muted mchart__empty">Collecting data…</p>
+  {% else %}
+    <svg class="mchart__svg" viewBox="0 0 {{ chart.width }} {{ chart.height }}" preserveAspectRatio="none" role="img" aria-label="{{ chart.summary }}" focusable="false">
+      {% if chart.over %}<clipPath id="{{ chart.clip_id }}"><rect x="0" y="0" width="{{ chart.width }}" height="{{ chart.limit_y }}"></rect></clipPath>{% endif %}
+      <path class="mchart__area" d="{{ chart.area }}"></path>
+      {% if chart.limit_y is not None %}<line class="mchart__limitline" x1="0" x2="{{ chart.width }}" y1="{{ chart.limit_y }}" y2="{{ chart.limit_y }}"></line>{% endif %}
+      <path class="mchart__line" d="{{ chart.line }}"></path>
+      {% if chart.over %}<path class="mchart__line mchart__line--hot" d="{{ chart.line }}" clip-path="url(#{{ chart.clip_id }})"></path>{% endif %}
+    </svg>
+    <p class="mchart__sum">min {{ chart.min }} · avg {{ chart.avg }} · max {{ chart.max }}{% if chart.over %} · went over the limit{% endif %}{% if chart.extra %} · {{ chart.extra }}{% endif %}</p>
+  {% endif %}
+</figure>
