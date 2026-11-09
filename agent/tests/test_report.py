@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from agent import AGENT_VERSION, collectors, report
-from agent.config import AgentConfig, KubernetesConfig, NetworkConfig
+from agent.config import AgentConfig, KubernetesConfig, MetricsConfig, NetworkConfig
 from agent.protocol import MAX_REPORT_BYTES, report_message
 from agent.report import (
     DEFAULT_COLLECTORS,
@@ -31,7 +31,24 @@ EXPECTED_KEYS = {
     "failed_units",
     "timers",
     "disks",
+    "metrics",  # [metrics] is on by default (agent 0.4.0)
     "errors",
+}
+
+FAKE_METRICS = {
+    "interval_s": 60,
+    "cpu": {
+        "busy_pct": 12.5,
+        "iowait_pct": 0.4,
+        "load": [0.2, 0.1, 0.1],
+        "cores": 4,
+        "temp_c": None,
+    },
+    "memory": {"total": 8 * 1024**3, "available": 6 * 1024**3, "swap_total": 0, "swap_used": 0},
+    "mounts": [],
+    "disk_io": None,
+    "containers": None,
+    "containers_truncated": False,
 }
 
 
@@ -51,6 +68,7 @@ def fake_collectors(**overrides: Collector) -> dict[str, Collector]:
         "units": list,
         "timers": list,
         "disks": lambda: [{"mount": "/", "percent": 42}],
+        "metrics": lambda: FAKE_METRICS,
     }
     collectors.update(overrides)
     return collectors
@@ -79,6 +97,50 @@ def test_report_is_json_serializable() -> None:
 
 def test_default_collectors_cover_every_check() -> None:
     assert set(DEFAULT_COLLECTORS) == set(REPORT_KEYS)
+
+
+def test_metrics_key_comes_before_errors() -> None:
+    result = build_report(AgentConfig(), now=NOW, collectors=fake_collectors())
+    assert result["metrics"] == FAKE_METRICS
+    assert list(result)[-2:] == ["metrics", "errors"]
+
+
+def test_no_metrics_key_when_switched_off() -> None:
+    config = AgentConfig(metrics=MetricsConfig(enabled=False))
+    result = build_report(config, now=NOW, collectors=fake_collectors(metrics=failing_collector))
+    assert "metrics" not in result
+    assert set(result) == EXPECTED_KEYS - {"metrics"}
+
+
+def test_metrics_failure_is_null_with_an_error_entry() -> None:
+    def broken() -> Any:
+        raise OSError("boom /secret/path")
+
+    result = build_report(AgentConfig(), now=NOW, collectors=fake_collectors(metrics=broken))
+    assert result["metrics"] is None
+    assert result["errors"] == [{"check": "metrics", "error": "OSError"}]
+
+
+def test_default_metrics_collector_follows_the_containers_check(monkeypatch) -> None:
+    calls = []
+
+    class FakeSampler:
+        def collect(self, containers: bool) -> dict:
+            calls.append(containers)
+            return FAKE_METRICS
+
+    monkeypatch.setattr(report, "_sampler", FakeSampler())
+    collectors = fake_collectors()
+    del collectors["metrics"]
+    build_report(AgentConfig(), now=NOW, collectors=collectors)
+    build_report(AgentConfig(enabled_checks=["disks"]), now=NOW, collectors=collectors)
+    # Docker is only asked when the containers check (the opt-in Docker access) is on.
+    assert calls == [True, False]
+
+
+def test_the_default_sampler_is_one_per_process(monkeypatch) -> None:
+    monkeypatch.setattr(report, "_sampler", None)
+    assert report.default_sampler() is report.default_sampler()
 
 
 def test_disabled_check_is_null_and_not_run() -> None:

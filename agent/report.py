@@ -10,8 +10,9 @@ A check is null when it is disabled, its tool is missing, or it crashed.
 Only a crash adds an entry to errors.
 
 When [kubernetes] enabled is set, a `kubernetes` key ({"node": ..., "cluster": ...})
-is added before errors; when [network] enabled is set, a `network` key (agent/network.py).
-Without them the report is exactly as before.
+is added before errors; when [network] enabled is set, a `network` key (agent/network.py);
+when [metrics] is on (the default) and the server announced "metrics", a `metrics` key
+(agent/metrics.py). Without them the report is exactly as before.
 """
 
 import json
@@ -23,6 +24,7 @@ from typing import Any
 
 from agent import AGENT_VERSION
 from agent import collectors as agent_collectors
+from agent import metrics as agent_metrics
 from agent import network as agent_network
 from agent.config import AgentConfig, KubernetesConfig
 from agent.kube_api import KubeClient
@@ -33,6 +35,19 @@ Collector = Callable[[], Any]
 
 KUBERNETES_KEY = "kubernetes"
 NETWORK_KEY = "network"
+METRICS_KEY = "metrics"
+
+# One sampler for the agent's whole life: it keeps the previous counters, so CPU % and
+# the rates survive a reconnect. Built on first use (tests never touch /proc by import).
+_sampler: agent_metrics.MetricsSampler | None = None
+
+
+def default_sampler() -> agent_metrics.MetricsSampler:
+    global _sampler  # one process-wide sampler is the point
+    if _sampler is None:
+        _sampler = agent_metrics.MetricsSampler()
+    return _sampler
+
 
 # Config check name -> key in the report, in report order.
 REPORT_KEYS: dict[str, str] = {
@@ -143,6 +158,16 @@ def build_report(
         )
         result, error = safe_collect(NETWORK_KEY, collect)
         report[NETWORK_KEY] = result
+        if error is not None:
+            errors.append(error)
+    if config.metrics.enabled:
+        # Per-container numbers need the same opt-in Docker access as the containers check.
+        containers = "containers" in config.enabled_checks
+        collect = collectors.get(METRICS_KEY) or partial(
+            default_sampler().collect, containers=containers
+        )
+        result, error = safe_collect(METRICS_KEY, collect)
+        report[METRICS_KEY] = result
         if error is not None:
             errors.append(error)
     report["errors"] = errors

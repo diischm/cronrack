@@ -16,6 +16,33 @@ def fake_checks(monkeypatch: pytest.MonkeyPatch) -> None:
     # No real commands: swap the default collectors for fakes.
     monkeypatch.setattr(report, "DEFAULT_COLLECTORS", fake_collectors())
     monkeypatch.delenv("CRONRACK_TOKEN", raising=False)
+    # --once primes the metrics sampler; never touch the real /proc or Docker here.
+    monkeypatch.setattr(report, "_sampler", PrimeRecorder())
+    monkeypatch.setattr(agent_main, "ONCE_SAMPLE_SECONDS", 0)
+
+
+class PrimeRecorder:
+    def __init__(self) -> None:
+        self.calls: list[bool] = []
+
+    def collect(self, containers: bool) -> dict:
+        self.calls.append(containers)
+        return {}
+
+
+def test_once_primes_the_metrics_sampler_first(tmp_path: Path, capsys) -> None:
+    assert main(["--once", "--config", str(tmp_path / "missing.toml")]) == 0
+    assert report._sampler.calls == [True]
+    assert json.loads(capsys.readouterr().out)["metrics"]["cpu"]["busy_pct"] == 12.5
+
+
+def test_once_with_metrics_off_does_not_sample(tmp_path: Path, capsys) -> None:
+    path = tmp_path / "agent.toml"
+    path.write_text("[metrics]\nenabled = false\n", encoding="utf-8")
+    os.chmod(path, 0o600)
+    assert main(["--once", "--config", str(path)]) == 0
+    assert report._sampler.calls == []
+    assert "metrics" not in json.loads(capsys.readouterr().out)
 
 
 def test_once_prints_valid_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

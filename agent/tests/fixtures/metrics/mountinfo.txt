@@ -1,0 +1,15 @@
+22 28 0:21 / /sys rw,nosuid,nodev,noexec,relatime shared:7 - sysfs sysfs rw
+23 28 0:22 / /proc rw,nosuid,nodev,noexec,relatime shared:13 - proc proc rw
+24 28 0:5 / /dev rw,nosuid,relatime shared:2 - devtmpfs udev rw,size=3985232k
+25 24 0:23 / /dev/pts rw,nosuid,noexec,relatime shared:3 - devpts devpts rw
+26 28 0:24 / /run rw,nosuid,nodev,noexec,relatime shared:5 - tmpfs tmpfs rw,size=803848k
+28 1 179:2 / / rw,relatime shared:1 - ext4 /dev/mmcblk0p2 rw
+29 22 0:25 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime shared:9 - cgroup2 cgroup2 rw
+30 28 179:1 / /boot/firmware rw,relatime shared:61 - vfat /dev/mmcblk0p1 rw,fmask=0022
+31 28 8:1 / /srv/media rw,relatime shared:63 - btrfs /dev/sda1 rw,space_cache=v2
+32 28 8:1 / /srv/media\040backup rw,relatime shared:64 - btrfs /dev/sda1 rw,space_cache=v2
+33 28 7:0 / /snap/core22/1234 ro,nodev,relatime shared:65 - squashfs /dev/loop0 ro
+34 28 0:52 / /var/lib/docker/overlay2/abc/merged rw,relatime - overlay overlay rw,lowerdir=x
+35 28 0:53 / /mnt/nas rw,relatime shared:70 - nfs4 192.0.2.10:/export rw,vers=4.2
+36 28 0:54 / /mnt/pool rw,relatime shared:71 - fuse.mergerfs pool rw,user_id=0
+37 28 179:2 /var/lib/data /srv/data rw,relatime shared:1 - ext4 /dev/mmcblk0p2 rw
