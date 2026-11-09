@@ -7,6 +7,25 @@ before 1.0.0, any release may change things that worked before, and the notes sa
 
 ### Added
 
+- **Host metrics.** Agent **0.4.0** also reports CPU (busy, iowait, load, cores, temperature if
+  there is a sensor), memory (from MemAvailable, plus swap), local disks (space, inodes,
+  throughput) and, with Docker access, each running container's CPU, memory and network.
+  Standard library only, from `/proc`, `/sys` and the Docker API's stats endpoint. On by
+  default and read-only; `install.sh --no-metrics` turns it off, `--metrics` back on, and
+  `--upgrade` keeps your choice. Old agents keep working, and a new agent only sends metrics
+  to a server that announces them. **Upgrade the server first** if you want them right away.
+- **Overview meters.** Each host card shows three thin bars (CPU, memory, fullest disk) without
+  numbers: grey unless that rule's limit is really exceeded, value on hover or in the expanded
+  card. They replace the Disk number on the card.
+- **Metrics tab on the host page**: charts for CPU, memory, disk and temperature over 1 h, 24 h
+  or 7 days, and a list of running containers with CPU, memory and a chart behind a tap.
+- **Seven new rules** on Settings → Notifications: CPU busy, memory running out, swap filling
+  up, CPU running hot, disk out of inodes, container CPU busy, container near its memory limit.
+  CPU, memory, temperature and the container rules are judged over several minutes of samples,
+  never on one report.
+- **Metric history**: raw samples for 24 h, 5-minute averages for 7 days, 1-hour averages for 90
+  days, kept and averaged by the scheduler.
+
 - **Network checks (opt-in, works with any router).** One agent checks the path from its host
   to the internet, point by point, and CronRack shows where a problem is: "Router down", "ISP
   box down", "Internet down", "Internet slow", "DNS failing". `install.sh --network`, with

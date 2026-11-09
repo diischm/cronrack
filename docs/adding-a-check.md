@@ -28,6 +28,8 @@ service, a full disk, DNS failing. Every check is a **rule** with a stable ID su
   rule ID + scope + subject, and one problem keeps one notification row (one open message,
   one "now red", one "resolved") only while that stays the same. Put numbers in `text`.
 - Tests: the rule fires, doesn't fire, and uses its threshold.
+- A value that spikes (CPU, memory) must not fire on one report. Use `sustained()` from
+  `server/rules/resources.py` with the host's recent samples (`ctx.history`).
 
 ## 4. RuleSpec and preset defaults
 
@@ -36,7 +38,8 @@ service, a full disk, DNS failing. Every check is a **rule** with a stable ID su
   the rows on Settings → Notifications.
 - Defaults come from the rule's severity: Balanced alerts on red and yellow and only shows
   info; Quiet keeps red, shows yellow, drops info; Everything alerts on all of it. Pass
-  `quiet=` only when Quiet should differ.
+  `quiet=` only when Quiet should differ. A new heads-up rule that shouldn't message by
+  default takes `balanced=SHOW` and is listed in `BALANCED_SHOW_ONLY`.
 - If the user may change the rule's threshold, give it a `limit=` with a few fixed choices
   (never free text) whose default is the rule's `default_threshold`.
 

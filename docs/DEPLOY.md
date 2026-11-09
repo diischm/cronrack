@@ -448,6 +448,8 @@ you pass `--new-token`. It needs a terminal, because it may ask questions.
 | use a new token (after "Rotate token" in the host's settings) | `--new-token` (asks for it, replaces only the token) |
 | change the CA certificate | `--ca-file new-ca.crt` |
 | turn Docker checks on or off | nothing extra; it asks about Docker again |
+| turn host metrics off or back on | `--no-metrics` or `--metrics` (on by default; they only read `/proc` and `/sys`, and per-container numbers follow the Docker access choice) |
+| turn host metrics off or back on | `--no-metrics` or `--metrics` (on by default; they only read `/proc` and `/sys`, and per-container numbers follow the Docker access choice) |
 | turn on Kubernetes | `--k8s` or `--k8s-cluster-view` ([kubernetes-monitoring.md](kubernetes-monitoring.md)) |
 | turn on network checks | `--network`, optionally `--network-before "NAME=IP"` (a switch before the router; **upgrade the server first**, an older server refuses reports with these points) and `--network-hop "NAME=IP"` (a box after the router) ([network-monitoring.md](network-monitoring.md)) |
 
