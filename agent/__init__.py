@@ -1,3 +1,3 @@
 """The CronRack host agent."""
 
-AGENT_VERSION = "0.3.0"
+AGENT_VERSION = "0.4.0"

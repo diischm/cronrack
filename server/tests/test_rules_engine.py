@@ -93,9 +93,21 @@ def container(**changes):
 # --- registry ------------------------------------------------------------------
 
 
-def test_only_the_mvp_rules_and_the_helm_host_rule_are_registered():
-    # Cluster rules live in rules.k8s (CLUSTER_RULES); the Helm command is a host rule.
-    assert set(RULES) == MVP_RULES | {"k8s.helm_cli_outdated"}
+RESOURCE_RULE_IDS = {
+    "host.cpu_high",
+    "host.memory_high",
+    "host.swap_high",
+    "host.cpu_temp_high",
+    "disk.inodes_low",
+    "docker.container_cpu_high",
+    "docker.container_memory_near_limit",
+}
+
+
+def test_only_the_mvp_rules_the_resource_rules_and_the_helm_host_rule_are_registered():
+    # Cluster rules live in rules.k8s (CLUSTER_RULES); the Helm command is a host rule;
+    # the resource rules (agent 0.4.0 metrics) are in rules.resources.
+    assert set(RULES) == MVP_RULES | RESOURCE_RULE_IDS | {"k8s.helm_cli_outdated"}
 
 
 @pytest.mark.parametrize("rule", RULES.values(), ids=lambda r: r.id)

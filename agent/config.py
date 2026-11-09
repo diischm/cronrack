@@ -101,6 +101,17 @@ class NetworkConfig:
 
 
 @dataclass
+class MetricsConfig:
+    """The [metrics] table. On by default: it only reads /proc and /sys (no new access).
+
+    Per-container numbers also need Docker access and the "containers" check, like
+    container health does. `install.sh --no-metrics` writes `enabled = false`.
+    """
+
+    enabled: bool = True
+
+
+@dataclass
 class AgentConfig:
     server_url: str | None = None
     token: str | None = None
@@ -110,6 +121,7 @@ class AgentConfig:
     actions: dict[str, Any] = field(default_factory=dict)
     kubernetes: KubernetesConfig = field(default_factory=KubernetesConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
+    metrics: MetricsConfig = field(default_factory=MetricsConfig)
 
     def __repr__(self) -> str:
         # Written by hand so the token can't leak into logs or tracebacks.
@@ -119,7 +131,8 @@ class AgentConfig:
             f"AgentConfig(server_url={self.server_url!r}, token={token}, "
             f"ca_file={self.ca_file!r}, interval_seconds={self.interval_seconds!r}, "
             f"enabled_checks={self.enabled_checks!r}, actions={self.actions!r}, "
-            f"kubernetes={self.kubernetes!r}, network={self.network!r})"
+            f"kubernetes={self.kubernetes!r}, network={self.network!r}, "
+            f"metrics={self.metrics!r})"
         )
 
 
@@ -436,6 +449,17 @@ def _parse_network(data: Any) -> NetworkConfig:
     return config
 
 
+def _parse_metrics(data: Any) -> MetricsConfig:
+    if not isinstance(data, dict):
+        raise ConfigError("'metrics' must be a table")
+    unknown = sorted(set(data) - {"enabled"})
+    if unknown:
+        raise ConfigError(f"unknown [metrics] setting(s): {', '.join(unknown)}")
+    if not isinstance(data.get("enabled", True), bool):
+        raise ConfigError("'enabled' must be true or false")
+    return MetricsConfig(enabled=data.get("enabled", True))
+
+
 def _optional_str(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     if value is not None and not isinstance(value, str):
@@ -453,6 +477,7 @@ def _parse(data: dict[str, Any]) -> AgentConfig:
         "actions",
         "kubernetes",
         "network",
+        "metrics",
     }
     unknown = sorted(set(data) - known)
     if unknown:
@@ -502,6 +527,9 @@ def _parse(data: dict[str, Any]) -> AgentConfig:
 
     if "network" in data:
         config.network = _parse_network(data["network"])
+
+    if "metrics" in data:
+        config.metrics = _parse_metrics(data["metrics"])
 
     return config
 

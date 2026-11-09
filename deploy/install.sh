@@ -46,6 +46,12 @@
 #   --network-gateway IP   the router's address instead of asking ("auto" = always use the
 #                          default route). Needed when there is no terminal. Implies --network.
 #
+# Host metrics (agent 0.4.0, ON by default): CPU, memory, temperature, disk space and
+# throughput from /proc and /sys, plus per-container CPU/memory/network if Docker access
+# is on. Read-only, no new permission.
+#   --no-metrics           don't collect them ([metrics] enabled = false)
+#   --metrics              collect them again ([metrics] enabled = true)
+#
 # Upgrade an installed agent: asks nothing, needs no terminal (safe for scripts and
 # Ansible) and keeps every setting. The usage text lists the exit codes.
 #
@@ -59,6 +65,7 @@
 #   --k8s...         only changes the [kubernetes] settings you name; the rest is kept
 #   --network...     sets [network] enabled and gateway (and hops, if you name any);
 #                    the table's other keys (internet, dns, public IP) are kept
+#   --no-metrics / --metrics   sets [metrics] enabled; without either it is kept
 #
 # Remove the agent again (asks before deleting /etc/cronrack, which holds the token):
 #
@@ -144,6 +151,7 @@ Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
                   [--k8s | --k8s-cluster-view [--k8s-ca PATH] [--k8s-api URL]]
                   [--network [--network-gateway IP|auto] [--network-before NAME=IP]...
                              [--network-hop NAME=IP]...]
+                  [--no-metrics | --metrics]
        install.sh --server https://SERVER --upgrade [--server-change] [--ca-file PATH]
        install.sh --uninstall
 
@@ -174,13 +182,19 @@ Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
   --network-hop NAME=IP
                    An extra local point after the router, e.g. "ISP box=192.0.2.254".
                    Repeatable (at most 2, in path order); replaces the existing hops.
+  --no-metrics     Don't collect host metrics (CPU, memory, temperature, disks and, with
+                   Docker access, per-container usage). They are on by default; they only
+                   read /proc and /sys and need no extra permission.
+  --metrics        Collect host metrics again after --no-metrics.
   --upgrade        Upgrade an installed agent. Asks nothing and needs no terminal.
                    Keeps the token, the CA, the Kubernetes token and settings and the
                    current Docker choice. Changes nothing if it is already up to date.
                    If the new version doesn't keep running, the previous code is put
                    back (the websockets library in the venv is not rolled back).
-                   Keeps [network] too.
-                   Not combinable with --new-token, --k8s*, --network*, --uninstall.
+                   Keeps [network] and [metrics] too: an agent.toml without [metrics]
+                   (from an older installer) gets metrics, which are on by default.
+                   Not combinable with --new-token, --k8s*, --network*, --no-metrics,
+                   --metrics, --uninstall.
   --server-change  With --upgrade: allow --server to differ from server_url in
                    /etc/cronrack/agent.toml, and update it. Without it a different
                    server is refused, so an upgrade never moves an agent silently.
@@ -225,6 +239,7 @@ NETWORK=0
 NETWORK_GATEWAY=""
 NETWORK_BEFORE=()  # "NAME=IP", in path order: between this host and the router
 NETWORK_HOPS=()  # "NAME=IP", in path order: after the router
+METRICS=""  # "", "on" or "off": --metrics / --no-metrics; "" keeps the current setting
 SERVER_CHANGE=0
 SETTING_FLAGS=()  # options that change settings: refused together with --upgrade
 while [ $# -gt 0 ]; do
@@ -247,6 +262,12 @@ while [ $# -gt 0 ]; do
     --network-before=*) NETWORK=1; NETWORK_BEFORE+=("${1#--network-before=}"); SETTING_FLAGS+=(--network-before); shift ;;
     --network-hop) [ $# -ge 2 ] || die_usage "--network-hop needs NAME=IP"; NETWORK=1; NETWORK_HOPS+=("$2"); SETTING_FLAGS+=(--network-hop); shift 2 ;;
     --network-hop=*) NETWORK=1; NETWORK_HOPS+=("${1#--network-hop=}"); SETTING_FLAGS+=(--network-hop); shift ;;
+    --no-metrics)
+      [ "$METRICS" != "on" ] || die_usage "--no-metrics and --metrics can't be used together"
+      METRICS=off; SETTING_FLAGS+=(--no-metrics); shift ;;
+    --metrics)
+      [ "$METRICS" != "off" ] || die_usage "--no-metrics and --metrics can't be used together"
+      METRICS=on; SETTING_FLAGS+=(--metrics); shift ;;
     --uninstall) UNINSTALL=1; SETTING_FLAGS+=(--uninstall); shift ;;
     --upgrade) UPGRADE=1; shift ;;
     --server-change) SERVER_CHANGE=1; shift ;;
@@ -940,6 +961,14 @@ if [ "$NETWORK" -eq 1 ]; then
   fi
 fi
 
+if [ "$METRICS" = "off" ]; then
+  set_table metrics 'enabled = false'
+  say "Host metrics off ([metrics] enabled = false)"
+elif [ "$METRICS" = "on" ]; then
+  set_table metrics 'enabled = true'
+  say "Host metrics on ([metrics] enabled = true)"
+fi
+
 # The agent reads the config with these exact rules when it starts. A re-run only replaces
 # the keys it was given, so the result can clash with what was already there (a name used in
 # both `before` and `hops`, or a `before` point at the router's new address). Ask the agent's
@@ -1075,6 +1104,7 @@ if wait_until_stable; then
   if [ -f "$K8S_TOKEN_FILE" ]; then kept="$kept, Kubernetes token"; fi
   if grep -Eq '^[[:space:]]*\[kubernetes\]' "$CONFIG_FILE"; then kept="$kept, [kubernetes] settings"; fi
   if grep -Eq '^[[:space:]]*\[network\]' "$CONFIG_FILE"; then kept="$kept, [network] settings"; fi
+  if grep -Eq '^[[:space:]]*\[metrics\]' "$CONFIG_FILE"; then kept="$kept, [metrics] settings"; fi
   if [ -f "$DOCKER_DROPIN" ]; then kept="$kept, Docker access (on)"; else kept="$kept, Docker access (off)"; fi
   echo
   say "Upgraded the CronRack agent: $OLD_VERSION -> $NEW_VERSION"

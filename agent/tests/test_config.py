@@ -481,3 +481,25 @@ def test_kubernetes_values_never_in_errors(tmp_path: Path) -> None:
     with pytest.raises(ConfigError) as excinfo:
         load_config(k8s_config(tmp_path, f'token_file = 42\napi_server = "{SECRET}"\n'))
     assert SECRET not in str(excinfo.value)
+
+
+# --- [metrics] (agent 0.4.0) -----------------------------------------------------------
+
+
+def test_metrics_are_on_by_default(tmp_path: Path) -> None:
+    # An agent.toml written by an older installer has no [metrics] table.
+    assert load_config(write_config(tmp_path, 'enabled_checks = ["disks"]\n')).metrics.enabled
+
+
+def test_metrics_can_be_switched_off(tmp_path: Path) -> None:
+    config = load_config(write_config(tmp_path, "[metrics]\nenabled = false\n"))
+    assert config.metrics.enabled is False
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["metrics = 1\n", '[metrics]\nenabled = "no"\n', "[metrics]\ndocker_socket = '/x'\n"],
+)
+def test_bad_metrics_table_is_refused(tmp_path: Path, text: str) -> None:
+    with pytest.raises(ConfigError):
+        load_config(write_config(tmp_path, text))

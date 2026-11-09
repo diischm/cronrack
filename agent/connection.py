@@ -147,13 +147,20 @@ async def session(ws: ClientConnection, config: AgentConfig) -> None:
     kubernetes = replace(
         config.kubernetes, enabled=config.kubernetes.enabled and "kubernetes" in allowed
     )
+    # Same for "metrics" (agent 0.4.0): a server older than that would refuse the key.
+    metrics = replace(config.metrics, enabled=config.metrics.enabled and "metrics" in allowed)
     effective = replace(
         config,
         enabled_checks=[c for c in config.enabled_checks if c in allowed],
         kubernetes=kubernetes,
+        metrics=metrics,
     )
     interval = welcome["interval_seconds"]
-    checks = effective.enabled_checks + (["kubernetes"] if kubernetes.enabled else [])
+    checks = (
+        effective.enabled_checks
+        + (["kubernetes"] if kubernetes.enabled else [])
+        + (["metrics"] if metrics.enabled else [])
+    )
     logger.info("Connected; reporting every %ss (%s)", interval, ", ".join(checks))
 
     collect = asyncio.Event()

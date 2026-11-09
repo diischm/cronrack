@@ -20,7 +20,7 @@ from websockets.sync.server import serve as sync_serve
 
 from agent import connection, report
 from agent.__main__ import main
-from agent.config import AgentConfig, KubernetesConfig
+from agent.config import AgentConfig, KubernetesConfig, MetricsConfig
 from agent.connection import MAX_BACKOFF_SECONDS, backoff, build_ssl_context, run_forever
 
 from .test_report import fake_collectors
@@ -210,6 +210,31 @@ async def test_kubernetes_is_not_sent_to_a_server_that_does_not_announce_it(
 
     assert "kubernetes" not in message["report"]
     assert message["report"]["updates"] == {"total": 3, "security": 1}
+
+
+@pytest.mark.asyncio
+async def test_metrics_are_sent_when_the_server_announces_them(server) -> None:
+    server.welcome = {**WELCOME, "enabled_checks": ["updates", "metrics"]}
+    message = await first_report(server, config_for(server))
+    assert message["report"]["metrics"]["cpu"]["busy_pct"] == 12.5
+
+
+@pytest.mark.asyncio
+async def test_metrics_are_not_sent_to_a_server_that_does_not_announce_them(server) -> None:
+    # A server before 0.4.0 refuses unknown keys: an upgraded agent must keep working there.
+    assert "metrics" not in server.welcome["enabled_checks"]
+    message = await first_report(server, config_for(server))
+    assert "metrics" not in message["report"]
+    assert message["report"]["updates"] == {"total": 3, "security": 1}
+
+
+@pytest.mark.asyncio
+async def test_metrics_stay_off_when_the_local_config_has_them_off(server) -> None:
+    server.welcome = {**WELCOME, "enabled_checks": ["updates", "metrics"]}
+    config = config_for(server)
+    config.metrics = MetricsConfig(enabled=False)
+    message = await first_report(server, config)
+    assert "metrics" not in message["report"]
 
 
 @pytest.mark.asyncio

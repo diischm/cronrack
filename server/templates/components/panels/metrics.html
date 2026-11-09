@@ -1,0 +1,45 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% extends "components/app_panel.html" %}
+{% comment %}
+  Metrics panel. data = metrics.presenters.metrics_panel(): range chips (plain links, so no
+  JS is needed), the host's charts, and running containers with an expandable row each.
+
+  The rows are buttons handled by disclosure.js, which sets aria-expanded and hidden:
+  keyboard reachable, and without JS every chart simply stays visible (so the server
+  doesn't claim an "expanded" state nothing can change). Container names are agent data: plain
+  {{ }} output only.
+{% endcomment %}
+{% block icon %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>{% endblock %}
+{% block facts %}CPU, memory and disk over time{% endblock %}
+{% block body %}
+  <nav class="mchips" aria-label="Time range">
+    {% for chip in data.chips %}<a class="mchip" href="?range={{ chip.key }}#panel-metrics"{% if chip.current %} aria-current="true"{% endif %}>{{ chip.label }}</a>{% endfor %}
+  </nav>
+  <div class="mcharts">
+    {% for chart in data.charts %}{% include "components/metric_chart.html" with chart=chart %}{% endfor %}
+  </div>
+  {% if data.containers is not None %}
+    <h3 class="section-title mct__title">Containers</h3>
+    {% if data.containers %}
+      <div class="mct__head" aria-hidden="true"><span>Name</span><span class="mct__num">CPU</span><span class="mct__num">Memory</span><span></span></div>
+      <ul class="plain-list mct">
+        {% for c in data.containers %}
+          <li class="mct__item">
+            <button type="button" class="mct__row js-disclosure" aria-controls="mct-more-{{ c.index }}">
+              <span class="mct__name mono">{{ c.name }}</span>
+              <span class="mct__num"><span class="visually-hidden">, CPU </span>{{ c.cpu }}</span>
+              <span class="mct__mem"><span class="visually-hidden">, memory </span><span>{{ c.mem }}{% if c.limit %} / {{ c.limit }}{% endif %}</span>{% if c.percent is not None %}<meter class="meter mct__bar{% if c.level == 'red' %} meter--red{% elif c.level == 'yellow' %} meter--amber{% endif %}" min="0" max="100" value="{{ c.percent }}" aria-hidden="true"></meter>{% endif %}</span>
+              <svg class="mct__chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"></path></svg>
+            </button>
+            <div class="mct__more" id="mct-more-{{ c.index }}">
+              {% for chart in c.charts %}{% include "components/metric_chart.html" with chart=chart small=True %}{% endfor %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if data.truncated %}<p class="muted mct__note">Only the first containers are measured on a host with this many.</p>{% endif %}
+    {% else %}
+      <p class="muted">No running containers.</p>
+    {% endif %}
+  {% endif %}
+{% endblock %}

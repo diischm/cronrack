@@ -19,6 +19,7 @@ from clusters.services import node_key
 from clusters.updates import latest_versions
 from hosts.humanize import ago, clock, day, user_zone
 from hosts.models import Host
+from metrics.presenters import DEFAULT_RANGE, metrics_panel
 from notifications.config import load_config
 from prefs.models import Prefs
 from rules.base import Finding
@@ -194,6 +195,54 @@ def _card_numbers(report: dict | None, findings: list[Finding]) -> dict[str, Any
     return numbers
 
 
+# Which findings colour which overview meter. Grey (level "") unless one of these is active,
+# so the colour always means "over the limit you set", never just "a high number".
+METER_RULES = {
+    "cpu": ("host.cpu_high",),
+    "ram": ("host.memory_high",),
+    "disk": ("disk.usage", "disk.inodes_low"),
+}
+METER_LABELS = {"cpu": "CPU", "ram": "Memory", "disk": "Fullest disk"}
+
+
+def _worst_level(findings: list[Finding], rule_ids: tuple[str, ...]) -> str:
+    severities = {f.severity for f in findings if f.rule_id in rule_ids}
+    if "red" in severities:
+        return "red"
+    return "yellow" if "yellow" in severities else ""
+
+
+def meters(report: dict | None, findings: list[Finding]) -> list[dict[str, Any]]:
+    """The overview's three thin meters: CPU, memory and the fullest disk.
+
+    A meter is left out when the host doesn't report its number (an agent before 0.4.0
+    has no CPU or memory; the disk comes from the disks check every agent has).
+    """
+    report = report or {}
+    data = report.get("metrics")
+    data = data if isinstance(data, dict) else {}
+    cpu = (data.get("cpu") or {}).get("busy_pct")
+    memory = data.get("memory")
+    ram = None
+    if memory:
+        ram = (memory["total"] - memory["available"]) * 100.0 / memory["total"]
+    disk = max((d["percent"] for d in report.get("disks") or []), default=None)
+    values = {"cpu": cpu, "ram": ram, "disk": disk}
+    result = []
+    for key in ("cpu", "ram", "disk"):
+        if values[key] is None:
+            continue
+        result.append(
+            {
+                "key": key,
+                "label": METER_LABELS[key],
+                "percent": max(0, min(100, round(values[key]))),
+                "level": _worst_level(findings, METER_RULES[key]),
+            }
+        )
+    return result
+
+
 def _kube_node(report: dict | None) -> dict | None:
     """The Kubernetes node part of a host's report, or None (agents before 0.2.0, or off)."""
     kube = report.get("kubernetes") if report else None
@@ -227,6 +276,7 @@ def host_summary(host: Host, now: datetime, data: OwnerData) -> dict[str, Any]:
         "last_seen_human": ago(host.last_seen_at, now),
         "url": reverse("host-detail", args=[host.pk]),
         "k8s_role": k8s_role(host.latest_report),
+        "meters": meters(host.latest_report, findings),
         **_card_numbers(host.latest_report, findings),
     }
 
@@ -380,7 +430,8 @@ def _kubernetes_panel(host: Host, report: dict, data: OwnerData) -> dict[str, An
     return panel
 
 
-def detail_context(host: Host, now: datetime) -> dict[str, Any]:
+def detail_context(host: Host, now: datetime, metrics_range: str = DEFAULT_RANGE) -> dict[str, Any]:
+    """`metrics_range` must already be clean (metrics.presenters.clean_range)."""
     data = OwnerData(host.owner)
     findings = active_findings(host, now, data)
     report = host.latest_report
@@ -402,9 +453,13 @@ def detail_context(host: Host, now: datetime) -> dict[str, Any]:
         "timers": None,
         "disks": None,
         "kubernetes": None,
+        "metrics": None,
     }
     if report is None:
         return context
+    context["metrics"] = metrics_panel(
+        host, report, findings, now, metrics_range, data.overrides, data.notify
+    )
     context["kubernetes"] = _kubernetes_panel(host, report, data)
     if report.get("updates") is not None:
         context["updates"] = {

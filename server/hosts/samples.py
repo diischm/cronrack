@@ -7,7 +7,17 @@ database or an agent, and none of it is ever counted anywhere.
 
 import re
 
-from hosts.presenters import short_summary
+from hosts.presenters import METER_LABELS, short_summary
+
+
+def _meters(cpu, ram, disk, cpu_level="", disk_level=""):
+    """Sample overview meters, in the shape of hosts.presenters.meters()."""
+    values = (("cpu", cpu, cpu_level), ("ram", ram, ""), ("disk", disk, disk_level))
+    return [
+        {"key": key, "label": METER_LABELS[key], "percent": percent, "level": level}
+        for key, percent, level in values
+    ]
+
 
 # Sample context in the shape of hosts.presenters.overview_context(), with the
 # hosts from design-ref/cronrack-dashboard-desktop.html: one red, one yellow and
@@ -36,6 +46,7 @@ PREVIEW_CONTEXT = {
             "updates": {"total": 12, "security": 3},
             "containers": {"total": 9, "running": 8, "failing": 1},
             "disk_max_percent": 62,
+            "meters": _meters(34, 58, 62),
         },
         {
             "id": 1,
@@ -52,6 +63,7 @@ PREVIEW_CONTEXT = {
             "updates": {"total": 4, "security": 0},
             "containers": {"total": 3, "running": 3, "failing": 0},
             "disk_max_percent": 87,
+            "meters": _meters(93, 71, 87, cpu_level="yellow", disk_level="yellow"),
         },
         {
             "id": 2,
@@ -65,6 +77,7 @@ PREVIEW_CONTEXT = {
             "updates": {"total": 0, "security": 0},
             "containers": {"total": 6, "running": 6, "failing": 0},
             "disk_max_percent": 48,
+            "meters": _meters(8, 41, 48),
         },
         {
             "id": 4,
@@ -78,6 +91,7 @@ PREVIEW_CONTEXT = {
             "updates": {"total": 1, "security": 0},
             "containers": {"total": 4, "running": 4, "failing": 0},
             "disk_max_percent": 71,
+            "meters": _meters(22, 76, 71),
         },
     ],
     # In the shape of clusters.presenters.cluster_summary().
@@ -199,6 +213,7 @@ def _host(pk, name, status, issues=(), disk=50, role=None, containers=4, failing
         "updates": {"total": 2, "security": 1 if status == "yellow" else 0},
         "containers": {"total": containers, "running": containers - failing, "failing": failing},
         "disk_max_percent": disk,
+        "meters": _meters(20 + pk % 50, 40 + pk % 30, disk),
     }
 
 

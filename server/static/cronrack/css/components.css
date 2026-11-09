@@ -644,3 +644,76 @@ a.rack-unit:hover:not(:active) { transform: translateX(2px);
 .finding + .finding { border-top: 1px solid var(--lip); }
 .finding__why { margin: 0; font-size: 15px; color: var(--text-muted); }
 /* end Kubernetes UI */
+
+/* --- Host metrics ------------------------------------------------------------------------
+   Existing colours only: the neutral meter fill and muted text, amber/red ONLY over a limit. */
+
+/* Overview: three thin meters without numbers (components/metric_meters.html). */
+.readout--meters > * { overflow: visible; }
+.mmeters { display: block; min-width: 0; }
+.mmeters__rows { display: grid; gap: 4px; }
+.mmeter { position: relative; display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 7px; align-items: center; }
+.mmeter__icon { display: block; color: var(--text-muted); }
+.mmeter__bar, .mct__bar { background: var(--lip); }  /* the panel itself is a .well */
+/* .mmeters / .mct__mem in front: pages.css (loaded after this file) sets .meter to 8px. */
+.mmeters .mmeter__bar { height: 3px; border-radius: 2px; }
+.mmeters .mmeter__bar::-webkit-meter-bar { height: 3px; border-radius: 2px; }
+.mmeter__tip { position: absolute; right: 0; bottom: calc(100% + 5px); z-index: 5; padding: 6px 8px; border-radius: 8px;
+  background: var(--well); color: var(--text); font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); opacity: 0; transform: translateY(3px); pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease; }
+@media (hover: hover) {
+  .mmeter:hover .mmeter__tip { opacity: 1; transform: none; }
+}
+.mmeters--fill .mmeter__bar { transform-origin: left center; animation: mmeter-fill 800ms ease-out both; }
+@keyframes mmeter-fill { from { transform: scaleX(0); } }
+.mmeters--phone { display: none; }
+
+/* Host page: the Metrics panel. */
+.mchips { display: flex; gap: 6px; margin-bottom: var(--space-3); }
+.mchip { min-height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 999px; font-size: 13px;
+  color: var(--text-muted); text-decoration: none; border: 1px solid var(--lip); }
+.mchip:hover { color: var(--text); }
+.mchip[aria-current="true"] { color: var(--text); font-weight: 700; background: var(--well); }
+.mcharts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.mchart { margin: 0; min-width: 0; color: var(--text-muted); }
+.mchart__head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+.mchart__title { font-weight: 700; color: var(--text); }
+.mchart__limit { font-size: 12px; }
+.mchart__now { margin-left: auto; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.mchart__svg { display: block; width: 100%; height: 96px; overflow: visible; }
+.mchart--small .mchart__svg { height: 64px; }
+.mchart__area { fill: currentColor; opacity: 0.08; }
+.mchart__line { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.mchart__line--hot { stroke: var(--amber); }
+.mchart--red .mchart__line--hot { stroke: var(--red); }
+.mchart__limitline { stroke: currentColor; stroke-width: 1; stroke-dasharray: 3 4; opacity: 0.45; vector-effect: non-scaling-stroke; }
+.mchart__sum { margin: 4px 0 0; font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.mchart__empty { margin: 0; font-size: 13px; }
+.mct__title { margin: var(--space-4) 0 var(--space-2); }
+.mct__head, .mct__row { display: grid; grid-template-columns: minmax(0, 1fr) 64px 160px 18px; gap: 12px; align-items: center; }
+.mct__head { padding: 0 8px 6px; font-size: 12px; color: var(--text-muted); }
+.mct__item { border-top: 1px solid var(--lip); }
+.mct__row { width: 100%; min-height: 44px; padding: 8px; border: 0; background: none; color: inherit; font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.mct__row:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; border-radius: 8px; }
+.mct__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mct__num { text-align: right; font-variant-numeric: tabular-nums; }
+.mct__mem { display: grid; gap: 4px; justify-items: end; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mct__mem .mct__bar { height: 3px; border-radius: 2px; }
+.mct__mem .mct__bar::-webkit-meter-bar { height: 3px; border-radius: 2px; }
+.mct__chev { color: var(--text-muted); transform: rotate(180deg); transition: transform 200ms ease; }
+.mct__row[aria-expanded="false"] .mct__chev { transform: none; }
+.mct__more { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); padding: 4px 8px 14px;
+  animation: mct-open 200ms ease-out; }
+@keyframes mct-open { from { opacity: 0; transform: translateY(-4px); } }
+.mct__note { margin: var(--space-2) 0 0; font-size: 13px; }
+@media (max-width: 699.98px) {
+  .mcharts, .mct__more { grid-template-columns: minmax(0, 1fr); }
+  .mct__head, .mct__row { grid-template-columns: minmax(0, 1fr) 48px 116px 14px; gap: 8px; }
+  .mct__row { font-size: 13px; }
+  .mct__mem { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mmeters--fill .mmeter__bar, .mct__more { animation: none; }
+  .mmeter__tip, .mct__chev { transition: none; }
+}

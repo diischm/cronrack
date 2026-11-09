@@ -13,6 +13,9 @@ as possible, then re-run the tests.
 | `systemctl_timers.txt` | `LC_ALL=C TZ=UTC systemctl list-timers --all --no-legend --plain` |
 | `df.txt` | `LC_ALL=C df -P -T` (note the `-T`: it adds the filesystem type column) |
 
+`metrics/` holds synthetic copies of `/proc/stat` (two readings, for the rates),
+`/proc/loadavg`, `/proc/meminfo`, `/proc/diskstats` and `/proc/self/mountinfo`.
+
 To capture real output (adjust the file name for each command):
 
 ```sh

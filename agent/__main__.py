@@ -16,11 +16,15 @@ import json
 import logging
 import signal
 import sys
+import time
 
 from agent.config import DEFAULT_CONFIG_PATH, TOKEN_ENV_VAR, ConfigError, load_config
 from agent.connection import run_forever
 from agent.kube_api import KubeClient, permission_report
-from agent.report import build_report
+from agent.report import build_report, default_sampler
+
+# --once: seconds between the two metric readings that the rates are computed from.
+ONCE_SAMPLE_SECONDS = 1.0
 
 EXIT_OK = 0
 EXIT_CONFIG_ERROR = 2
@@ -137,6 +141,11 @@ def main(argv: list[str] | None = None) -> int:
         return check_k8s(config, args.config)
 
     if args.once:
+        if config.metrics.enabled:
+            # Rates (CPU %, disk and network per second) need two readings: take one now,
+            # so the printed report shows real numbers instead of nulls.
+            default_sampler().collect(containers="containers" in config.enabled_checks)
+            time.sleep(ONCE_SAMPLE_SECONDS)
         # json.dumps escapes control characters, so a hostile container or unit
         # name can't inject terminal escape sequences into the output.
         print(json.dumps(build_report(config), indent=2))

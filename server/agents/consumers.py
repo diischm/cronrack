@@ -41,14 +41,25 @@ from hosts.services import (
     host_group,
     save_report,
 )
+from metrics.ingest import save_metrics
 from network.services import save_network
 from rules.engine import top_issues
 
 logger = logging.getLogger(__name__)
 
 # Check names as in the agent's config (agent/report.py REPORT_KEYS).
-# "kubernetes" tells a 0.2.0 agent that it may send the key; an older server never lists it.
-ENABLED_CHECKS = ["updates", "reboot", "containers", "units", "timers", "disks", "kubernetes"]
+# "kubernetes" tells a 0.2.0 agent that it may send the key, "metrics" a 0.4.0 agent; an
+# older server never lists them, so an upgraded agent doesn't send what it would refuse.
+ENABLED_CHECKS = [
+    "updates",
+    "reboot",
+    "containers",
+    "units",
+    "timers",
+    "disks",
+    "kubernetes",
+    "metrics",
+]
 
 
 def bearer_token(headers) -> str | None:
@@ -163,7 +174,14 @@ def ingest_report(host_id: int, report: dict, connection_id: str) -> None:
     with transaction.atomic():
         host = Host.objects.get(pk=host_id)
         host_report, cluster_view = split_report(report)
-        result = save_report(host, host_report)
+        now = timezone.now()
+        # Samples first: the sustained rules in save_report read them (rules.resources).
+        try:
+            with transaction.atomic():
+                save_metrics(host, host_report.get("metrics"), now)
+        except Exception as exc:  # noqa: BLE001 - the host's own report must still be saved
+            logger.warning("Host %s: metrics not saved (%s)", host_id, type(exc).__name__)
+        result = save_report(host, host_report, now)
         if result.old_status != result.new_status:
             record_status_change(
                 host, result.old_status, result.new_status, top_issues(result.findings)

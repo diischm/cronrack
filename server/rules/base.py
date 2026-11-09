@@ -85,6 +85,9 @@ class RuleContext:
     # Newest released versions from clusters.updates ("k3s", "argocd", "helm"); empty
     # unless the owner turned online update checks on.
     latest: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    # A host's recent metric samples for the "sustained" rules (rules.resources), read
+    # lazily: metrics.windows.HostHistory, or a fake in tests. None for clusters/network.
+    history: Any = None
 
 
 Check = Callable[["Rule", Mapping[str, Any], RuleContext], list[Finding]]
@@ -94,7 +97,8 @@ Check = Callable[["Rule", Mapping[str, Any], RuleContext], list[Finding]]
 class Rule:
     id: str
     title: str
-    # updates | docker | systemd | disk | security | changes | backups | connectivity | kubernetes
+    # updates | docker | systemd | disk | security | changes | backups | connectivity |
+    # kubernetes | resources
     category: str
     default_severity: str
     check: Check

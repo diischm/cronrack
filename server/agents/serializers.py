@@ -16,6 +16,8 @@ If agent/report.py changes, change this file in the same pull request.
 """
 
 import ipaddress
+import logging
+import math
 import re
 from collections.abc import Mapping
 from datetime import datetime
@@ -607,6 +609,192 @@ class NetworkSerializer(StrictSerializer):
         return attrs
 
 
+# --- metrics (agent/metrics.py, agent/docker_api.py; agent 0.4.0) ------------------------
+# The agent's own caps: at most 32 mounts and 50 containers. Values are percentages
+# (0-100), bytes or bytes per second, all finite: NaN and Infinity are valid JSON for
+# Python's parser, so they are refused explicitly.
+
+METRICS_MAX_MOUNTS = 32
+METRICS_MAX_CONTAINERS = 50
+MAX_BYTES = 2**60  # an exabyte: no homelab disk or RAM is anywhere near
+MAX_RATE = 2**40  # a terabyte per second
+_FS_TYPE = r"[a-z0-9][a-z0-9._-]{0,31}"
+
+logger = logging.getLogger(__name__)
+
+
+class StrictNumberField(serializers.Field):
+    """A finite JSON number (int or float, never a bool or string) within a range."""
+
+    default_error_messages = {  # noqa: RUF012 - DRF reads this class attribute
+        "invalid": "Must be a number.",
+        "range": "Out of range.",
+    }
+
+    def __init__(self, min_value: float, max_value: float, ndigits: int = 2, **kwargs):
+        self.min_value, self.max_value, self.ndigits = min_value, max_value, ndigits
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, int | float):
+            self.fail("invalid")
+        if not math.isfinite(data):
+            self.fail("invalid")
+        if not self.min_value <= data <= self.max_value:
+            self.fail("range")
+        return round(float(data), self.ndigits)
+
+    def to_representation(self, value):
+        return value
+
+
+def _pct(**kwargs):
+    return StrictNumberField(0, 100, ndigits=1, **kwargs)
+
+
+def _bytes(**kwargs):
+    return StrictIntegerField(min_value=0, max_value=MAX_BYTES, **kwargs)
+
+
+def _rate(**kwargs):
+    return StrictIntegerField(min_value=0, max_value=MAX_RATE, allow_null=True, **kwargs)
+
+
+class MetricsCpuSerializer(StrictSerializer):
+    busy_pct = _pct(allow_null=True)
+    iowait_pct = _pct(allow_null=True)
+    load = serializers.ListField(
+        child=StrictNumberField(0, 100_000), min_length=3, max_length=3, allow_null=True
+    )
+    cores = StrictIntegerField(min_value=1, max_value=4096, allow_null=True)
+    temp_c = StrictNumberField(-40, 150, ndigits=1, allow_null=True)
+
+
+class MetricsMemorySerializer(StrictSerializer):
+    total = StrictIntegerField(min_value=1, max_value=MAX_BYTES)
+    available = _bytes()
+    swap_total = _bytes()
+    swap_used = _bytes()
+
+    def validate(self, attrs):
+        if attrs["available"] > attrs["total"] or attrs["swap_used"] > attrs["swap_total"]:
+            raise serializers.ValidationError("More than the total.")
+        return attrs
+
+
+class MetricsMountSerializer(StrictSerializer):
+    mount = StrictPatternField(r"/.*", max_length=MAX_NAME)
+    fs = StrictPatternField(_FS_TYPE, max_length=32)
+    size = StrictIntegerField(min_value=1, max_value=MAX_BYTES)
+    free = _bytes()
+    used_pct = _pct()
+    inodes_pct = _pct(allow_null=True)
+
+    def validate(self, attrs):
+        if attrs["free"] > attrs["size"]:
+            raise serializers.ValidationError({"free": ["More than the size."]})
+        return attrs
+
+
+class MetricsDiskIoSerializer(StrictSerializer):
+    read_bps = StrictIntegerField(min_value=0, max_value=MAX_RATE)
+    write_bps = StrictIntegerField(min_value=0, max_value=MAX_RATE)
+
+
+class MetricsContainerSerializer(StrictSerializer):
+    # Docker's own naming rule; a name can't start with "-" and pose as a command flag.
+    name = StrictPatternField(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", max_length=MAX_NAME, min_length=1)
+    cpu_pct = _pct(allow_null=True)
+    mem = _bytes(allow_null=True)
+    mem_limit = StrictIntegerField(min_value=1, max_value=MAX_BYTES, allow_null=True)
+    rx_bps = _rate()
+    tx_bps = _rate()
+
+
+class MetricsSerializer(StrictSerializer):
+    """The report's `metrics` key: agent/metrics.py MetricsSampler.collect()."""
+
+    interval_s = StrictIntegerField(min_value=0, max_value=7 * 86_400, allow_null=True)
+    cpu = MetricsCpuSerializer()
+    memory = MetricsMemorySerializer(allow_null=True)
+    mounts = MetricsMountSerializer(many=True, max_length=METRICS_MAX_MOUNTS)
+    disk_io = MetricsDiskIoSerializer(allow_null=True)
+    containers = MetricsContainerSerializer(
+        many=True, allow_null=True, max_length=METRICS_MAX_CONTAINERS
+    )
+    containers_truncated = StrictBooleanField()
+
+    def validate(self, attrs):
+        mounts = [m["mount"] for m in attrs["mounts"]]
+        names = [c["name"] for c in attrs["containers"] or []]
+        if len(set(mounts)) != len(mounts) or len(set(names)) != len(names):
+            raise serializers.ValidationError("Mounts and container names must be unique.")
+        return attrs
+
+
+def _metric_field_names() -> frozenset[str]:
+    names = {api_settings.NON_FIELD_ERRORS_KEY}
+    for serializer in (
+        MetricsSerializer,
+        MetricsCpuSerializer,
+        MetricsMemorySerializer,
+        MetricsMountSerializer,
+        MetricsDiskIoSerializer,
+        MetricsContainerSerializer,
+    ):
+        names |= set(serializer().fields)
+    return frozenset(names)
+
+
+def metrics_error_paths(errors, path: str = "") -> list[str]:
+    """Where a metrics part was invalid, without any of the data: list positions become
+    [n] and only declared field names are shown; any other key (unknown, or a name that
+    came from the report) becomes "?"."""
+    paths: list[str] = []
+    if isinstance(errors, dict):
+        known = _metric_field_names()
+        for key, value in errors.items():
+            if isinstance(key, int):
+                paths += metrics_error_paths(value, f"{path}[{key}]")
+            else:
+                name = key if key in known else "?"
+                paths += metrics_error_paths(value, f"{path}.{name}" if path else name)
+    elif isinstance(errors, list) and errors and not all(isinstance(e, str) for e in errors):
+        for index, value in enumerate(errors):
+            if value:
+                paths += metrics_error_paths(value, f"{path}[{index}]")
+    else:
+        paths.append(path or "metrics")
+    return paths[:5]
+
+
+class LenientMetricsField(serializers.Field):
+    """`metrics`, strictly validated, but never a reason to refuse the whole report.
+
+    Metrics are nice to have; the health checks are not. A metrics part that fails
+    MetricsSerializer becomes null (logged with the field paths, never the values), and
+    the rest of the report is saved as usual.
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("allow_null", True)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        serializer = MetricsSerializer(data=data)
+        if serializer.is_valid():
+            return serializer.validated_data
+        logger.warning(
+            "Ignored an invalid metrics part: %s",
+            "; ".join(metrics_error_paths(serializer.errors)),
+        )
+        return None
+
+    def to_representation(self, value):
+        return value
+
+
 class ReportSerializer(StrictSerializer):
     """The report built by agent/report.py: build_report()."""
 
@@ -624,6 +812,9 @@ class ReportSerializer(StrictSerializer):
     kubernetes = KubernetesSerializer(required=False, allow_null=True)
     # Only agents with [network] enabled send it; null when its collector crashed.
     network = NetworkSerializer(required=False, allow_null=True)
+    # Agent 0.4.0 and later, when the server announced "metrics"; null when its collector
+    # crashed or the part was invalid (LenientMetricsField: it never refuses the report).
+    metrics = LenientMetricsField()
     errors = ErrorSerializer(many=True, max_length=50)
 
     def validate_timestamp(self, value: str) -> str:

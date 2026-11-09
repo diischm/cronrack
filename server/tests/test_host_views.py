@@ -181,6 +181,8 @@ HOST_KEYS = {
     "id", "name", "status", "status_label", "issues", "last_seen_human", "url",
     # Phase 6b: the desktop card's detail strip.
     "updates", "containers", "disk_max_percent",
+    # Host metrics: the three thin meters.
+    "meters",
     # Kubernetes: server | agent | node, or None.
     "k8s_role",
     # Glass v8: the one short line (hosts.presenters.short_summary).
@@ -523,9 +525,10 @@ def test_disk_meter_colors(alice_client: Client, alice):
 
     html = alice_client.get("/").content.decode()
 
-    assert 'class="meter well" min="0" max="100" value="84"' in html
-    assert 'class="meter well meter--amber" min="0" max="100" value="85"' in html
-    assert 'class="meter well meter--red" min="0" max="100" value="95"' in html
+    # The colour follows the disk.usage finding (the user's limit), not a number in the page.
+    assert 'class="meter mmeter__bar" min="0" max="100" value="84"' in html
+    assert 'class="meter mmeter__bar meter--amber" min="0" max="100" value="85"' in html
+    assert 'class="meter mmeter__bar meter--red" min="0" max="100" value="95"' in html
 
 
 def test_detail_page_renders_in_the_shell(alice_client: Client, alice):

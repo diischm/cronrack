@@ -507,6 +507,17 @@ This runs the checks on your machine and prints the report as JSON. It does not
 connect to the server yet. Without `/etc/cronrack/agent.toml` it uses the defaults.
 Checks for tools you don't have (for example Docker) show `null`.
 
+The report also has a `metrics` key (CPU, memory, disks and running containers). To turn it
+off, add this to `agent.toml`, or install with `--no-metrics`:
+
+```toml
+[metrics]
+enabled = false
+```
+
+Network shares (NFS, CIFS, SSHFS) and FUSE mounts (ntfs-3g, mergerfs) are never measured for
+metrics: one that gets stuck would hang the agent. The disk check still covers them.
+
 ### 10. Open it from your phone (same network)
 
 Find your computer's address on the network:

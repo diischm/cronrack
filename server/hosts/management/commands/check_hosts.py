@@ -4,7 +4,8 @@ Each pass marks hosts and clusters that stopped checking in as offline (the dead
 switch), which records a status event and sends the alert. It then runs the notification
 jobs (notifications.dispatch): resolves offline findings whose host is back, sends what the
 cooldown or maintenance held back, the quiet-hours bundle, the daily summary, and prunes
-old resolved findings. Then, only for users who
+old resolved findings. Then the metric history jobs (metrics.rollup: 5-minute and 1-hour
+averages, and deleting samples past their retention). Then, only for users who
 turned it on, looks up the newest k3s, Argo CD and Helm versions (clusters.updates, at
 most once a day). Runs as its own small process
 next to the web server. `--once` (the default without --loop) runs a single pass.
@@ -124,6 +125,7 @@ class Command(BaseCommand):
         for cluster in mark_silent_clusters_offline(now):
             self.stdout.write(f"{cluster.name}: cluster offline")
         self.run_notifications(now)
+        self.run_metrics(now)
         # Its own try/except: looking up versions must never fail the dead-man's switch.
         try:
             for source in maybe_check_updates(now):
@@ -149,6 +151,23 @@ class Command(BaseCommand):
                 count = job(now)
             except Exception:
                 logger.exception("notification job failed: %s", label)
+                continue
+            if count:
+                self.stdout.write(f"{count} {label}")
+
+    def run_metrics(self, now) -> None:
+        """Metric history (metrics.rollup): averages, then retention. Each job has its own
+        try/except, and both are idempotent, so a failed pass is simply redone next time."""
+        from metrics import rollup
+
+        for label, job in (
+            ("metric averages written", rollup.rollup),
+            ("old metric samples deleted", rollup.prune),
+        ):
+            try:
+                count = job(now)
+            except Exception:
+                logger.exception("metrics job failed: %s", label)
                 continue
             if count:
                 self.stdout.write(f"{count} {label}")

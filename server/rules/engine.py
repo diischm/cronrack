@@ -227,6 +227,7 @@ def evaluate(
     overrides=None,
     latest=None,
     notify=None,
+    history=None,
 ) -> list[Finding]:
     """Run every rule against the report and return the findings, overrides applied.
 
@@ -235,11 +236,17 @@ def evaluate(
     replaces the rule's own. `latest` holds the newest released versions for the
     version rules (omitted = those rules stay quiet). `notify` is the owner's
     notifications.config.NotifyConfig; loaded here when `overrides` is too.
+    `history` feeds the sustained resource rules; omitted, the host's recent samples
+    are read from the database, and only if a rule asks (metrics.windows).
     """
     if overrides is None:
         overrides = load_overrides(host)
         if notify is None:
             notify = _load_notify(host.owner_id)
+    if history is None:
+        from metrics.windows import HostHistory
+
+        history = HostHistory(host.pk, now)
     report = report or {}
     ctx = RuleContext(
         host_id=host.pk,
@@ -248,6 +255,7 @@ def evaluate(
         last_seen_at=host.last_seen_at,
         settings=_no_settings,
         latest=latest or {},
+        history=history,
     )
     return _run_rules(
         RULES.values(),

@@ -32,6 +32,7 @@ from hosts.presenters import (
 )
 from hosts.samples import EXAMPLE_DETAIL_CONTEXT
 from hosts.services import close_agent, just_reported, request_collect
+from metrics.presenters import clean_range
 from rules.engine import effective_status
 
 AGENT_CONFIG_PATH = "/etc/cronrack/agent.toml"
@@ -137,7 +138,9 @@ def host_example(request: HttpRequest) -> HttpResponse:
 @require_GET
 def host_detail(request: HttpRequest, host_id: int) -> HttpResponse:
     host = get_owned_host(request.user, host_id)
-    return render(request, "hosts/detail.html", detail_context(host, timezone.now()))
+    metrics_range = clean_range(request.GET.get("range"))
+    context = detail_context(host, timezone.now(), metrics_range)
+    return render(request, "hosts/detail.html", context)
 
 
 @login_required

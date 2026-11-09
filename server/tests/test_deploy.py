@@ -187,7 +187,7 @@ def test_server_and_agent_versions():
     from cronrack import SERVER_VERSION
 
     assert SERVER_VERSION == "0.2.0"
-    assert AGENT_VERSION == "0.3.0"
+    assert AGENT_VERSION == "0.4.0"
 
 
 # The first "## [x.y.z]" heading is the newest release; "## [Unreleased]" doesn't match.

@@ -1,0 +1,20 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  The overview's three thin meters: CPU, memory and the fullest disk (hosts.presenters.meters).
+  No numbers on the card: the bar is enough at a glance. The value shows on hover (the
+  .mmeter__tip bubble), in the screen-reader sentence below, and in the unit's expanded
+  facts (tap on a phone). Colour only means something: the bar is the neutral meter fill,
+  amber or red ONLY while that rule's finding is active (the user's limit, the sustained
+  window), never just because a number is high.
+
+    {% include "components/metric_meters.html" with meters=unit.meters %}
+    phone=True   the copy for narrow screens (Glass): it sits beside the name
+    blank=True   the empty copy inside the overview's <template> (overview.js fills it)
+
+  Native <meter>: the width comes from the value attribute, so no inline style (CSP).
+  A meter the host doesn't report is left out (agents before 0.4.0: disk only).
+{% endcomment %}
+<span class="mmeters{% if phone %} mmeters--phone{% endif %}">
+  <span class="visually-hidden mmeters__words">{% if not blank %}{% for m in meters %}, {{ m.label }} {{ m.percent }}%{% if m.level %} (over the limit){% endif %}{% endfor %}{% endif %}</span>
+  <span class="mmeters__rows" aria-hidden="true">{% if blank %}{% include "components/metric_meter_row.html" with key="cpu" blank=True %}{% include "components/metric_meter_row.html" with key="ram" blank=True %}{% include "components/metric_meter_row.html" with key="disk" blank=True %}{% else %}{% for m in meters %}{% include "components/metric_meter_row.html" with key=m.key m=m %}{% endfor %}{% endif %}</span>
+</span>

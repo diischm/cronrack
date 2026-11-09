@@ -90,6 +90,8 @@ def test_upgrade_refuses_when_the_service_is_missing(box):
         "--network-hop=ISP-box=192.0.2.254",
         "--network-before Switch=192.0.2.2",
         "--network-before=Switch=192.0.2.2",
+        "--no-metrics",
+        "--metrics",
         "--uninstall",
     ],
 )
@@ -746,3 +748,85 @@ def test_upgrade_keeps_the_network_table(box, packages):
     assert snapshot(box) == before
     kept = next(line for line in result.out.splitlines() if "Kept:" in line)
     assert "[network] settings" in kept
+
+
+# --- [metrics] (agent 0.4.0) -------------------------------------------------------------
+
+METRICS_CONFIG = (
+    "import sys; sys.path.insert(0, '/opt/cronrack-agent/app');"
+    " from agent.config import load_config; print(load_config().metrics.enabled)"
+)
+
+
+def agent_metrics(box) -> str:
+    """[metrics] enabled, as the installed agent itself reads it."""
+    return box.ok(
+        f'runuser -u cronrack -- /opt/cronrack-agent/venv/bin/python -c "{METRICS_CONFIG}"'
+    ).strip()
+
+
+def test_metrics_are_on_by_default_and_need_no_table(box, packages):
+    box.install()
+
+    assert "[metrics]" not in box.read(CONFIG)
+    assert agent_metrics(box) == "True"
+
+
+def test_no_metrics_writes_the_table_the_agent_reads(box, packages):
+    result = box.install("--no-metrics")
+
+    assert "[metrics] enabled = false" in result.out
+    assert "[metrics]\nenabled = false" in box.read(CONFIG)
+    assert agent_metrics(box) == "False"
+    assert box.mode(CONFIG) == "root:cronrack 640"
+
+
+def test_metrics_turns_them_back_on_and_keeps_everything_else(box, packages):
+    box.install("--no-metrics --network --network-gateway auto")
+
+    box.install("--metrics")
+
+    config = box.read(CONFIG)
+    assert config.count("[metrics]") == 1
+    assert "enabled = false" not in config.split("[metrics]")[1]
+    assert agent_metrics(box) == "True"
+    assert agent_network(box).startswith("True auto")
+    assert "Token kept" in box.install("").out  # a plain re-run leaves [metrics] alone
+    assert agent_metrics(box) == "True"
+
+
+def test_no_metrics_and_metrics_together_are_refused(box):
+    result = box.sh("bash /install.sh --server https://localhost --no-metrics --metrics <&-")
+
+    assert result.code == 2, result.out
+    assert "can't be used together" in result.out
+    assert box.systemctl_calls() == []
+
+
+def test_upgrade_keeps_metrics_off(box, packages):
+    box.install("--no-metrics")
+    before = snapshot(box)
+    box.use_package("next")
+
+    result = box.upgrade()
+
+    assert result.code == 0, result.out
+    assert_asked_nothing(result.out)
+    assert snapshot(box) == before  # agent.toml byte for byte, [metrics] enabled = false
+    kept = next(line for line in result.out.splitlines() if "Kept:" in line)
+    assert "[metrics] settings" in kept
+    assert agent_metrics(box) == "False"
+
+
+def test_upgrade_of_a_config_without_metrics_changes_nothing_in_it(box, packages):
+    # An agent.toml from before 0.4.0 has no [metrics]: the upgrade leaves the file alone
+    # and the new agent collects metrics (the default).
+    box.install()
+    before = snapshot(box)
+    box.use_package("next")
+
+    result = box.upgrade()
+
+    assert result.code == 0, result.out
+    assert snapshot(box) == before
+    assert "[metrics]" not in box.read(CONFIG)
