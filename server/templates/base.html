@@ -70,10 +70,18 @@
       </a>
       <div class="topbar__actions">
         {% if user.is_authenticated %}
-        {# Desktop only (hidden below 900px): the server version, muted, left of the theme key. #}
-        <p class="side-version">CronRack v{{ server_version }}</p>
-        {% if pod_identity %}<p class="side-version">Served by pod {{ pod_identity.pod }} on node {{ pod_identity.node }}</p>{% endif %}
-        {% block topbar_meta %}{% endblock %}
+        {% comment %}
+          Desktop only (hidden below 900px): the meta lines, stacked and right-aligned left of the
+          theme key: the server version, the pod line (Kubernetes only) and the page's own
+          topbar_meta (the overview's "updated …"). Long lines are cut with an ellipsis so they
+          never run into the nav (pages.css); the pod line's full text is its wrapper's title.
+          pod/node come from the environment: plain {{ }} output, escaped.
+        {% endcomment %}
+        <div class="topbar-meta">
+          <p class="side-version">CronRack v{{ server_version }}</p>
+          {% if pod_identity %}<div class="topbar-meta__line" title="Served by pod {{ pod_identity.pod }} on node {{ pod_identity.node }}"><p class="side-version">Served by pod {{ pod_identity.pod }} on node {{ pod_identity.node }}</p></div>{% endif %}
+          {% block topbar_meta %}{% endblock %}
+        </div>
         {% endif %}
         <button type="button" class="btn btn--icon theme-toggle" aria-label="Dark mode" aria-pressed="false" data-theme-toggle>
           <svg class="ico-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>

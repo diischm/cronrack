@@ -195,7 +195,9 @@
 [data-skin="glass"] .brand__bars span:nth-child(3) { opacity: 0.35; }
 /* Glass is dark only: no light/dark key. */
 [data-skin="glass"] .theme-toggle { display: none; }
-[data-skin="glass"] .side-version { color: var(--g-text-3); font-size: 12px; }
+/* Top-bar meta lines (base.html .topbar-meta): fainter than --g-text-3 (.68), still 5.6:1 on
+   the ground (.56 alpha). */
+[data-skin="glass"] .side-version { color: rgba(235, 235, 245, 0.56); font-size: 12px; }
 /* Phone top bar: Add host is the orange round key (the primary action), Check all now a
    glass one. */
 [data-skin="glass"] .add-key.btn--icon { background: var(--g-accent); border-color: var(--g-accent); color: var(--g-on-accent); }
