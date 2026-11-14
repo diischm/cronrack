@@ -173,7 +173,7 @@ html, body { overflow-x: hidden; }
 
 /* Desktop-only pieces disappear on phones, so the phone layout stays as it was. */
 @media (max-width: 899.98px) {
-  .desk-only, .side-version { display: none !important; }
+  .desk-only, .side-version, .topbar-meta { display: none !important; }
 }
 
 /* Overview wrappers: on phones they stack exactly like the old flat list did. */
@@ -233,10 +233,17 @@ html, body { overflow-x: hidden; }
   .app:not(.app--bare) .brand__bars { gap: 4px; }
   .app:not(.app--bare) .brand__bars span { width: 22px; height: 4px; }
 
-  /* Right group: muted version text, then the theme key. */
+  /* Right group: the meta lines, then the theme key. Never wider than its grid column
+     (min-width: 0 + max-width), so it can't spill left over the nav. */
   .app:not(.app--bare) .topbar__actions { grid-area: actions; justify-self: end; align-items: center;
-    gap: var(--space-4); }
-  .side-version { margin: 0; font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+    gap: var(--space-4); min-width: 0; max-width: 100%; }
+  /* The meta lines stacked and right-aligned; three lines stay under the 44px keys' height.
+     Each line is cut with an ellipsis when the column is narrow. */
+  .topbar-meta { display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+    flex: 0 1 auto; min-width: 0; max-width: 100%; line-height: 1.15; text-align: right; }
+  .topbar-meta__line { min-width: 0; max-width: 100%; }
+  .side-version { margin: 0; font-size: 13px; color: var(--text-muted); white-space: nowrap;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .add-key, .topbar__form { display: none; }
 
   /* Nav: the same recessed track and raised active segment, now horizontal, icon left of label.
