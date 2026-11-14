@@ -188,7 +188,7 @@
   padding: 12px var(--space-4); }
 [data-skin="glass"] .brand { gap: 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; color: var(--g-text); }
 /* Logo: the same three bars (base.html), orange at 1 / .6 / .35. Phone 24px wide + a 19px
-   wordmark (it still fits beside the keys); desktop 28px + 22px. */
+   wordmark (it still fits beside the keys); desktop 32px + 26px. */
 [data-skin="glass"] .brand__bars { gap: 3px; }
 [data-skin="glass"] .brand__bars span { width: 24px; height: 4px; border-radius: 2px; background: var(--g-accent); }
 [data-skin="glass"] .brand__bars span:nth-child(2) { opacity: 0.6; }
@@ -207,9 +207,11 @@
   [data-skin="glass"] .app:not(.app--bare) .brand,
   [data-skin="glass"] .app:not(.app--bare) .topbar__actions { position: sticky; top: 0; z-index: 9;
     align-self: stretch; margin-block: 0; }
-  [data-skin="glass"] .app:not(.app--bare) .brand { font-size: 22px; }
-  [data-skin="glass"] .app:not(.app--bare) .brand__bars { gap: 4px; }
-  [data-skin="glass"] .app:not(.app--bare) .brand__bars span { width: 28px; height: 5px; border-radius: 2.5px; }
+  /* Desktop logo: bars 32 x 6 with 5px gaps (28px tall, so they sit on whole pixels in the 84px
+     bar) and a 26px wordmark. */
+  [data-skin="glass"] .app:not(.app--bare) .brand { font-size: 26px; }
+  [data-skin="glass"] .app:not(.app--bare) .brand__bars { gap: 5px; }
+  [data-skin="glass"] .app:not(.app--bare) .brand__bars span { width: 32px; height: 6px; border-radius: 3px; }
   /* The nav keeps its own 54px height, centred in the bar while it sticks. */
   [data-skin="glass"] .app:not(.app--bare) .bottom-nav { position: sticky; z-index: 9; align-self: start;
     top: calc((var(--g-bar-h) - 54px) / 2); margin-top: calc((var(--g-bar-h) - 54px) / 2); height: 54px; }

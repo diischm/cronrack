@@ -143,8 +143,8 @@ def test_updated_time_is_in_the_top_bar_and_refreshes(alice_client: Client, alic
 def test_glass_css_has_no_tile_rules_and_the_logo_sizes():
     css = glass_css()
     assert not [sel for sel, _ in css_rules(css) if ".tile" in sel or ".summary" in sel]
-    assert ".app:not(.app--bare) .brand__bars span { width: 28px; height: 5px;" in css  # desktop
-    assert '[data-skin="glass"] .app:not(.app--bare) .brand { font-size: 22px; }' in css
+    assert ".app:not(.app--bare) .brand__bars span { width: 32px; height: 6px;" in css  # desktop
+    assert '[data-skin="glass"] .app:not(.app--bare) .brand { font-size: 26px; }' in css
     assert '[data-skin="glass"] .brand__bars span { width: 24px; height: 4px;' in css  # phone
     assert '[data-skin="glass"] .brand { gap: 10px; font-size: 19px;' in css
 
