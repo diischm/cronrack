@@ -183,6 +183,8 @@ name in front of volume names. `docker-compose.yml` sets it to `cronrack` with
 [docs/DEPLOY.md](docs/DEPLOY.md) is the longer guide: installing Docker on Ubuntu, DNS
 names, the firewall, a real public domain with Let's Encrypt, and restoring backups.
 
+Install CronRack as a full-screen app on Android or iPhone: see [docs/install-app.md](docs/install-app.md).
+
 Experimental: running on Kubernetes, see [docs/kubernetes.md](docs/kubernetes.md).
 Monitoring a Kubernetes/k3s cluster (opt-in, read-only): see [docs/kubernetes-monitoring.md](docs/kubernetes-monitoring.md).
 

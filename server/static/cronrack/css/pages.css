@@ -9,8 +9,16 @@ html, body { overflow-x: hidden; }
 .app { width: 100%; max-width: 480px; min-height: 100vh; margin: 0 auto;
   display: flex; flex-direction: column; }
 
+/* Safe areas (iPhone notch, status bar, home bar): viewport-fit=cover in base.html lets the page
+   draw edge to edge, and env(safe-area-inset-*) says how much of each edge is covered. max()
+   keeps the usual padding wherever the inset is smaller, so desktop (all insets 0) is unchanged.
+   The bottom nav adds the bottom inset itself (--dock-bottom below). */
+
 /* Top bar */
-.topbar { padding: var(--space-5) var(--space-5) var(--space-2); display: flex; align-items: center; justify-content: space-between; }
+.topbar { padding: var(--space-5) var(--space-5) var(--space-2); display: flex; align-items: center; justify-content: space-between;
+  padding-top: max(var(--space-5), env(safe-area-inset-top, 0px));
+  padding-left: max(var(--space-5), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-5), env(safe-area-inset-right, 0px)); }
 .topbar__actions { display: flex; gap: var(--space-3); }
 /* Phone: a page's own icon keys in the top bar (overview: "Check all now"), 12px apart like
    the theme and Add host keys. Hidden from 900px (desktop has labelled keys in the page head). */
@@ -20,6 +28,8 @@ html, body { overflow-x: hidden; }
    directly inside the stack pulls the next block up to --space-3 (see .section-title below). */
 .app-main { --stack-gap: var(--space-5); flex: 1 1 auto;
   padding: var(--space-2) var(--space-5) var(--space-4);
+  padding-left: max(var(--space-5), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-5), env(safe-area-inset-right, 0px));
   display: flex; flex-direction: column; gap: var(--stack-gap); }
 
 .page-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
@@ -90,7 +100,7 @@ html, body { overflow-x: hidden; }
 }
 
 /* Toasts float at the top, inside the column width, above the nav bar (z-index 9). */
-.toasts { position: fixed; top: 12px; left: 0; right: 0; z-index: 10; margin: 0 auto;
+.toasts { position: fixed; top: max(12px, env(safe-area-inset-top, 0px)); left: 0; right: 0; z-index: 10; margin: 0 auto;
   width: calc(100% - 32px); max-width: 448px; display: flex; flex-direction: column; gap: 8px; }
 
 /* Full-page loader, centered on the ground */

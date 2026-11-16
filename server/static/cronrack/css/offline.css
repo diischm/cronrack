@@ -1,0 +1,52 @@
+/* Offline page (templates/pwa/offline.html), shown by the service worker with no network.
+   Self-contained on purpose: the only other file it loads is the Manrope font, which the
+   worker stores too (sw.js PRECACHE). Same tokens as the Glass theme (glass.css): ground
+   #0b0c0f, text #f5f5f7, muted rgba(235,235,245,.66), orange #f26b2e. Calm: no status
+   dots, no glows. */
+
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("../fonts/manrope-latin-wght.woff2") format("woff2");
+}
+
+:root { color-scheme: dark; }
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; min-height: 100%; background: #0b0c0f; }
+body {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #f5f5f7; -webkit-font-smoothing: antialiased;
+}
+
+.offline { width: 100%; max-width: 360px; display: flex; flex-direction: column;
+  align-items: center; gap: 12px; text-align: center; }
+
+/* The three-bar logo, as in the top bar (glass.css .brand__bars), a little larger. */
+.offline__logo { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.offline__logo span { display: block; width: 40px; height: 7px; border-radius: 4px; background: #f26b2e; }
+.offline__logo span:nth-child(2) { opacity: 0.6; }
+.offline__logo span:nth-child(3) { opacity: 0.32; }
+
+.offline__title { margin: 0; font-size: 22px; line-height: 1.25; font-weight: 700; letter-spacing: -0.01em; }
+.offline__text { margin: 0; font-size: 16px; line-height: 1.45; color: rgba(235, 235, 245, 0.66); }
+
+/* Orange key with dark text: 6.4:1. 48px tall, a comfortable thumb target. */
+.offline__retry {
+  margin-top: 16px; min-height: 48px; padding: 0 28px; border: 0; border-radius: 999px;
+  background: #f26b2e; color: #0b0c0f; font: inherit; font-size: 16px; font-weight: 700;
+  cursor: pointer; transition: transform 120ms ease;
+}
+.offline__retry:active { transform: scale(0.97); }
+.offline__retry:disabled { cursor: progress; opacity: 0.7; }
+/* "Checking…" / "Still can't reach it." Takes its height even when empty, so nothing jumps. */
+.offline__status { margin: 4px 0 0; min-height: 1.45em; font-size: 15px; line-height: 1.45;
+  color: rgba(235, 235, 245, 0.66); }
+.offline__retry:focus-visible { outline: 2px solid #f5f5f7; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .offline__retry { transition: none; } }

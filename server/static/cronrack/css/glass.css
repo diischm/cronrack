@@ -135,7 +135,7 @@
 
 /* --- Base -------------------------------------------------------------------------------- */
 /* Keyboard focus never lands under the sticky top bar (or, on phones, the floating nav). */
-[data-skin="glass"] { scroll-padding-top: calc(var(--g-bar-h) + 16px); scroll-padding-bottom: 24px; }
+[data-skin="glass"] { scroll-padding-top: calc(var(--g-bar-h) + 16px + env(safe-area-inset-top, 0px)); scroll-padding-bottom: 24px; }
 @media (max-width: 899.98px) {
   [data-skin="glass"] { scroll-padding-bottom: 140px; }
 }
@@ -184,8 +184,16 @@
    .app grid, so its three cells (logo, nav, version) are sticky one by one in a first row of
    fixed height (--g-bar-h). The blur band behind them is .g-edge--top (below), shown once the
    page has scrolled. */
-[data-skin="glass"] .topbar { position: sticky; top: 0; z-index: 9; min-height: var(--g-bar-h);
-  padding: 12px var(--space-4); }
+/* Safe areas (iPhone): the bar starts below the status bar / notch and clears a landscape notch
+   at the sides. max() keeps 12px / --space-4 wherever the inset is smaller (desktop: always). */
+/* The min-height grows by the top inset too, so the 44px keys still fit under the status bar
+   (the island below moves down by the same amount). */
+[data-skin="glass"] .topbar { position: sticky; top: 0; z-index: 9;
+  min-height: calc(var(--g-bar-h) + env(safe-area-inset-top, 0px));
+  padding: 12px var(--space-4);
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
 [data-skin="glass"] .brand { gap: 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; color: var(--g-text); }
 /* Logo: the same three bars (base.html), orange at 1 / .6 / .35. Phone 24px wide + a 19px
    wordmark (it still fits beside the keys); desktop 32px + 26px. */
@@ -267,7 +275,7 @@
    layers with growing blur, each masked to a band. Bottom (phones): behind the floating nav. */
 [data-skin="glass"] .g-edge { position: fixed; left: 0; right: 0; z-index: 8; pointer-events: none; }
 [data-skin="glass"] .g-edge > span { position: absolute; inset: 0; }
-[data-skin="glass"] .g-edge--top { top: 0; height: calc(var(--g-bar-h) + 24px); opacity: 0; transition: opacity 300ms var(--g-ease); }
+[data-skin="glass"] .g-edge--top { top: 0; height: calc(var(--g-bar-h) + 24px + env(safe-area-inset-top, 0px)); opacity: 0; transition: opacity 300ms var(--g-ease); }
 [data-skin="glass"] .g-edge--top.is-on { opacity: 1; }
 [data-skin="glass"] .g-edge--top::after { content: ""; position: absolute; inset: 0;
   background: linear-gradient(to bottom, rgba(11, 12, 15, 0.92), rgba(11, 12, 15, 0.6) 70%, rgba(11, 12, 15, 0));
@@ -930,7 +938,8 @@
 @keyframes g-toast-in { from { opacity: 0; transform: translateY(16px) scale(0.96); } }
 @keyframes g-toast-out { to { opacity: 0; transform: translateX(24px); } }
 @media (max-width: 899.98px) {
-  [data-skin="glass"] .toasts { top: auto; bottom: calc(76px + var(--dock-bottom, 12px) + 8px); }
+  [data-skin="glass"] .toasts { top: auto;
+    bottom: calc(76px + var(--dock-bottom, calc(12px + env(safe-area-inset-bottom, 0px))) + 8px); }
 }
 @media (min-width: 900px) {
   [data-skin="glass"] .toasts { top: auto; bottom: 32px; right: 32px; left: auto; width: 360px; margin: 0; }
@@ -1137,7 +1146,7 @@
    opacity, no width animation). Running: three vertical accordion bars (orange) + "Checking
    N hosts…". Done (.is-done): a green tick that draws itself + "All N hosts reported" /
    "X of N hosts reported"; then glass.js removes .is-on and it shrinks away. */
-[data-skin="glass"] .g-island { position: fixed; z-index: 11; top: calc(var(--g-bar-h) + 6px); left: 50%;
+[data-skin="glass"] .g-island { position: fixed; z-index: 11; top: calc(var(--g-bar-h) + env(safe-area-inset-top, 0px) + 6px); left: 50%;
   display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px; border-radius: 999px;
   background: var(--g-float); border: 1px solid var(--g-edge-2); box-shadow: var(--g-float-shadow);
   color: var(--g-text); font-size: 13.5px; font-weight: 500; white-space: nowrap; pointer-events: none;

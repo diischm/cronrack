@@ -8,8 +8,19 @@
   <title>{% block title %}CronRack{% endblock %}</title>
   {# Tab icon: SVG for modern browsers, a 32px PNG for the rest, and a 180px tile for iOS home screens. #}
   <link rel="icon" href="{% static 'cronrack/favicon.svg' %}" type="image/svg+xml">
-  <link rel="icon" href="{% static 'cronrack/favicon-32.png' %}" sizes="32x32" type="image/png">
-  <link rel="apple-touch-icon" href="{% static 'cronrack/apple-touch-icon.png' %}">
+  <link rel="icon" href="{% static 'cronrack/icons/favicon-32.png' %}" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="{% static 'cronrack/icons/apple-touch-icon.png' %}">
+  {% comment %}
+    Installable app (PWA, pwa/views.py): the manifest, the bar colour, and full screen when
+    started from the home screen. black-translucent: on iPhone the page draws under the
+    status bar; the top bar's safe-area padding (pages.css, glass.css) keeps it clear.
+  {% endcomment %}
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0b0c0f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CronRack">
   {# Only the dev styleguide fills this (a <meta> that forces the Legacy shell). #}
   {% block skin_override %}{% endblock %}
   {# Must stay first and must not be deferred: sets data-skin, data-theme, data-motion, #}
@@ -27,6 +38,7 @@
   <script src="{% static 'cronrack/js/copy.js' %}" defer></script>
   <script src="{% static 'cronrack/js/actions.js' %}" defer></script>
   <script src="{% static 'cronrack/js/nav.js' %}" defer></script>
+  <script src="{% static 'cronrack/js/sw-register.js' %}" defer></script>
   {% if user.is_authenticated %}<script src="{% static 'cronrack/js/sound.js' %}" defer></script>{% endif %}
   {% block extra_head %}{% endblock %}
 </head>

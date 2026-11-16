@@ -12,11 +12,16 @@ that they are all present.
 
 # Only files from this server may load: no inline <script>, no inline style="",
 # no third-party CDNs, never inside a frame, and forms only post back to us.
+# manifest-src / worker-src: the installable app's /manifest.webmanifest and /sw.js, from
+# this server only (default-src already says so; spelled out so it stays true if
+# default-src ever changes).
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
     "img-src 'self' data:; "
     "style-src 'self'; "
     "script-src 'self'; "
+    "manifest-src 'self'; "
+    "worker-src 'self'; "
     "frame-ancestors 'none'; "
     "base-uri 'none'; "
     "form-action 'self'"

@@ -1,0 +1,32 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% load static %}<!doctype html>
+{% comment %}
+  Shown by the service worker (pwa/sw.js) when CronRack can't be reached. It must work
+  with no network: it loads only files the worker has stored (sw.js PRECACHE), and it is
+  rendered without the request, so it never holds anything about the user or the server.
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0c0f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Offline · CronRack</title>
+  <link rel="icon" href="{% static 'cronrack/icons/favicon-32.png' %}" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="{% static 'cronrack/icons/apple-touch-icon.png' %}">
+  <link rel="stylesheet" href="{% static 'cronrack/css/offline.css' %}">
+  <script src="{% static 'cronrack/js/offline.js' %}" defer></script>
+</head>
+<body>
+  <main class="offline">
+    <span class="offline__logo" aria-hidden="true"><span></span><span></span><span></span></span>
+    <h1 class="offline__title">Can't reach your CronRack server.</h1>
+    <p class="offline__text">Check your connection or VPN, then try again.</p>
+    <button type="button" class="offline__retry" id="offline-retry">Try again</button>
+    {# Empty until "Try again" is used (offline.js): "Checking…", then "Still can't reach it." #}
+    <p class="offline__status" id="offline-status" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>
