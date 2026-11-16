@@ -108,6 +108,9 @@
       down and back on scrolling up. Desktop (pages.css, >= 900px): the dock has no box of
       its own (display: contents) and the <nav> moves into the top bar's center column.
       Each page marks its own tab by overriding one nav_* block with aria-current="page".
+      .seg__label's data-label repeats its (fixed) word: components.css stacks an invisible bold
+      copy under it, so an item is always as wide as its bold version and the nav never shifts
+      when the current page (the bold item) changes.
     {% endcomment %}
     <div class="nav-dock" id="nav-dock">
     <nav class="bottom-nav seg-track well" aria-label="Main">
@@ -115,22 +118,22 @@
       <span class="g-nav-hl g-only" aria-hidden="true"></span><span class="g-nav-pill g-only" aria-hidden="true"></span>
       <a class="seg" href="/" {% block nav_overview %}{% endblock %}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg>
-        Overview
+        <span class="seg__label" data-label="Overview">Overview</span>
       </a>
       {# Shown only when the user has a cluster. /clusters/ answers 200 either way. #}
       {% if shell_clusters.total %}
       <a class="seg" href="/clusters/" {% block nav_clusters %}{% endblock %}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5z"></path><path d="m3 13 9 5 9-5"></path></svg>
-        Clusters
+        <span class="seg__label" data-label="Clusters">Clusters</span>
       </a>
       {% endif %}
       <a class="seg" href="/activity/" {% block nav_activity %}{% endblock %}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>
-        Activity
+        <span class="seg__label" data-label="Activity">Activity</span>
       </a>
       <a class="seg" href="/settings/" {% block nav_settings %}{% endblock %}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"></path></svg>
-        Settings
+        <span class="seg__label" data-label="Settings">Settings</span>
       </a>
     </nav>
     </div>
