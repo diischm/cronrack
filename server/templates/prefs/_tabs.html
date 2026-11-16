@@ -1,10 +1,52 @@
 {# PLACEHOLDER — Apo owns the final version #}
 {% comment %}
-  Settings sections: plain links, one page each, so they work without JS and every tab has
-  its own URL. The current one has aria-current="page" (the views pass settings_tab).
+  Settings sections: plain links, one page each, so they work without JS and every section has
+  its own URL. The current one has aria-current="page" (the views pass settings_tab; "account"
+  is the General page).
+  Desktop (pages.css, >= 900px): a vertical list left of the content, sticky below the top bar;
+  each item is an icon and its label, with jump links to that page's parts under it (ids in
+  prefs/index.html, notifications.html and appearance.html). Phones: one full-width row of three
+  equal items, label only (icon and jump links hidden), 44px tall.
+  Current item: a grey pill with white text, like the main nav. No orange, no dots.
+  Appearance's "Reduce animations" and "Status labels" exist in Glass only, so their jump links
+  are .g-only too (hidden in Legacy, like the controls).
+  Included by prefs/index.html, notifications.html and appearance.html inside .settings-layout.
 {% endcomment %}
-<nav class="settings-tabs" aria-label="Settings sections">
-  <a class="settings-tabs__tab" href="{% url 'prefs' %}"{% if settings_tab == "account" %} aria-current="page"{% endif %}>Account</a>
-  <a class="settings-tabs__tab" href="{% url 'notifications' %}"{% if settings_tab == "notifications" %} aria-current="page"{% endif %}>Notifications</a>
-  <a class="settings-tabs__tab" href="{% url 'appearance' %}"{% if settings_tab == "appearance" %} aria-current="page"{% endif %}>Appearance</a>
+<nav class="settings-nav" aria-label="Settings sections">
+  <ul class="settings-nav__list">
+    <li><a class="settings-nav__item" href="{% url 'prefs' %}"{% if settings_tab == "account" %} aria-current="page"{% endif %}>
+      <svg class="settings-nav__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"></path><circle cx="16" cy="6" r="2"></circle><circle cx="10" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg>
+      <span class="settings-nav__label">General</span>
+    </a>
+      <ul class="settings-nav__sub" aria-label="General sections">
+        <li><a class="settings-nav__sublink" href="{% url 'prefs' %}#alerts-title">Alerts</a></li>
+        <li><a class="settings-nav__sublink" href="{% url 'prefs' %}#offline-title">Offline detection</a></li>
+        <li><a class="settings-nav__sublink" href="{% url 'prefs' %}#updates-title">Update checks</a></li>
+        <li><a class="settings-nav__sublink" href="{% url 'prefs' %}#account-title">Account &amp; password</a></li>
+      </ul>
+    </li>
+    <li><a class="settings-nav__item" href="{% url 'notifications' %}"{% if settings_tab == "notifications" %} aria-current="page"{% endif %}>
+      <svg class="settings-nav__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+      <span class="settings-nav__label">Notifications</span>
+    </a>
+      <ul class="settings-nav__sub" aria-label="Notifications sections">
+        <li><a class="settings-nav__sublink" href="{% url 'notifications' %}#notify-lead">Presets</a></li>
+        <li><a class="settings-nav__sublink" href="{% url 'notifications' %}#dc-title">Discord alerts</a></li>
+        <li><a class="settings-nav__sublink" href="{% url 'notifications' %}#qh-title">Quiet hours</a></li>
+        <li><a class="settings-nav__sublink" href="{% url 'notifications' %}#dg-title">Daily summary</a></li>
+        <li><a class="settings-nav__sublink" href="{% url 'notifications' %}#snd-title">Sounds</a></li>
+        <li><a class="settings-nav__sublink" href="{% url 'notifications' %}#notify-groups">Rules</a></li>
+      </ul>
+    </li>
+    <li><a class="settings-nav__item" href="{% url 'appearance' %}"{% if settings_tab == "appearance" %} aria-current="page"{% endif %}>
+      <svg class="settings-nav__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18"></path><path d="M12 7.5h4.5M12 12h6M12 16.5h4.5"></path></svg>
+      <span class="settings-nav__label">Appearance</span>
+    </a>
+      <ul class="settings-nav__sub" aria-label="Appearance sections">
+        <li><a class="settings-nav__sublink" href="{% url 'appearance' %}#appearance-title">Theme</a></li>
+        <li class="g-only"><a class="settings-nav__sublink" href="{% url 'appearance' %}#pref-motion-field">Reduce animations</a></li>
+        <li class="g-only"><a class="settings-nav__sublink" href="{% url 'appearance' %}#pref-labels-field">Status labels</a></li>
+      </ul>
+    </li>
+  </ul>
 </nav>
