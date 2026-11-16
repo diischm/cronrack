@@ -13,7 +13,7 @@
 
 
 # --- stage 1: build the virtual environment --------------------------------------------
-FROM python:3.12.16-slim-trixie@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54 AS build
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS build
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -28,7 +28,7 @@ RUN /opt/venv/bin/pip install --only-binary=:all: -r /tmp/requirements.txt \
 
 
 # --- stage 2: the image that actually runs ----------------------------------------------
-FROM python:3.12.16-slim-trixie@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 # PATH: use the venv's python/uvicorn. PYTHONDONTWRITEBYTECODE: the filesystem is
 # read-only at runtime (bytecode is compiled below instead). PYTHONUNBUFFERED: logs
