@@ -3,7 +3,7 @@
 
 {% block title %}Appearance · Settings · CronRack{% endblock %}
 {% block nav_settings %}aria-current="page"{% endblock %}
-{% block main_class %}app-main--settings{% endblock %}
+{% block main_class %}app-main--settings app-main--prefs{% endblock %}
 
 {% comment %}
   Settings → Appearance: the panel that used to sit on the one Settings page, unchanged.
@@ -13,7 +13,10 @@
   <div class="page-head">
     <h1 class="page-title">Settings</h1>
   </div>
+  {# The section list, then the content (.settings-body); see prefs/_tabs.html. #}
+  <div class="settings-layout">
   {% include "prefs/_tabs.html" %}
+  <div class="settings-body">
 
   <div class="settings-grid">
     <section class="surface panel form panel--fit" aria-labelledby="appearance-title">
@@ -49,16 +52,18 @@
       </fieldset>
       {# Glass only: native checkboxes with role="switch" (keyboard and screen readers for free). #}
       <div class="glass-prefs" id="glass-prefs" hidden>
-        <div class="field">
+        <div class="field" id="pref-motion-field">
           <label class="switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" id="pref-reduce-motion" aria-describedby="pref-reduce-motion-help"><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span><span class="switch__label">Reduce animations</span></label>
           <p class="field__help" id="pref-reduce-motion-help">Turns off the decorative motion (tilting cards, rolling numbers, sliding lists, the status ring). Opening and closing still work, just instantly. Always on when your device asks for reduced motion.</p>
         </div>
-        <div class="field">
+        <div class="field" id="pref-labels-field">
           <label class="switch"><input class="switch__input visually-hidden" type="checkbox" role="switch" id="pref-labels" aria-describedby="pref-labels-help"><span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span><span class="switch__label">Show status labels</span></label>
           <p class="field__help" id="pref-labels-help">Adds the word next to each status dot (Needs you, Heads up, All good, Offline). Helpful if red and green look alike.</p>
         </div>
       </div>
       <p class="muted" id="theme-nojs">Switching the theme needs JavaScript.</p>
     </section>
+  </div>
+  </div>
   </div>
 {% endblock %}

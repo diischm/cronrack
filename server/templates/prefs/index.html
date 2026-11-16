@@ -4,7 +4,7 @@
 
 {% block title %}Settings · CronRack{% endblock %}
 {% block nav_settings %}aria-current="page"{% endblock %}
-{% block main_class %}app-main--settings{% endblock %}
+{% block main_class %}app-main--settings app-main--prefs{% endblock %}
 {% block extra_head %}<script src="{% static 'cronrack/js/password.js' %}" defer></script>{% endblock %}
 
 {% comment %}
@@ -16,13 +16,16 @@
   outside the grid) through the button's form= attribute, so it isn't nested in the prefs
   form; actions.js sends it with fetch and shows the result as a toast.
   The webhook URL is only ever in its own input: no toast or message repeats it.
-  This is the Account tab; Notifications and Appearance have their own pages (prefs/_tabs.html).
+  This is the General section; Notifications and Appearance have their own pages
+  (prefs/_tabs.html). .settings-layout: the section list, then the content (.settings-body).
 {% endcomment %}
 {% block content %}
   <div class="page-head">
     <h1 class="page-title">Settings</h1>
   </div>
+  <div class="settings-layout">
   {% include "prefs/_tabs.html" %}
+  <div class="settings-body">
 
   <div class="settings-grid">
     <form class="settings-prefs" method="post" action="{% url 'prefs' %}" novalidate>
@@ -109,4 +112,6 @@
   <form id="test-alert-form" class="js-fetch-action" method="post" action="{% url 'test-alert' %}" data-action="test-alert" hidden>
     {% csrf_token %}
   </form>
+  </div>
+  </div>
 {% endblock %}

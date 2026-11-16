@@ -95,14 +95,22 @@ def test_groups_kubernetes_starts_collapsed_with_its_count(alice_client: Client)
 def test_page_shows_the_settings_tabs_with_notifications_current(alice_client: Client):
     html = alice_client.get(URL).content.decode()
     nav = re.search(
-        r'<nav class="settings-tabs" aria-label="Settings sections">(.*?)</nav>', html, re.DOTALL
+        r'<nav class="settings-nav" aria-label="Settings sections">(.*?)</nav>', html, re.DOTALL
     )
     assert nav
-    assert re.search(
-        r'href="/settings/notifications/" aria-current="page">Notifications<', nav.group(1)
+    items = re.findall(
+        r'<a (class="settings-nav__item"[^>]*)>.*?settings-nav__label">([^<]*)<',
+        nav.group(1),
+        re.DOTALL,
     )
-    assert 'href="/settings/">Account<' in nav.group(1)
-    assert 'href="/settings/appearance/">Appearance<' in nav.group(1)
+    assert items == [
+        ('class="settings-nav__item" href="/settings/"', "General"),
+        (
+            'class="settings-nav__item" href="/settings/notifications/" aria-current="page"',
+            "Notifications",
+        ),
+        ('class="settings-nav__item" href="/settings/appearance/"', "Appearance"),
+    ]
 
 
 def test_templates_keep_the_placeholder_marker():

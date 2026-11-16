@@ -4,7 +4,7 @@
 
 {% block title %}Notifications · Settings · CronRack{% endblock %}
 {% block nav_settings %}aria-current="page"{% endblock %}
-{% block main_class %}app-main--settings{% endblock %}
+{% block main_class %}app-main--settings app-main--prefs{% endblock %}
 {% block extra_head %}
   <link rel="stylesheet" href="{% static 'cronrack/css/notifications.css' %}">
   <script src="{% static 'cronrack/js/notifications.js' %}" defer></script>
@@ -33,7 +33,10 @@
   <div class="page-head">
     <h1 class="page-title">Settings</h1>
   </div>
+  {# The section list, then the content (.settings-body); see prefs/_tabs.html. #}
+  <div class="settings-layout">
   {% include "prefs/_tabs.html" %}
+  <div class="settings-body">
 
   {% if errors %}
     <div class="notify-errors" role="alert">
@@ -64,8 +67,8 @@
 
       <div class="notify-row">
         <div class="notify-row__text">
-          <span class="notify-row__title">Discord alerts</span>
-          <span class="notify-row__hint">Where alerts are sent. Change the webhook under <a href="{% url 'prefs' %}">Account</a>.</span>
+          <span class="notify-row__title" id="dc-title">Discord alerts</span>
+          <span class="notify-row__hint">Where alerts are sent. Change the webhook under <a href="{% url 'prefs' %}">General</a>.</span>
         </div>
         <div class="notify-row__controls">
           <button type="submit" class="btn" form="test-alert-form">Send test alert</button>
@@ -195,5 +198,7 @@
     {% csrf_token %}
     <input type="hidden" name="back" value="notifications">
   </form>
+  </div>
+  </div>
 </div>
 {% endblock %}

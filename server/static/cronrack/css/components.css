@@ -103,6 +103,21 @@ input.well:disabled, select.well:disabled, textarea.well:disabled { opacity: .55
 .seg[aria-current="page"] { color: var(--accent-text);
   background: linear-gradient(145deg, var(--surface-hi), var(--ground));
   box-shadow: inset 1px 1px 2px var(--rim-light), 3px 4px 8px var(--shadow-dark), -3px -3px 7px var(--shadow-light); }
+/* Main nav labels (base.html .seg__label): an invisible weight-600 copy of the word (data-label)
+   in a second, zero-height row, so every item is as wide as its bold version. Glass desktop
+   bolds only the current item (600 vs 500); without this the nav's width, and so its centred
+   position, changed from page to page. Where every item already has the same weight (Legacy
+   700, Glass phone 600) the copy is never the wider one, so nothing changes there.
+   visibility: hidden keeps the copy out of the accessibility tree. */
+.seg__label { display: inline-grid; justify-items: center; }
+.seg__label::after { content: attr(data-label); height: 0; overflow: hidden; visibility: hidden;
+  font-weight: 600; pointer-events: none; user-select: none; }
+/* Desktop: always keep room for the scrollbar, so short pages (no scrollbar) and long pages
+   (scrollbar) have the same width and the centred top-bar nav stays in the same place.
+   Phones use overlay scrollbars and keep their layout. */
+@media (min-width: 900px) {
+  html { scrollbar-gutter: stable; }
+}
 
 /* Status icon (components/status_icon.html), replaces the old text chips. The SHAPE says the
    status (check / exclamation / triangle / "i" / hourglass), the colour backs it up, and the
