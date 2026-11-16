@@ -265,6 +265,9 @@ html, body { overflow-x: hidden; }
   /* Host detail: the full page width, like the overview, for the 2- and 4-column panel grid.
      Same specificity, so it must come after the 720px rule. */
   .app-main.app-main--detail > * { max-width: none; }
+  /* A page whose main content is a rack (the Clusters list) uses the full width too, like the
+     overview's racks; otherwise its chassis is held to the 720px reading column. */
+  .app-main:has(> .rack-chassis) > * { max-width: none; }
   .app:not(.app--bare) .app-main--wide { --stack-gap: var(--space-8); }
   .panel, .empty { padding: var(--pad-card-desk); }
 
