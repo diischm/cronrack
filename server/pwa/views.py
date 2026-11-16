@@ -10,6 +10,9 @@ sw.js only lists the offline page and its static files.
   reached and caches nothing else (see pwa/sw.js).
 - GET /offline/: that offline page. Rendered without the request, so no context
   processor (user, version, pod name) can ever put anything personal into it.
+- GET /install: the page the phone-install QR code opens (Settings -> Phone app, the
+  terminal). It shows the "Install app" button (install.js). Public and rendered without
+  the request too: no user, version or hostname, no cookie, no CSRF token.
 """
 
 import hashlib
@@ -19,7 +22,9 @@ from pathlib import Path
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.template.loader import render_to_string
 from django.templatetags.static import static
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_safe
+
+from pwa.qr import is_loopback_host
 
 OFFLINE_PATH = "/offline/"
 GROUND = "#0b0c0f"
@@ -118,3 +123,15 @@ def service_worker(request: HttpRequest) -> HttpResponse:
 def offline(request: HttpRequest) -> HttpResponse:
     """GET /offline/: the page the worker shows when the server can't be reached."""
     return HttpResponse(render_offline_page())
+
+
+@require_safe  # GET and HEAD (uptime checkers and link previews ask with HEAD)
+def install(request: HttpRequest) -> HttpResponse:
+    """GET /install: how to put CronRack on the home screen.
+
+    Browsers only offer to install an app over HTTPS (or on localhost), so on plain http
+    the page says that and shows nothing else. The check uses the Host header, which Django
+    has already matched against ALLOWED_HOSTS.
+    """
+    secure = request.is_secure() or is_loopback_host(request.get_host())
+    return HttpResponse(render_to_string("pwa/install.html", {"secure": secure}))

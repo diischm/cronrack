@@ -72,6 +72,14 @@ if CRONRACK_DOMAIN and not re.fullmatch(r"[a-z0-9]([a-z0-9.-]*[a-z0-9])?", CRONR
         "(no https://, no port, no path)."
     )
 
+# Optional. The https address phones use, e.g. https://cronrack.example.com (add :port if
+# it is not 443, no path). It is only used to print the phone-install QR code in the
+# terminal and the logs (`manage.py phone_qr`, the first-start log). When unset,
+# https://<CRONRACK_DOMAIN> is used. Deliberately NOT checked here: a display-only setting
+# must never stop the server from starting (pwa/qr.py checks it when it is used). Also
+# deliberately NOT added to ALLOWED_HOSTS or CSRF_TRUSTED_ORIGINS.
+CRONRACK_PUBLIC_URL = os.environ.get("CRONRACK_PUBLIC_URL", "").strip()
+
 # Comma-separated extra names, e.g. "cronrack.home.lan,localhost". With DEBUG=1 and
 # nothing set, only this machine: localhost, 127.0.0.1 and [::1].
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")

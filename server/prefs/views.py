@@ -12,6 +12,7 @@ from cronrack.http import wants_json
 from notifications.text import TEST_MESSAGE
 from prefs.forms import PrefsForm
 from prefs.models import Prefs
+from pwa.qr import is_loopback_host, make_install_qr
 
 # At most one test alert per user in this many seconds (counted in the cache, like the
 # login limit): the key posts to Discord, so it must not be a way to spam the channel.
@@ -26,6 +27,22 @@ def _password_form(user, data=None) -> PasswordChangeForm:
         hint = "current" if name == "old_password" else "new"
         form.fields[name].widget.attrs.update({"class": "well", "autocomplete": f"{hint}-password"})
     return form
+
+
+def _phone_qr_data_uri(request: HttpRequest) -> str | None:
+    """The QR code for this server's /install page as a data: address, or None.
+
+    Only over HTTPS and only for a real name: a phone can't reach "localhost" (that is the
+    phone itself), and browsers install apps over HTTPS only. The address comes from the
+    request's Host header, which Django has already checked against ALLOWED_HOSTS; the
+    encoder rejects anything that is not a plain https address.
+    """
+    if not request.is_secure() or is_loopback_host(request.get_host()):
+        return None
+    try:
+        return make_install_qr(request.build_absolute_uri("/").rstrip("/")).svg_data_uri
+    except ValueError:
+        return None
 
 
 @login_required
@@ -60,7 +77,13 @@ def prefs_index(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "prefs/index.html",
-        {"prefs_form": prefs_form, "password_form": password_form, "settings_tab": "account"},
+        {
+            "prefs_form": prefs_form,
+            "password_form": password_form,
+            "settings_tab": "account",
+            "phone_install_url": request.build_absolute_uri("/install"),
+            "phone_qr_data_uri": _phone_qr_data_uri(request),
+        },
         status=status,
     )
 

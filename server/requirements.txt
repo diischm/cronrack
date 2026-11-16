@@ -3,3 +3,4 @@ channels==4.3.2
 uvicorn[standard]==0.54.0
 djangorestframework==3.18.3
 whitenoise==6.12.0
+segno==1.6.6

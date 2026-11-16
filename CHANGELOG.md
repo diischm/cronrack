@@ -7,6 +7,12 @@ before 1.0.0, any release may change things that worked before, and the notes sa
 
 ### Added
 
+- **Phone-install QR code.** Settings has a new **Phone app** panel with a QR code that opens
+  the new public page `/install` (an Install button on Android, the Share steps on iPhone).
+  `python manage.py phone_qr` prints the same code in the terminal, and the first start (before
+  the first account exists) prints it under the setup code. The code only holds the address
+  ending in `/install`. New optional setting `CRONRACK_PUBLIC_URL` (default
+  `https://<CRONRACK_DOMAIN>`); new dependency `segno` (QR codes, pure Python).
 - **Host metrics.** Agent **0.4.0** also reports CPU (busy, iowait, load, cores, temperature if
   there is a sensor), memory (from MemAvailable, plus swap), local disks (space, inodes,
   throughput) and, with Docker access, each running container's CPU, memory and network.

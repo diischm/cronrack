@@ -103,6 +103,7 @@ is in the log.
 |---|---|---|---|---|---|
 | `SECRET_KEY` | **yes** | — | **yes** | all | Django's signing key. Same value for every role, and keep it: changing it logs everyone out. Put it in a Secret. |
 | `CRONRACK_DOMAIN` | yes for `web` | — | no | web | The name browsers and agents use, e.g. `<tailscale-name>`. Bare name: no `https://`, no port. Feeds `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` and the agent install command. |
+| `CRONRACK_PUBLIC_URL` | no | `https://<CRONRACK_DOMAIN>` | no | web | The https address phones use, e.g. `https://cronrack.example.com` (add `:port` if not 443, no path). Only used to print the phone-install QR code (`python manage.py phone_qr`, first-start log). Not added to `ALLOWED_HOSTS` or `CSRF_TRUSTED_ORIGINS`: if it differs from `CRONRACK_DOMAIN`, add the name there yourself. |
 | `BEHIND_PROXY` | yes behind Traefik: `1` | `0` | no | web | Believe `X-Forwarded-Proto` (needed for secure cookies and the https redirect). |
 | `FORWARDED_ALLOW_IPS` | **yes** for `web` | — | no | web | Addresses/networks uvicorn believes `X-Forwarded-For`/`-Proto` from: the k3s pod network, `10.42.0.0/16` (Traefik's pod IP changes). Comma-separated IPs and CIDRs; `*` and malformed entries are refused. See section 10 for the NetworkPolicy this needs. |
 | `ALLOWED_HOSTS` | no | — | no | web | Extra host names, comma-separated. |

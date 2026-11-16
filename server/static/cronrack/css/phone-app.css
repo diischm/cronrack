@@ -1,0 +1,32 @@
+/* Settings -> Phone app panel (templates/prefs/_phone_app.html). Its own file, loaded only
+   by the Settings page, because it needs the display-mode media query that pages.css and
+   glass.css must never contain (tests/test_pwa.py: same look installed or in a tab).
+   Desktop: the QR tile and the scan text. Phone-width screens and the installed app: the
+   link to /install instead (scanning your own screen makes no sense). Calm: no shadow, no
+   glow, no pill, no status dot. */
+
+/* The QR needs a real white ground to scan, so the tile is plain white whatever the theme. */
+.phone-app__scan { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); }
+/* forced-color-adjust: Windows high-contrast mode must not repaint the white ground. */
+.phone-app__tile { flex: none; padding: 12px; border-radius: 14px; background: #fff; line-height: 0;
+  forced-color-adjust: none; }
+.phone-app__tile img { display: block; width: 200px; max-width: 100%; height: auto; }
+.phone-app__side { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column;
+  align-items: flex-start; gap: var(--space-3); }
+.phone-app__url { max-width: 100%; overflow-wrap: anywhere; font-family: var(--font-code);
+  font-size: 13px; color: var(--text-muted); }
+.phone-app__open, .phone-app__installed { display: none; }
+.phone-app__open p { margin: 0; }
+/* Stand-alone links only (a link alone in its paragraph): a 44px target. */
+.phone-app p > a:only-child { display: inline-flex; align-items: center; min-height: 44px; }
+
+/* A phone screen: the link to /install instead of a code to scan. */
+@media (max-width: 899px) {
+  .phone-app__scan { display: none; }
+  .phone-app__open { display: block; }
+}
+/* Already the installed app: nothing to install. */
+@media (display-mode: standalone), (display-mode: minimal-ui), (display-mode: fullscreen) {
+  .phone-app__scan, .phone-app__open { display: none; }
+  .phone-app__installed { display: block; }
+}

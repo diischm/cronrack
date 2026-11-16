@@ -6,13 +6,14 @@ page shows an inline error on that field. Plus: the webhook URL is never repeate
 or message, no inline script/style/handlers, IDOR, and the title's status.
 """
 
+import base64
 import re
 from datetime import timedelta
 from pathlib import Path
 from unittest import mock
 
 import pytest
-from django.test import Client
+from django.test import Client, override_settings
 from django.utils import timezone
 
 from hosts.models import AgentToken, Host
@@ -377,3 +378,120 @@ def test_other_users_host_settings_are_404(client: Client, bob, host, close, met
     assert AgentToken.objects.get(host=host).revoked is False
     close.direct.assert_not_called()
     close.on_commit.assert_not_called()
+
+
+# --- Settings: the "Phone app" panel (QR code for /install) ---------------------------------
+
+PHONE_ALT = "QR code to install CronRack on your phone"
+PHONE_URL = "https://cronrack.home.lan/install"
+HTTPS_NOTE = "Open CronRack over HTTPS to install the app"
+DOCS_LINK = "https://github.com/diischm/cronrack/blob/main/docs/install-app.md"
+LAN = {"HTTP_HOST": "cronrack.home.lan"}
+DATA_URI = re.compile(r'<img[^>]*src="(data:image/svg\+xml;base64,[A-Za-z0-9+/=]+)"')
+
+
+@pytest.fixture
+def lan():
+    with override_settings(ALLOWED_HOSTS=["cronrack.home.lan", "localhost"]):
+        yield
+
+
+def test_phone_panel_needs_login(client: Client, alice, lan):
+    response = client.get("/settings/", secure=True, **LAN)
+    assert response.status_code == 302
+    assert response["Location"].startswith("/login/")
+
+
+def test_phone_panel_shows_the_qr_over_https(alice_client: Client, lan):
+    response = alice_client.get("/settings/", secure=True, **LAN)
+    body = response.content.decode()
+    assert 'id="phone-title"' in body and ">Phone app</h2>" in body
+    match = DATA_URI.search(body)
+    assert match, "no QR image"
+    assert f'alt="{PHONE_ALT}"' in body
+    svg = base64.b64decode(match.group(1).split(",", 1)[1]).decode("ascii")
+    assert svg.startswith("<svg")
+    for banned in ("<script", "href", "cronrack.home.lan"):
+        assert banned not in svg
+    # The QR is an <img>, not inline markup: the page holds no <svg of its own for it.
+    assert "<svg" not in body.split('id="phone-title"', 1)[1].split("</section>", 1)[0]
+    assert re.search(
+        r'<code[^>]*id="phone-install-url"[^>]*>\s*' + re.escape(PHONE_URL) + r"\s*</code>", body
+    )
+    button = re.search(r"<button[^>]*js-copy[^>]*>", body)
+    assert button and 'aria-controls="phone-install-url"' in button.group(0)
+    assert 'href="/settings/#phone-title"' in body  # the jump link in the section list
+    assert 'href="/install"' in body
+    assert "token" not in svg and "csrf" not in svg
+
+
+def test_phone_panel_sits_between_update_checks_and_account(alice_client: Client, lan):
+    body = alice_client.get("/settings/", secure=True, **LAN).content.decode()
+    assert (
+        body.index('id="updates-title"')
+        < body.index('id="phone-title"')
+        < body.index('id="account-title"')
+    )
+    # Outside the prefs form: its Copy button must not submit anything.
+    form_end = body.index("</form>", body.index('class="settings-prefs"'))
+    assert body.index('id="phone-title"') > form_end
+
+
+def test_phone_panel_over_plain_http_has_no_qr(alice_client: Client, lan):
+    body = alice_client.get("/settings/", **LAN).content.decode()
+    assert "data:image/svg+xml" not in body
+    assert HTTPS_NOTE in body
+    assert f'href="{DOCS_LINK}"' in body and 'rel="noopener noreferrer"' in body
+    assert 'href="/install"' in body
+
+
+def test_phone_panel_on_localhost_has_no_qr(alice_client: Client, lan):
+    body = alice_client.get("/settings/", secure=True, HTTP_HOST="localhost").content.decode()
+    assert "data:image/svg+xml" not in body
+    assert HTTPS_NOTE in body
+
+
+def test_phone_panel_trusts_the_proxy_header_only_when_configured(alice_client: Client, lan):
+    header = {"HTTP_X_FORWARDED_PROTO": "https", **LAN}
+    with override_settings(SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https")):
+        body = alice_client.get("/settings/", **header).content.decode()
+    match = DATA_URI.search(body)
+    assert match
+    assert f">{PHONE_URL}<" in body.replace(" ", "").replace("\n", "")
+    with override_settings(SECURE_PROXY_SSL_HEADER=None):
+        body = alice_client.get("/settings/", **header).content.decode()
+    assert "data:image/svg+xml" not in body
+    assert HTTPS_NOTE in body
+
+
+def test_phone_panel_cannot_be_injected_through_the_host_header(alice_client: Client):
+    evil = 'evil"><script>alert(1)</script>.example'
+    with override_settings(ALLOWED_HOSTS=["*"]):
+        response = alice_client.get("/settings/", secure=True, HTTP_HOST=evil)
+    assert response.status_code == 400
+    assert "<script>alert" not in response.content.decode()
+
+
+def test_phone_panel_never_puts_a_host_into_markup_unescaped(alice_client: Client):
+    with override_settings(ALLOWED_HOSTS=["*"]):
+        response = alice_client.get("/settings/", secure=True, HTTP_HOST="a'b.example")
+    assert "<script>alert" not in response.content.decode()
+    if response.status_code == 200:
+        # Whatever Django lets through is shown escaped, and only inside the data address.
+        assert "a'b.example" not in response.content.decode()
+
+
+def test_phone_panel_page_still_has_no_inline_script_or_style(alice_client: Client, lan):
+    body = alice_client.get("/settings/", secure=True, **LAN).content.decode()
+    found = scan(body)
+    assert found.inline_script_text == ""
+    assert found.inline_styles == []
+    assert found.event_handlers == []
+
+
+def test_phone_app_tile_survives_forced_colors_and_links_stay_scoped():
+    css = (Path(__file__).resolve().parents[1] / "static/cronrack/css/phone-app.css").read_text()
+    tile = css.split(".phone-app__tile {", 1)[1].split("}", 1)[0]
+    assert "forced-color-adjust: none" in tile
+    # Only stand-alone links get the 44px target, never links inside a sentence.
+    assert ".phone-app a " not in css and ".phone-app a," not in css
