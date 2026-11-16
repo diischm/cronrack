@@ -703,7 +703,10 @@
 [data-skin="glass"] .rack-unit .rack-unit__issues.cluster-unit__facts-line { display: none; }
 [data-skin="glass"] .rack-unit--example .rack-unit__issues { white-space: normal; }
 /* Readout panel. */
-[data-skin="glass"] .rack-unit__panel { grid-column: 3; grid-row: 1; display: grid; grid-template-columns: 112px 120px 128px;
+/* Columns at their full widths when there is room; they may shrink (to their minimum) rather
+   than push the row out of its rack. */
+[data-skin="glass"] .rack-unit__panel { grid-column: 3; grid-row: 1; display: grid;
+  grid-template-columns: minmax(64px, 112px) minmax(72px, 120px) minmax(80px, 128px);
   column-gap: 14px; padding: 7px 12px; border-radius: 8px; background: var(--g-well); border: 1px solid rgba(255, 255, 255, 0.04);
   box-shadow: none; font-size: 12px; }
 [data-skin="glass"] .readout { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -751,13 +754,40 @@
 [data-skin="glass"] .g-unit-more__check { display: flex; }
 [data-skin="glass"] .g-unit-more__off-note { margin: 0; font-size: 12px; color: var(--g-text-3); }
 
-/* Narrower rows (below 1500px): the summary line goes under the name. */
+/* Narrower rows (below 1500px): the summary line goes under the name. The name keeps at least
+   140px (ellipsis after that); the readout panel gives way first. */
 @media (max-width: 1499.98px) {
-  [data-skin="glass"] .rack-unit { grid-template-columns: minmax(0, 1fr) auto auto 18px; }
+  [data-skin="glass"] .rack-unit { grid-template-columns: minmax(140px, 1fr) auto auto 18px; }
   [data-skin="glass"] .rack-unit .rack-unit__issues, [data-skin="glass"] .rack-unit .rack-unit__summary { grid-column: 1; grid-row: 2; }
   [data-skin="glass"] .rack-unit__panel { grid-column: 2; grid-row: 1 / span 2; }
   [data-skin="glass"] .rack-unit .rack-unit__vents { grid-column: 3; grid-row: 1 / span 2; }
   [data-skin="glass"] .g-unit__chev { grid-column: 4; grid-row: 1 / span 2; }
+}
+/* Tight racks (by the unit's own width, wherever it sits): rather than overflow the frame,
+   the readout columns shrink first, then the decorative vents go, then a cluster's k3s readout
+   (the version stays in the unit's expanded part), and only then may the name go below 140px
+   (never below 96px). A full row needs about 690px (name 140 + panel 414 + vents + chevron +
+   gaps + padding). */
+[data-skin="glass"] .rack__slot { container: rack-slot / inline-size; }
+/* A narrow unit uses the narrow row (summary under the name) whatever the window width, so the
+   wide five-column row never has to fit into a small rack. */
+@container rack-slot (max-width: 760px) {
+  [data-skin="glass"] .rack-unit { grid-template-columns: minmax(140px, 1fr) auto auto 18px; }
+  [data-skin="glass"] .rack-unit .rack-unit__issues, [data-skin="glass"] .rack-unit .rack-unit__summary { grid-column: 1; grid-row: 2; }
+  [data-skin="glass"] .rack-unit__panel { grid-column: 2; grid-row: 1 / span 2; }
+  [data-skin="glass"] .rack-unit .rack-unit__vents { grid-column: 3; grid-row: 1 / span 2; }
+  [data-skin="glass"] .g-unit__chev { grid-column: 4; grid-row: 1 / span 2; }
+}
+@container rack-slot (max-width: 690px) {
+  [data-skin="glass"] .rack-unit .rack-unit__vents { display: none; }
+}
+@container rack-slot (max-width: 660px) {
+  [data-skin="glass"] .rack-unit__panel:has(.cluster-unit__version) {
+    grid-template-columns: minmax(64px, 112px) minmax(72px, 120px); }
+  [data-skin="glass"] .rack-unit__panel .readout:has(.cluster-unit__version) { display: none; }
+}
+@container rack-slot (max-width: 520px) {
+  [data-skin="glass"] .rack-unit { grid-template-columns: minmax(96px, 1fr) auto auto 18px; }
 }
 /* Phone (below 900px): ears, readout panel and vents hide; name / role, summary, chevron. */
 @media (max-width: 899.98px) {
