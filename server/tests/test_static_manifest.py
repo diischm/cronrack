@@ -113,6 +113,34 @@ def test_rendered_page_links_hashed_files(manifest_storage, client, alice):
     assert '"/static/cronrack/css/components.css"' not in html
 
 
+def test_pwa_manifest_icons_use_hashed_files(manifest_storage, collected, client, alice):
+    root, _ = collected
+    icons = json.loads(client.get("/manifest.webmanifest").content)["icons"]
+    for icon in icons:
+        assert HASHED.search(icon["src"]), icon["src"]
+        assert (root / icon["src"].removeprefix("/static/")).is_file(), icon["src"]
+
+
+def test_pwa_precache_uses_hashed_files(manifest_storage, collected, client, alice):
+    root, paths = collected
+    sw = client.get("/sw.js").content.decode()
+    precache = json.loads(re.search(r"^const PRECACHE = (\[.*\]);$", sw, re.MULTILINE).group(1))
+    assert precache[0] == "/offline/"
+    for url in precache[1:]:
+        assert HASHED.search(url), url
+        assert (root / url.removeprefix("/static/")).is_file(), url
+    # The offline page's CSS loads the font by its hashed name, the same URL that is stored.
+    css = (root / paths["cronrack/css/offline.css"]).read_text()
+    font = paths["cronrack/fonts/manrope-latin-wght.woff2"]
+    assert f'url("../fonts/{Path(font).name}")' in css
+    assert f"/static/{font}" in precache
+    # And the offline page links exactly the hashed CSS and JS that are stored.
+    offline = client.get("/offline/").content.decode()
+    for name in ("cronrack/css/offline.css", "cronrack/js/offline.js"):
+        assert f'"/static/{paths[name]}"' in offline
+        assert f"/static/{paths[name]}" in precache
+
+
 def test_debug_uses_plain_names_without_a_manifest(tmp_path):
     # Development (DEBUG=1): no collectstatic has run, {% static %} still works.
     with override_settings(DEBUG=True, STATIC_ROOT=str(tmp_path), STORAGES=MANIFEST_STORAGES):

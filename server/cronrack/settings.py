@@ -144,6 +144,7 @@ INSTALLED_APPS = [
     "rules",
     "notifications",
     "metrics",
+    "pwa",
 ]
 
 MIDDLEWARE = [

@@ -23,12 +23,15 @@ TEMPLATES = SERVER / "templates"
 STATIC = SERVER / "static" / "cronrack"
 GLASS_JS = ["glass.js", "glass-tabs.js", "power-slide.js"]
 
-# The exact policy from before the Glass theme. Glass must not loosen it in any way.
-CSP_BEFORE_GLASS = (
+# The exact policy. Glass must not loosen it in any way. The only change since Glass:
+# manifest-src and worker-src 'self' for the installable app (PWA).
+EXPECTED_CSP = (
     "default-src 'self'; "
     "img-src 'self' data:; "
     "style-src 'self'; "
     "script-src 'self'; "
+    "manifest-src 'self'; "
+    "worker-src 'self'; "
     "frame-ancestors 'none'; "
     "base-uri 'none'; "
     "form-action 'self'"
@@ -280,7 +283,7 @@ def test_settings_page_has_the_appearance_controls(client: Client, alice):
 
 
 def test_csp_is_unchanged_by_the_glass_theme(client: Client, alice):
-    assert CONTENT_SECURITY_POLICY == CSP_BEFORE_GLASS
+    assert CONTENT_SECURITY_POLICY == EXPECTED_CSP
     client.force_login(alice)
     for url in ("/", "/settings/", "/hosts/add/"):
-        assert client.get(url)["Content-Security-Policy"] == CSP_BEFORE_GLASS, url
+        assert client.get(url)["Content-Security-Policy"] == EXPECTED_CSP, url

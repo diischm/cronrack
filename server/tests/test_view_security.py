@@ -196,6 +196,7 @@ def test_csrf_failure_page_renders(alice):
 
 EXPECTED_CSP = (
     "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
+    "manifest-src 'self'; worker-src 'self'; "
     "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
 
@@ -311,6 +312,7 @@ ALLOWED_URL = re.compile(
     r"|/static/cronrack/[a-z0-9_/-]+\.(css|js|png|svg)"
     r"|/|/activity/|/clusters/|/settings/|/hosts/add/|/hosts/collect-all/"
     r"|/api/v1/overview\.json"
+    r"|/manifest\.webmanifest"  # the installable app's manifest (base.html <head>)
 )
 EVIL_URLS = [
     "javascript:alert(1)",
