@@ -1,0 +1,70 @@
+/* Install page (templates/pwa/install.html), the page the phone-install QR code opens.
+   Standalone, like offline.css and with the same values: ground #0b0c0f, text #f5f5f7,
+   muted rgba(235,235,245,.66), orange #f26b2e. Calm: no glows, no shadows, no pills behind
+   labels, no status dots, nothing that moves. */
+
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("../fonts/manrope-latin-wght.woff2") format("woff2");
+}
+
+:root { color-scheme: dark; }
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Blocks are switched with the hidden attribute (install.js); this keeps display rules
+   below from showing a hidden block. */
+[hidden] { display: none !important; }
+
+html, body { margin: 0; min-height: 100%; background: #0b0c0f; }
+body {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #f5f5f7; -webkit-font-smoothing: antialiased;
+}
+
+.install { width: 100%; max-width: 360px; display: flex; flex-direction: column;
+  align-items: center; gap: 12px; text-align: center; }
+.install__block { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+
+/* The three-bar logo, as on the offline page. */
+.install__logo { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.install__logo span { display: block; width: 40px; height: 7px; border-radius: 4px; background: #f26b2e; }
+.install__logo span:nth-child(2) { opacity: 0.6; }
+.install__logo span:nth-child(3) { opacity: 0.32; }
+
+.install__title { margin: 0; font-size: 22px; line-height: 1.25; font-weight: 700; letter-spacing: -0.01em; }
+.install__text { margin: 0; font-size: 16px; line-height: 1.45; color: rgba(235, 235, 245, 0.66); }
+
+/* The two iPhone steps: an icon and a few words each. */
+.install__steps { margin: 4px 0 0; padding: 0; list-style: none; width: 100%;
+  display: flex; flex-direction: column; gap: 8px; }
+.install__step { display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 8px 4px;
+  font-size: 16px; line-height: 1.4; text-align: left; }
+.install__icon { flex: none; color: #f5f5f7; }
+
+/* Orange key with dark text (6.4:1), 48px tall. Used for the button and the link that looks like it. */
+.install__button {
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-top: 8px; min-height: 48px; padding: 0 28px; border: 0; border-radius: 999px;
+  background: #f26b2e; color: #0b0c0f; font: inherit; font-size: 16px; font-weight: 700;
+  text-decoration: none; cursor: pointer;
+}
+
+/* Plain text link, still a comfortable 44px target. */
+.install__link {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: 0 12px; color: #f5f5f7; font-size: 16px; font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+
+.install__button:focus-visible, .install__link:focus-visible {
+  outline: 2px solid #f5f5f7; outline-offset: 3px; }
+/* For screen readers only: the visible block already shows the same news. */
+.install__status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

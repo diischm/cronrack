@@ -1,0 +1,70 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% load static %}<!doctype html>
+{% comment %}
+  The page the phone-install QR code opens (Settings -> Phone app, `manage.py phone_qr`).
+  Public and rendered without the request (pwa/views.py install): nothing about the user, the
+  hosts or the server is in it. Over plain http browsers offer no install, so only a note
+  about HTTPS is shown. Over HTTPS, install.js shows exactly one of the blocks below by
+  removing `hidden`; without JS the first block (the browser's menu) is all there is.
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0c0f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CronRack">
+  <title>Install · CronRack</title>
+  <link rel="icon" href="{% static 'cronrack/icons/favicon-32.png' %}" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="{% static 'cronrack/icons/apple-touch-icon.png' %}">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="{% static 'cronrack/css/install.css' %}">
+  {% if secure %}<script src="{% static 'cronrack/js/install.js' %}" defer></script>{% endif %}
+  <script src="{% static 'cronrack/js/sw-register.js' %}" defer></script>
+</head>
+<body>
+  <main class="install">
+    <span class="install__logo" aria-hidden="true"><span></span><span></span><span></span></span>
+    <h1 class="install__title">Get CronRack on your phone</h1>
+{% if secure %}
+    <div id="install-fallback" class="install__block">
+      <p class="install__text">Look for Install app or Add to Home screen in your browser's menu.</p>
+      <a class="install__link" href="/">Open CronRack</a>
+    </div>
+
+    <div id="install-android" class="install__block" hidden>
+      <p class="install__text">Install CronRack like any other app.</p>
+      <button type="button" class="install__button" id="install-button" hidden>Install CronRack</button>
+      <a class="install__link" href="/">Open CronRack</a>
+    </div>
+
+    <div id="install-ios" class="install__block" hidden>
+      <ol class="install__steps" role="list">
+        <li class="install__step">
+          <svg class="install__icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 10H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2"></path><path d="M12 15V3"></path><path d="m8.5 6.5 3.5-3.5 3.5 3.5"></path></svg>
+          <span>Tap Share</span>
+        </li>
+        <li class="install__step">
+          <svg class="install__icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="4" width="16" height="16" rx="4"></rect><path d="M12 8.5v7"></path><path d="M8.5 12h7"></path></svg>
+          <span>Add to Home Screen (scroll down to find it)</span>
+        </li>
+      </ol>
+      <a class="install__link" href="/">Open CronRack</a>
+    </div>
+
+    <div id="install-done" class="install__block" hidden>
+      <p class="install__text">You're all set</p>
+      <a class="install__button" href="/">Open dashboard</a>
+    </div>
+
+    {# For screen readers only (install.css): says what changed when install.js swaps blocks. #}
+    <p class="install__status" id="install-status" role="status" aria-live="polite"></p>
+{% else %}
+    <p class="install__text">Open CronRack over HTTPS to install the app</p>
+    <a class="install__link" href="https://github.com/diischm/cronrack/blob/main/docs/install-app.md" rel="noopener noreferrer">How to set up HTTPS (on GitHub)</a>
+{% endif %}
+  </main>
+</body>
+</html>

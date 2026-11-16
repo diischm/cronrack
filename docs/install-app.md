@@ -43,6 +43,53 @@ Any one of these works:
 Use the same address you normally open CronRack with. The installed app always opens
 that address.
 
+## Scan a QR code instead of typing the address
+
+You don't have to type the address on your phone. CronRack can show a QR code that opens
+its install page (`/install`), which shows the install button for your phone.
+
+- **On a computer:** open **Settings, then Phone app**. Scan the code with the phone
+  camera. (The code only shows when you opened CronRack over HTTPS with its real name,
+  not `localhost`: a phone can't reach "localhost".)
+- **In a terminal:**
+
+  ```bash
+  docker compose exec app python manage.py phone_qr
+  ```
+
+  On Kubernetes, run the same `python manage.py phone_qr` inside the web pod (for
+  example with `kubectl exec`; the pod and container names depend on your setup, see
+  [kubernetes.md](kubernetes.md)).
+- **On the very first start,** before you have created an account, the same code is
+  printed under the setup code in `docker compose logs app`.
+
+What the install page shows: on **Android (Chrome)** an **Install CronRack** button; on
+**iPhone and iPad** the two steps (**Share**, then **Add to Home Screen**) with small
+icons; in a browser that offers neither, a line pointing at the browser menu. If the app
+is already installed it says so and links to the dashboard. Over plain `http://` it only
+explains that HTTPS is needed (see the requirement below).
+
+**Which address is in the code.** The terminal and the first-start log use
+`CRONRACK_PUBLIC_URL` from your `.env`, for example
+`CRONRACK_PUBLIC_URL=https://cronrack.example.com` (add `:port` if it is not 443, and no
+path). If it is not set, `https://<CRONRACK_DOMAIN>` is used. It must be `https`. If it
+is missing or invalid, `phone_qr` prints one line saying so and no code. The Settings
+page uses the address you opened it with.
+
+**`ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS`.** `CRONRACK_PUBLIC_URL` is only used to
+print the code. It does **not** make the server answer to that name. If it is different
+from `CRONRACK_DOMAIN`, also add the name to `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS`
+yourself; `phone_qr` warns you when it is missing.
+
+Tips:
+
+- If the code looks scrambled in the terminal, widen the window: it wraps when the
+  line is too short.
+- The terminal code is drawn for a **dark** terminal. On a light background it looks
+  inverted and many cameras won't read it: use a dark terminal or the Settings page.
+- The code only ever contains the address ending in `/install`. Never a login, a token
+  or the setup code.
+
 ## Android (Chrome)
 
 1. Open your CronRack address in **Chrome** and log in.

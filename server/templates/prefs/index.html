@@ -5,7 +5,8 @@
 {% block title %}Settings · CronRack{% endblock %}
 {% block nav_settings %}aria-current="page"{% endblock %}
 {% block main_class %}app-main--settings app-main--prefs{% endblock %}
-{% block extra_head %}<script src="{% static 'cronrack/js/password.js' %}" defer></script>{% endblock %}
+{% block extra_head %}<script src="{% static 'cronrack/js/password.js' %}" defer></script>
+  <link rel="stylesheet" href="{% static 'cronrack/css/phone-app.css' %}">{% endblock %}
 
 {% comment %}
   Settings (handoff 5.7). Each section is a raised panel: 2 columns from 900px, stacked on
@@ -86,6 +87,8 @@
         <div class="form-keys"><button type="submit" class="btn">Save</button></div>
       </section>
     </form>
+
+    {% include "prefs/_phone_app.html" %}
 
     <section class="surface panel panel--fit" aria-labelledby="account-title">
       <h2 class="section-title" id="account-title">Account</h2>

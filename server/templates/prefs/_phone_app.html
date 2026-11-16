@@ -1,0 +1,33 @@
+{# PLACEHOLDER — Apo owns the final version #}
+{% comment %}
+  Settings -> Phone app (included by prefs/index.html). With a QR code (https, real name) the
+  <img> holds the code as a data: address; autoescaped, nothing marked safe. The code only
+  contains the address ending in /install. phone-app.css shows the QR tile and scan text on
+  desktop; on a phone, or in the installed app, it shows the link to /install instead.
+{% endcomment %}
+<section class="surface panel phone-app" aria-labelledby="phone-title">
+  <h2 class="section-title" id="phone-title">Phone app</h2>
+  {% if phone_qr_data_uri %}
+    <div class="phone-app__scan">
+      <div class="phone-app__tile">
+        <img src="{{ phone_qr_data_uri }}" alt="QR code to install CronRack on your phone" width="200" height="200">
+      </div>
+      <div class="phone-app__side">
+        <p class="muted">Scan with your phone camera. It opens CronRack and shows the install button.</p>
+        <code class="phone-app__url" id="phone-install-url">{{ phone_install_url }}</code>
+        <div class="form-keys">
+          <button type="button" class="btn js-copy" aria-controls="phone-install-url">Copy link</button>
+        </div>
+      </div>
+    </div>
+    <div class="phone-app__open">
+      <p class="muted">Install CronRack on this phone from its install page.</p>
+      <p><a href="{% url 'pwa-install' %}">Open the install page</a></p>
+    </div>
+    <p class="muted phone-app__installed">You're using the installed app.</p>
+  {% else %}
+    <p class="muted">Open CronRack over HTTPS to install the app</p>
+    <p class="muted"><a href="https://github.com/diischm/cronrack/blob/main/docs/install-app.md" rel="noopener noreferrer">How to set up HTTPS (on GitHub)</a></p>
+    <p><a href="{% url 'pwa-install' %}">Open the install page</a></p>
+  {% endif %}
+</section>

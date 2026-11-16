@@ -4,10 +4,10 @@ from django.shortcuts import redirect
 
 SETUP_PATH = "/setup/"
 
-# The installable app's public files (pwa/urls.py). A phone may fetch them on the setup
-# page itself; redirecting them would break the install and make the service worker
-# store a redirect instead of the offline page.
-PUBLIC_PATHS = frozenset({"/manifest.webmanifest", "/sw.js", "/offline/"})
+# The installable app's public files (pwa/urls.py), and /install, the page the phone-install
+# QR code opens. A phone may fetch them on the setup page itself; redirecting them would
+# break the install and make the service worker store a redirect instead of the offline page.
+PUBLIC_PATHS = frozenset({"/manifest.webmanifest", "/sw.js", "/offline/", "/install"})
 
 
 class FirstRunMiddleware:

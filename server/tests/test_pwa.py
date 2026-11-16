@@ -37,7 +37,7 @@ NODE = shutil.which("node")
 IN_CI = os.environ.get("CI", "").lower() == "true"
 needs_node = pytest.mark.skipif(NODE is None and not IN_CI, reason="Node is not installed")
 
-PUBLIC_PATHS = ("/manifest.webmanifest", "/sw.js", "/offline/")
+PUBLIC_PATHS = ("/manifest.webmanifest", "/sw.js", "/offline/", "/install")
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 PNG_RGB = 2  # IHDR colour type: 2 = RGB (no alpha channel), 6 = RGBA
