@@ -1,4 +1,11 @@
-# CronRack (WORK IN PROGRESS!)
+<p align="center">
+  <a href="https://github.com/diischm/cronrack/actions/workflows/ci.yml"><img src="https://github.com/diischm/cronrack/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/diischm/cronrack?style=flat-square&color=f26b2e&labelColor=0b0c0f" alt="License"></a>
+  <a href="https://cronrack.xyz"><img src="https://img.shields.io/website?url=https%3A%2F%2Fcronrack.xyz&style=flat-square&labelColor=0b0c0f&label=cronrack.xyz" alt="Website"></a>
+  <img src="https://img.shields.io/github/last-commit/diischm/cronrack?style=flat-square&color=f26b2e&labelColor=0b0c0f" alt="Last commit">
+</p>
+
+# CronRack
 
 **What needs my attention? Your homelab, answered in 10 seconds.**
 
