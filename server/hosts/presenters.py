@@ -281,7 +281,9 @@ def host_summary(host: Host, now: datetime, data: OwnerData) -> dict[str, Any]:
     }
 
 
-def activity_entry(event: StatusEvent, now: datetime, data: OwnerData, with_day=False):
+def activity_entry(
+    event: StatusEvent, now: datetime, data: OwnerData, with_day: bool = False
+) -> dict[str, str]:
     entry = {
         "text": event.describe(),
         "time_human": clock(event.created_at, data.tz),
@@ -289,6 +291,10 @@ def activity_entry(event: StatusEvent, now: datetime, data: OwnerData, with_day=
     }
     if with_day:
         entry["day"] = day(event.created_at, now, data.tz)
+        entry["subject"] = event.subject_name
+        entry["subject_kind"] = event.subject_kind
+        entry["subject_key"] = event.subject_key
+        entry["text_short"] = event.describe_short()
     return entry
 
 

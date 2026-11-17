@@ -7,6 +7,10 @@ before 1.0.0, any release may change things that worked before, and the notes sa
 
 ### Added
 
+- **Activity entries carry their subject.** Each entry on the Activity page and in
+  `/api/v1/activity.json` now also has `subject`, `subject_kind`, `subject_key` and
+  `text_short` (the sentence without the name), so entries can be grouped per host, cluster
+  or network. `text` is unchanged.
 - **Phone-install QR code.** Settings has a new **Phone app** panel with a QR code that opens
   the new public page `/install` (an Install button on Android, the Share steps on iPhone).
   `python manage.py phone_qr` prints the same code in the terminal, and the first start (before

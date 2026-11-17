@@ -56,7 +56,7 @@ class StatusEvent(models.Model):
         )
 
     @property
-    def subject(self):
+    def subject(self) -> Host | Cluster | Network:
         """The host, cluster or network this event is about."""
         if self.host_id is not None:
             return self.host
@@ -73,24 +73,49 @@ class StatusEvent(models.Model):
     def __str__(self) -> str:
         return f"{self.subject_name}: {self.old_status} -> {self.new_status}"
 
-    def describe(self) -> str:
-        """One sentence for the activity list and alerts: 'pi-01 went red: 2 security updates'."""
-        name = self.subject_name
+    def _subject_ref(self) -> tuple[str, int]:
+        """('host', 4): the kind of subject and its id, from the foreign keys alone."""
+        if self.host_id is not None:
+            return "host", self.host_id
+        if self.cluster_id is not None:
+            return "cluster", self.cluster_id
+        return "network", self.network_id
+
+    @property
+    def subject_kind(self) -> str:
+        """'host', 'cluster' or 'network': which kind of subject this event is about."""
+        return self._subject_ref()[0]
+
+    @property
+    def subject_key(self) -> str:
+        """A stable id for grouping ('host-4'). Survives renames; built from the ids only."""
+        kind, pk = self._subject_ref()
+        return f"{kind}-{pk}"
+
+    def _describe_parts(self) -> tuple[str, str]:
+        """(joiner, short): the sentence is the subject's name + joiner + short."""
         if self.network_id is not None:
             # "Network: Internet down", "Network: Router rebooted …", "Network OK again".
             if self.summary:
-                return f"{name}: {self.summary}"
-            return (
-                f"{name} OK again"
-                if self.new_status == "green"
-                else f"{name} went {self.new_status}"
-            )
+                return ": ", self.summary
+            return " ", "OK again" if self.new_status == "green" else f"went {self.new_status}"
         if self.new_status == "offline":
-            text = f"{name} went offline"
+            short = "went offline"
         elif self.old_status == "offline":
-            text = f"{name} is back online ({self.new_status})"
+            short = f"is back online ({self.new_status})"
         elif self.old_status == "waiting":
-            text = f"{name} sent its first report ({self.new_status})"
+            short = f"sent its first report ({self.new_status})"
         else:
-            text = f"{name} went {self.new_status}"
-        return f"{text}: {self.summary}" if self.summary else text
+            short = f"went {self.new_status}"
+        if self.summary:
+            short = f"{short}: {self.summary}"
+        return " ", short
+
+    def describe(self) -> str:
+        """One sentence for the activity list and alerts: 'pi-01 went red: 2 security updates'."""
+        joiner, short = self._describe_parts()
+        return f"{self.subject_name}{joiner}{short}"
+
+    def describe_short(self) -> str:
+        """The sentence without the subject's name: 'went red: 2 security updates'."""
+        return self._describe_parts()[1]

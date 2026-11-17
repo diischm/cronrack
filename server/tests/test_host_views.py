@@ -720,7 +720,16 @@ def test_activity_json_pages_of_25(alice_client: Client, host, bob):
     assert second["next_page"] is None
     assert beyond == {"items": [], "next_page": None}
     assert junk == first
-    assert set(first["items"][0]) == {"text", "time_human", "status", "day"}
+    assert set(first["items"][0]) == {
+        "text",
+        "time_human",
+        "status",
+        "day",
+        "subject",
+        "subject_kind",
+        "subject_key",
+        "text_short",
+    }
     assert first["items"][0]["day"] == "Today"
     assert all("bobs" not in item["text"] for item in first["items"] + second["items"])
 
