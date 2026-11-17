@@ -1,0 +1,22 @@
+# CronRack read-only Docker proxy: the socket the agent connects to.
+# Installed by deploy/install.sh (only when you give the agent Docker access).
+#
+# systemd creates /run/cronrack/docker.sock as root:cronrack 0660, so only the agent's
+# group can connect, and starts cronrack-docker-proxy.service on the first connection.
+# Nothing listens on a network port.
+
+[Unit]
+Description=CronRack read-only Docker proxy socket
+Documentation=https://github.com/diischm/cronrack/blob/main/docs/trust-the-agent.md
+
+[Socket]
+ListenStream=/run/cronrack/docker.sock
+SocketUser=root
+SocketGroup=cronrack
+SocketMode=0660
+DirectoryMode=0755
+Accept=no
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

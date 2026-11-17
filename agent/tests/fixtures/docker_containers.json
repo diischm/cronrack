@@ -1,0 +1,124 @@
+[
+  {
+    "Id": "3f9c2a1b7d4e0000000000000000000000000000000000000000000000000000",
+    "Names": [
+      "/web"
+    ],
+    "Image": "nginx:1.27-alpine",
+    "Command": "/docker-entrypoint.\u2026",
+    "Labels": {
+      "com.docker.compose.project": "homelab",
+      "com.docker.compose.service": "web"
+    },
+    "State": "running",
+    "Status": "Up 7 days (healthy)",
+    "Ports": [],
+    "Mounts": []
+  },
+  {
+    "Id": "8b21e04c5a930000000000000000000000000000000000000000000000000000",
+    "Names": [
+      "/db"
+    ],
+    "Image": "postgres:16",
+    "Command": "docker-entrypoint.s\u2026",
+    "Labels": {
+      "com.docker.compose.project": "homelab",
+      "com.docker.compose.service": "db"
+    },
+    "State": "running",
+    "Status": "Up 7 days",
+    "Ports": [],
+    "Mounts": []
+  },
+  {
+    "Id": "c47d90e1f2b60000000000000000000000000000000000000000000000000000",
+    "Names": [
+      "/app"
+    ],
+    "Image": "example/app:2.3.1",
+    "Command": "/app/start.sh",
+    "Labels": {
+      "com.docker.compose.project": "homelab",
+      "com.docker.compose.service": "app"
+    },
+    "State": "running",
+    "Status": "Up 2 hours (unhealthy)",
+    "Ports": [],
+    "Mounts": []
+  },
+  {
+    "Id": "e9a0b3d71c580000000000000000000000000000000000000000000000000000",
+    "Names": [
+      "/worker"
+    ],
+    "Image": "example/worker:latest",
+    "Command": "python worker.py",
+    "Labels": {
+      "com.docker.compose.project": "homelab",
+      "com.docker.compose.service": "worker"
+    },
+    "State": "restarting",
+    "Status": "Restarting (1) 12 seconds ago",
+    "Ports": [],
+    "Mounts": []
+  },
+  {
+    "Id": "1d6f8e2a9b070000000000000000000000000000000000000000000000000000",
+    "Names": [
+      "/backup-job"
+    ],
+    "Image": "example/backup:1.4",
+    "Command": "/usr/local/bin/back\u2026",
+    "Labels": {},
+    "State": "exited",
+    "Status": "Exited (1) 16 hours ago",
+    "Ports": [],
+    "Mounts": []
+  },
+  {
+    "Id": "5a3c7f0d2e140000000000000000000000000000000000000000000000000000",
+    "Names": [
+      "/init-migrate"
+    ],
+    "Image": "example/app:2.3.1",
+    "Command": "./migrate.sh",
+    "Labels": {
+      "com.docker.compose.project": "homelab",
+      "com.docker.compose.service": "migrate"
+    },
+    "State": "exited",
+    "Status": "Exited (0) 7 days ago",
+    "Ports": [],
+    "Mounts": []
+  },
+  {
+    "Id": "0f4b6c8d1a290000000000000000000000000000000000000000000000000000",
+    "Names": [
+      "/scratch"
+    ],
+    "Image": "alpine:3.20",
+    "Command": "/bin/sh",
+    "Labels": {},
+    "State": "created",
+    "Status": "Created",
+    "Ports": [],
+    "Mounts": []
+  },
+  {
+    "Id": "7c2e5d9f0a310000000000000000000000000000000000000000000000000000",
+    "Names": [
+      "/cache"
+    ],
+    "Image": "example/cache:3.1",
+    "Command": "/entrypoint.sh",
+    "Labels": {
+      "com.docker.compose.project": "homelab",
+      "com.docker.compose.service": "cache"
+    },
+    "State": "running",
+    "Status": "Up 4 seconds (health: starting)",
+    "Ports": [],
+    "Mounts": []
+  }
+]

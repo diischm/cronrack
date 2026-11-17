@@ -194,30 +194,41 @@ Monitoring a Kubernetes/k3s cluster (opt-in, read-only): see [docs/kubernetes-mo
    next page shows the install command and the host's token. **The token is shown only
    once**, so keep the page open until the installer has asked for it.
 
-2. On the host, paste the install command. With Tailscale (Option A) it looks like this:
+2. On the host, download the installer, read it, then run it. With Tailscale (Option A):
 
    ```bash
-   curl -fsSL https://myserver.tail1234.ts.net/agent/install.sh | sudo bash -s -- --server https://myserver.tail1234.ts.net
+   curl -fsSLO https://myserver.tail1234.ts.net/agent/install.sh
    ```
-
-   With Caddy's own certificate (Option B), go to the folder with `cronrack-ca.crt` and use
-   the second command from the page instead:
 
    ```bash
-   curl -fsSL --cacert cronrack-ca.crt https://<your-server>/agent/install.sh | sudo bash -s -- --server https://<your-server> --ca-file cronrack-ca.crt
+   less install.sh
    ```
 
-   When it asks for the token, paste it and press Enter (typing is hidden on purpose).
-   The installer:
+   ```bash
+   sudo bash install.sh --server https://myserver.tail1234.ts.net
+   ```
+
+   With Caddy's own certificate (Option B), go to the folder with `cronrack-ca.crt` and add
+   it to both commands: `curl -fsSLO --cacert cronrack-ca.crt https://<your-server>/agent/install.sh`,
+   then `sudo bash install.sh --server https://<your-server> --ca-file cronrack-ca.crt`.
+   (The page also shows a one-line `curl ... | sudo bash` command; it does the same, but
+   you can't read the script first.) To check the package against the source instead of
+   trusting the server, add `--expect-sha256`: see
+   [docs/trust-the-agent.md](docs/trust-the-agent.md#installing-it-the-verifiable-way).
+
+   The installer first shows what it will do and asks `Continue? [Y/n]`. When it asks for
+   the token, paste it and press Enter (typing is hidden on purpose). The installer:
    - creates a `cronrack` system user with no login, no home and no sudo;
    - downloads the agent from your server and checks its SHA-256 checksum;
    - installs it in `/opt/cronrack-agent`, owned by root so the agent can't change itself,
-     with its one dependency (`websockets`, from PyPI) in its own Python environment;
+     with its one dependency (`websockets` from PyPI, checked against the SHA-256 hashes in
+     `agent/requirements.txt`) in its own Python environment;
    - writes the server address and token to `/etc/cronrack/agent.toml`, readable only by
      root and the agent;
-   - asks whether the agent may read Docker, only if Docker is installed (the `docker`
-     group is equivalent to root, so the default is no);
-   - installs and starts the `cronrack-agent` systemd service.
+   - asks whether the agent may read Docker, only if Docker is installed. Yes installs a
+     small read-only Docker proxy; the agent itself is never added to the `docker` group
+     (that group is equivalent to root). The default is no;
+   - installs and starts the sandboxed `cronrack-agent` systemd service.
 
 3. The host turns green, yellow or red within a minute. If it stays on "Waiting", check
    the agent on the host:
@@ -240,7 +251,10 @@ Installer options (`install.sh --help` prints the same):
 | `--k8s`, `--k8s-cluster-view`, `--k8s-ca PATH`, `--k8s-api URL` | Kubernetes monitoring, see [docs/kubernetes-monitoring.md](docs/kubernetes-monitoring.md). |
 | `--upgrade` | Upgrade an installed agent. Asks nothing, needs no terminal, keeps every setting, and rolls the code back if the new version doesn't keep running. Exit codes 0-7 are in `--help` and [docs/DEPLOY.md, 2.5](docs/DEPLOY.md#25-upgrading-an-agent). |
 | `--server-change` | With `--upgrade`: allow `--server` to be a different server than the agent uses now (otherwise refused). |
-| `--uninstall` | Remove the agent (see below). |
+| `--expect-sha256 HASH` | Refuse a package that doesn't have this SHA-256 (build it from the source with `scripts/agent-package-sha256.py`). |
+| `--egress-lock`, `--no-egress-lock` | Let the agent reach only the server and your DNS servers, as exact addresses (not with `--network`). |
+| `--yes` | Don't ask "Continue?" (for scripts). Without a terminal and without `--yes` it refuses. |
+| `--uninstall [--purge]` | Remove the agent (see below). `--purge` also deletes `/etc/cronrack`. |
 
 ## Everyday tasks
 
@@ -267,15 +281,26 @@ Update the server first. An older agent keeps working with a newer server, so yo
 need this when the agent changed (the CHANGELOG says so). On the host:
 
 ```bash
-curl -fsSL https://myserver.tail1234.ts.net/agent/install.sh | sudo bash -s -- --server https://myserver.tail1234.ts.net --upgrade
+curl -fsSLO https://myserver.tail1234.ts.net/agent/install.sh
+```
+
+```bash
+sudo bash install.sh --server https://myserver.tail1234.ts.net --upgrade
 ```
 
 With Caddy's own certificate (Option B), trust the CA the installer already copied to the
 host (`sudo` on curl too, because only root can read it):
 
 ```bash
-sudo curl -fsSL --cacert /etc/cronrack/ca.crt https://<your-server>/agent/install.sh | sudo bash -s -- --server https://<your-server> --upgrade
+sudo curl -fsSLO --cacert /etc/cronrack/ca.crt https://<your-server>/agent/install.sh
 ```
+
+```bash
+sudo bash install.sh --server https://<your-server> --upgrade
+```
+
+Agent 0.5.0 moves Docker access from the `docker` group to the read-only Docker proxy by
+itself during `--upgrade`.
 
 `--upgrade` asks nothing (safe from a script or Ansible), keeps the token, the CA, the
 Kubernetes settings and your Docker choice, does nothing if the agent is already current,
@@ -285,18 +310,17 @@ installed in `/opt/cronrack-agent/INSTALLED`. Details and exit codes:
 
 ### Uninstall an agent
 
-On the host, with the start of your install command (add `--cacert cronrack-ca.crt` after
-`curl` for Option B):
+On the host, with the installer you downloaded:
 
 ```bash
-curl -fsSL https://myserver.tail1234.ts.net/agent/install.sh | sudo bash -s -- --uninstall
+sudo bash install.sh --uninstall
 ```
 
-If you already have the script as a file: `sudo bash install.sh --uninstall`.
-
-It stops and removes the service, `/opt/cronrack-agent` and the `cronrack` user, then asks
-`Also delete /etc/cronrack (agent.toml with the token, ca.crt)? [y/N]`. Answer `y` to
-delete it. The default keeps it (owned by root only), and a later install picks it up again.
+It runs `uninstall.sh` from the installed package (also at `https://<your-server>/agent/uninstall.sh`).
+That stops and removes the agent and the Docker proxy, their units and drop-ins,
+`/opt/cronrack-agent`, `/run/cronrack` and the `cronrack` user, lists what it removed, then asks
+`Also delete /etc/cronrack (agent.toml with the token, CA certificates)? [y/N]`. Answer `y` to
+delete it, or pass `--purge`. The default keeps it (owned by root only), and a later install picks it up again.
 Then delete the host in the dashboard (host settings, Delete), which also cancels its token.
 
 ### Move a host to a new server address
@@ -365,18 +389,25 @@ More answers: [docs/DEPLOY.md, Part 4](docs/DEPLOY.md#part-4-troubleshooting).
 
 ## Security
 
-The agent opens one outgoing, encrypted connection to your server and never listens on a
-port, so nothing can connect to it. Each host's token is shown once and stored only as a
-hash. The agent is read-only: the server can't send it commands. CronRack is never a hosted
-service and never phones home.
+The agent can read and report to one server, and nothing else. You can check every claim on
+your own host; [docs/trust-the-agent.md](docs/trust-the-agent.md) shows the commands.
 
-- **Outbound only.** The server can only send fixed messages ("welcome", "collect"). It can
-  never make an agent run a command; any future action is allowed only by name, from a list
-  kept on the host itself.
-- **Least privilege.** The agent runs as its own unprivileged user under a locked-down
-  systemd service. Docker access is opt-in, because the `docker` group equals root.
-- **Untrusted data.** Everything an agent reports is checked against a strict schema
-  before the server stores or shows it, and every page only shows your own hosts.
+- **Outbound only.** One TLS connection the agent opens itself, certificate checking always on;
+  it listens on no port.
+- **The server can't give orders.** It can send two fixed messages ("welcome", "collect").
+  Nothing received is executed, there is no auto-update, and CI fails if code that could run
+  received data is added.
+- **Unprivileged and sandboxed.** Its own user with no capabilities, a read-only filesystem
+  and a system call filter (`systemd-analyze security cronrack-agent`: 1.3 OK).
+- **Docker through a read-only proxy.** The agent is never in the root-equivalent `docker`
+  group; a proxy allows three GET requests and strips secrets from the answers.
+- **Verifiable.** `--dry-run` prints exactly what is sent; `--expect-sha256` checks the package
+  against a hash you build from the source; `uninstall.sh` removes everything.
+- **Untrusted data, hashed tokens.** Reports are checked against strict schemas, every page only
+  shows your own hosts, and agent tokens are stored only as hashes.
+
+Threat model, sandbox details and what doesn't exist yet: [docs/trust-the-agent.md](docs/trust-the-agent.md).
+Reporting a vulnerability: [SECURITY.md](SECURITY.md).
 
 ## Where everything lives
 
@@ -404,7 +435,9 @@ On each monitored host (created by `install.sh`):
 | `/etc/cronrack/agent.toml` | Config and token (`root:cronrack`, mode 0640): keep private |
 | `/etc/cronrack/ca.crt` | Only if installed with `--ca-file` (`root:cronrack`, 0640) |
 | `/etc/systemd/system/cronrack-agent.service` | The systemd service |
-| `/etc/systemd/system/cronrack-agent.service.d/docker.conf` | Only if you allowed Docker access |
+| `/etc/systemd/system/cronrack-docker-proxy.socket` and `.service` | Only if you allowed Docker access: the read-only Docker proxy |
+| `/run/cronrack/docker.sock` | The proxy's socket (`root:cronrack`, 0660), only with Docker access |
+| `/etc/systemd/system/cronrack-agent.service.d/egress.conf` | Only with `--egress-lock` |
 | `cronrack` user and group | System user, no home, no login shell |
 | `journalctl -u cronrack-agent` | Logs |
 
@@ -509,11 +542,11 @@ It checks every 30 seconds (change that with `--every 60`). Stop it with Ctrl+C.
 From the repository root:
 
 ```bash
-python -m agent --once
+python -m agent --dry-run
 ```
 
-This runs the checks on your machine and prints the report as JSON. It does not
-connect to the server yet. Without `/etc/cronrack/agent.toml` it uses the defaults.
+This runs the checks on your machine and prints the report as JSON (`--once` is the old
+name). It never connects to the server. Without `/etc/cronrack/agent.toml` it uses the defaults.
 Checks for tools you don't have (for example Docker) show `null`.
 
 The report also has a `metrics` key (CPU, memory, disks and running containers). To turn it

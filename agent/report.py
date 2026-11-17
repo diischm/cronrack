@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from functools import partial
 from typing import Any
 
-from agent import AGENT_VERSION
+from agent import AGENT_VERSION, docker_api
 from agent import collectors as agent_collectors
 from agent import metrics as agent_metrics
 from agent import network as agent_network
@@ -75,7 +75,8 @@ DEFAULT_COLLECTORS: dict[str, Collector] = {
         agent_collectors.run_apt_upgradable, agent_collectors.parse_apt_upgradable
     ),
     "reboot": agent_collectors.check_reboot_required,
-    "containers": command_check(agent_collectors.run_docker_ps, agent_collectors.parse_docker_ps),
+    # Through the read-only Docker proxy, and only with [docker] enabled (see build_report).
+    "containers": docker_api.collect_container_health,
     "units": command_check(
         agent_collectors.run_systemctl_failed, agent_collectors.parse_systemctl_failed
     ),
@@ -137,7 +138,11 @@ def build_report(
     }
     errors: list[dict[str, str]] = []
     for check, key in REPORT_KEYS.items():
-        if check not in config.enabled_checks:
+        # Containers also need Docker access ([docker] enabled): without it there is no
+        # proxy to ask, and nothing to report.
+        if check not in config.enabled_checks or (
+            check == "containers" and not config.containers_active
+        ):
             report[key] = None
             continue
         result, error = safe_collect(check, collectors[check])
@@ -162,7 +167,7 @@ def build_report(
             errors.append(error)
     if config.metrics.enabled:
         # Per-container numbers need the same opt-in Docker access as the containers check.
-        containers = "containers" in config.enabled_checks
+        containers = config.containers_active
         collect = collectors.get(METRICS_KEY) or partial(
             default_sampler().collect, containers=containers
         )

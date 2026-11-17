@@ -503,3 +503,35 @@ def test_metrics_can_be_switched_off(tmp_path: Path) -> None:
 def test_bad_metrics_table_is_refused(tmp_path: Path, text: str) -> None:
     with pytest.raises(ConfigError):
         load_config(write_config(tmp_path, text))
+
+
+# --- [docker] -------------------------------------------------------------------------------
+
+
+def test_docker_access_is_off_by_default(tmp_path: Path) -> None:
+    assert load_config(str(tmp_path / "missing.toml")).docker.enabled is False
+
+
+def test_docker_access_can_be_switched_on(tmp_path: Path) -> None:
+    path = write_config(tmp_path, "[docker]\nenabled = true\n")
+    assert load_config(path).docker.enabled is True
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "docker = 1\n",
+        '[docker]\nenabled = "yes"\n',
+        "[docker]\nenabled = 1\n",
+        # The socket path is fixed in code: a config file can't point the agent elsewhere.
+        '[docker]\nenabled = true\nsocket = "/var/run/docker.sock"\n',
+        '[docker]\nenabled = true\nhost = "tcp://192.0.2.10:2375"\n',
+    ],
+)
+def test_bad_docker_table_is_refused(tmp_path: Path, text: str) -> None:
+    with pytest.raises(ConfigError):
+        load_config(write_config(tmp_path, text))
+
+
+def test_docker_shows_in_repr(tmp_path: Path) -> None:
+    assert "docker=DockerConfig(enabled=False)" in repr(load_config(str(tmp_path / "x.toml")))

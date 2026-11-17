@@ -4,6 +4,7 @@ from agents import views
 
 urlpatterns = [
     path("agent/install.sh", views.install_sh, name="agent-install-sh"),
+    path("agent/uninstall.sh", views.uninstall_sh, name="agent-uninstall-sh"),
     path("agent/download/cronrack-agent.tar.gz", views.tarball, name="agent-tarball"),
     path(
         "agent/download/cronrack-agent.tar.gz.sha256",

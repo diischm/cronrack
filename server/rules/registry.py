@@ -86,6 +86,24 @@ def _container_check(predicate, text: str):
     return check
 
 
+def check_docker_proxy_unavailable(
+    rule: Rule, report: Mapping[str, Any], ctx: RuleContext
+) -> list[Finding]:
+    """The agent has Docker access on, but nothing answers on its read-only proxy socket.
+
+    Agent 0.5.0+ says so with {"check": "containers", "error": "DockerProxyUnavailable"}
+    in the report's errors list (containers is then null), or "DockerEngineUnavailable"
+    when the proxy answers but Docker behind it doesn't. One finding either way."""
+    texts = {
+        "DockerProxyUnavailable": "Docker proxy not answering",
+        "DockerEngineUnavailable": "Docker not answering behind the proxy",
+    }
+    for error in report.get("errors") or []:
+        if error.get("check") == "containers" and error.get("error") in texts:
+            return [rule.finding(ctx, texts[error["error"]], subject="proxy:docker")]
+    return []
+
+
 # --- systemd -------------------------------------------------------------------
 
 
@@ -210,6 +228,19 @@ _ALL_RULES = (
             "than finishing normally. Its last log lines usually say why."
         ),
         fix_template=DOCKER_LOGS_FIX,
+    ),
+    Rule(
+        id="agent.docker_proxy_unavailable",
+        title="Docker proxy unavailable",
+        category="docker",
+        default_severity=YELLOW,
+        check=check_docker_proxy_unavailable,
+        why=(
+            "The agent reads containers through a small read-only proxy on the host "
+            "(cronrack-docker-proxy), and it isn't answering, so container checks are off "
+            "until it runs again."
+        ),
+        fix_template="sudo systemctl restart cronrack-docker-proxy.socket",
     ),
     Rule(
         id="systemd.unit_failed",

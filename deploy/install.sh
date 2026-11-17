@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
-# CronRack agent installer. Run on the host you want to monitor:
+# CronRack agent installer. Run on the host you want to monitor. The safe way: download it,
+# read it, check it, then run it (docs/trust-the-agent.md explains each step):
 #
-#   curl -fsSL https://SERVER/agent/install.sh | sudo bash -s -- --server https://SERVER
+#   curl -fsSLO https://SERVER/agent/install.sh
+#   less install.sh
+#   sudo bash install.sh --server https://SERVER [--expect-sha256 HASH]
+#
+# --expect-sha256 takes the package hash from somewhere other than the server: run
+# `python3 scripts/agent-package-sha256.py` in a git checkout of the server's version.
+# Before changing anything it prints what it will do and asks "Continue?" (--yes for scripts).
 #
 # If the server uses Caddy's own CA (`tls internal`), copy its root certificate to the
 # host first and pass it to both curl and the installer:
 #
-#   curl -fsSL --cacert cronrack-ca.crt https://SERVER/agent/install.sh \
-#     | sudo bash -s -- --server https://SERVER --ca-file cronrack-ca.crt
+#   curl -fsSLO --cacert cronrack-ca.crt https://SERVER/agent/install.sh
+#   sudo bash install.sh --server https://SERVER --ca-file cronrack-ca.crt
 #
 # (http://localhost, http://127.0.0.1 and http://[::1] are allowed for local testing only.)
 #
@@ -18,9 +25,16 @@
 #      and records what is installed in /opt/cronrack-agent/INSTALLED (see the usage text)
 #   4. asks for the token (hidden input; never a command-line argument, never in shell history)
 #      and writes /etc/cronrack/agent.toml as root:cronrack, mode 0640
-#   5. if Docker is installed, asks whether the agent may read it
-#      (docker group = root-equivalent; default: no, or "keep" if access is already on)
-#   6. installs and starts the cronrack-agent systemd service
+#   5. if Docker is installed, asks whether the agent may read it. If yes, it installs the
+#      read-only Docker proxy (cronrack-docker-proxy.socket/.service): the agent is never
+#      added to the docker group (that group is root-equivalent). Default: no, or "keep".
+#   6. installs and starts the cronrack-agent systemd service (sandboxed, see the unit file)
+#
+# Egress lock (optional; only without --network checks):
+#   --egress-lock          the agent may only reach the server's addresses (resolved now),
+#                          and the DNS servers in /etc/resolv.conf, as exact addresses: a systemd
+#                          drop-in with IPAddressDeny=any. Re-run it if the server's address
+#                          changes. --no-egress-lock removes it.
 #
 # Kubernetes (optional, off unless you ask; see docs/kubernetes-monitoring.md):
 #   --k8s                  report this host's Kubernetes role (k3s server / agent / kubelet).
@@ -55,8 +69,8 @@
 # Upgrade an installed agent: asks nothing, needs no terminal (safe for scripts and
 # Ansible) and keeps every setting. The usage text lists the exit codes.
 #
-#   sudo curl -fsSL --cacert /etc/cronrack/ca.crt https://SERVER/agent/install.sh \
-#     | sudo bash -s -- --server https://SERVER --upgrade
+#   sudo curl -fsSLO --cacert /etc/cronrack/ca.crt https://SERVER/agent/install.sh
+#   sudo bash install.sh --server https://SERVER --upgrade [--expect-sha256 HASH]
 #
 # Re-running WITHOUT --upgrade also upgrades the code, and is how you change settings:
 #   --server URL     always updates server_url in the existing config
@@ -67,9 +81,10 @@
 #                    the table's other keys (internet, dns, public IP) are kept
 #   --no-metrics / --metrics   sets [metrics] enabled; without either it is kept
 #
-# Remove the agent again (asks before deleting /etc/cronrack, which holds the token):
+# Remove the agent again (runs deploy/uninstall.sh from the installed, verified package;
+# asks before deleting /etc/cronrack, which holds the token; --purge deletes it):
 #
-#   sudo bash install.sh --uninstall
+#   sudo bash install.sh --uninstall [--purge]
 #
 # This file contains no secrets; it's served publicly by the CronRack server.
 
@@ -95,8 +110,15 @@ MAX_NETWORK_BEFORE=2
 MAX_NETWORK_HOPS=2
 UNIT_NAME=cronrack-agent.service
 UNIT_FILE="/etc/systemd/system/$UNIT_NAME"
-DOCKER_DROPIN_DIR="/etc/systemd/system/$UNIT_NAME.d"
-DOCKER_DROPIN="$DOCKER_DROPIN_DIR/docker.conf"
+DROPIN_DIR="/etc/systemd/system/$UNIT_NAME.d"
+# Before agent 0.5.0, Docker access was this drop-in (SupplementaryGroups=docker). It is
+# removed on every run now: the read-only proxy below replaces it.
+OLD_DOCKER_DROPIN="$DROPIN_DIR/docker.conf"
+EGRESS_DROPIN="$DROPIN_DIR/egress.conf"
+PROXY_SOCKET_NAME=cronrack-docker-proxy.socket
+PROXY_SERVICE_NAME=cronrack-docker-proxy.service
+PROXY_SOCKET_FILE="/etc/systemd/system/$PROXY_SOCKET_NAME"
+PROXY_SERVICE_FILE="/etc/systemd/system/$PROXY_SERVICE_NAME"
 AGENT_USER=cronrack
 MIN_PYTHON="3.11"
 
@@ -136,9 +158,17 @@ no_questions_in_upgrade() {
 # Questions are read from the terminal, because stdin is the script itself (curl | bash).
 # ask_yes_no "Question? [y/N] " [y|n] -> 0 for yes. An empty or unclear answer gives the
 # default (the second argument, "n" if left out), so Enter never does the unexpected.
+HAVE_TTY=0
+if { : </dev/tty; } 2>/dev/null; then HAVE_TTY=1; fi
 ask_yes_no() {
   no_questions_in_upgrade
   local answer="" default="${2:-n}"
+  if [ "$HAVE_TTY" -eq 0 ]; then
+    # Only reached with --yes (checked before anything changes): take the default.
+    printf '%s%s (no terminal: the default)\n' "$1" "$default"
+    [ "$default" = "y" ]
+    return
+  fi
   read -r -p "$1" answer </dev/tty || true
   if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then return 0; fi
   if [[ "$answer" =~ ^[Nn]([Oo])?$ ]]; then return 1; fi
@@ -151,9 +181,11 @@ Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
                   [--k8s | --k8s-cluster-view [--k8s-ca PATH] [--k8s-api URL]]
                   [--network [--network-gateway IP|auto] [--network-before NAME=IP]...
                              [--network-hop NAME=IP]...]
-                  [--no-metrics | --metrics]
+                  [--no-metrics | --metrics] [--egress-lock | --no-egress-lock]
+                  [--expect-sha256 HASH] [--yes]
        install.sh --server https://SERVER --upgrade [--server-change] [--ca-file PATH]
-       install.sh --uninstall
+                  [--expect-sha256 HASH]
+       install.sh --uninstall [--purge]
 
   --server URL     Base URL of your CronRack server, e.g. https://cronrack.lan
                    (http:// only for localhost / 127.0.0.1 / [::1], for local testing)
@@ -186,6 +218,18 @@ Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
                    Docker access, per-container usage). They are on by default; they only
                    read /proc and /sys and need no extra permission.
   --metrics        Collect host metrics again after --no-metrics.
+  --egress-lock    Let the agent reach only the server (its addresses, resolved now) and the
+                   DNS servers in /etc/resolv.conf, as exact addresses (IPAddressDeny=any
+                   in a drop-in). Re-run it if the server's address changes. Not with
+                   --network checks: those must reach your router and the internet.
+  --no-egress-lock Remove the egress lock again.
+  --expect-sha256 HASH
+                   Refuse to install unless the downloaded package has this SHA-256. Get
+                   it from somewhere other than the server: `python3
+                   scripts/agent-package-sha256.py` in a checkout of the server's version.
+  --yes            Don't ask "Continue?" after showing what will be done. Without a
+                   terminal, every other question takes its default (the current setting);
+                   a fresh install still needs a terminal for the token.
   --upgrade        Upgrade an installed agent. Asks nothing and needs no terminal.
                    Keeps the token, the CA, the Kubernetes token and settings and the
                    current Docker choice. Changes nothing if it is already up to date.
@@ -198,15 +242,17 @@ Usage: install.sh --server https://SERVER [--ca-file PATH] [--new-token]
   --server-change  With --upgrade: allow --server to differ from server_url in
                    /etc/cronrack/agent.toml, and update it. Without it a different
                    server is refused, so an upgrade never moves an agent silently.
-  --uninstall      Stop and remove the service, /opt/cronrack-agent and the cronrack
-                   user; asks before deleting /etc/cronrack
+  --uninstall      Run deploy/uninstall.sh from the installed package: stops and removes
+                   the services (agent and Docker proxy), their drop-ins, /opt/cronrack-agent,
+                   /run/cronrack and the cronrack user, and lists what it removed. Asks
+                   before deleting /etc/cronrack (kept without a terminal).
+  --purge          With --uninstall: also delete /etc/cronrack (the token) without asking.
 
 Upgrade, trusting the CA the agent already uses (sudo curl: only root can read it):
-  sudo curl -fsSL --cacert /etc/cronrack/ca.crt https://SERVER/agent/install.sh \
-    | sudo bash -s -- --server https://SERVER --upgrade
+  sudo curl -fsSLO --cacert /etc/cronrack/ca.crt https://SERVER/agent/install.sh
+  sudo bash install.sh --server https://SERVER --upgrade
 No /etc/cronrack/ca.crt (the server has a publicly trusted certificate)? Leave out
-"sudo" and "--cacert ..." before the |. In scripts, run it under `set -o pipefail`,
-so a failed download is a failure too, not an empty script that "succeeds".
+"sudo" and "--cacert ...".
 
 Exit codes:
   0  installed, upgraded, or already up to date
@@ -241,6 +287,11 @@ NETWORK_BEFORE=()  # "NAME=IP", in path order: between this host and the router
 NETWORK_HOPS=()  # "NAME=IP", in path order: after the router
 METRICS=""  # "", "on" or "off": --metrics / --no-metrics; "" keeps the current setting
 SERVER_CHANGE=0
+YES=0
+EXPECT_SHA256=""
+EXPECT_GIVEN=0
+EGRESS=""  # "", "on" or "off": --egress-lock / --no-egress-lock; "" keeps the current one
+PURGE=0
 SETTING_FLAGS=()  # options that change settings: refused together with --upgrade
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -268,6 +319,16 @@ while [ $# -gt 0 ]; do
     --metrics)
       [ "$METRICS" != "off" ] || die_usage "--no-metrics and --metrics can't be used together"
       METRICS=on; SETTING_FLAGS+=(--metrics); shift ;;
+    --egress-lock)
+      [ "$EGRESS" != "off" ] || die_usage "--egress-lock and --no-egress-lock can't be used together"
+      EGRESS=on; SETTING_FLAGS+=(--egress-lock); shift ;;
+    --no-egress-lock)
+      [ "$EGRESS" != "on" ] || die_usage "--egress-lock and --no-egress-lock can't be used together"
+      EGRESS=off; SETTING_FLAGS+=(--no-egress-lock); shift ;;
+    --expect-sha256) [ $# -ge 2 ] || die_usage "--expect-sha256 needs a SHA-256"; EXPECT_GIVEN=1; EXPECT_SHA256="$2"; shift 2 ;;
+    --expect-sha256=*) EXPECT_GIVEN=1; EXPECT_SHA256="${1#--expect-sha256=}"; shift ;;
+    --yes|-y) YES=1; shift ;;
+    --purge) PURGE=1; shift ;;
     --uninstall) UNINSTALL=1; SETTING_FLAGS+=(--uninstall); shift ;;
     --upgrade) UPGRADE=1; shift ;;
     --server-change) SERVER_CHANGE=1; shift ;;
@@ -282,53 +343,42 @@ fi
 if [ "$SERVER_CHANGE" -eq 1 ] && [ "$UPGRADE" -eq 0 ]; then
   die_usage "--server-change only works with --upgrade (a normal re-run always updates server_url)"
 fi
+if [ "$PURGE" -eq 1 ] && [ "$UNINSTALL" -eq 0 ]; then
+  die_usage "--purge only works with --uninstall"
+fi
+EXPECT_SHA256="${EXPECT_SHA256,,}"
+if [ "$EXPECT_GIVEN" -eq 1 ]; then
+  [[ "$EXPECT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    || die_usage "--expect-sha256 must be a SHA-256: 64 hex characters"
+fi
+if [ "$EGRESS" = "on" ] && [ "$NETWORK" -eq 1 ]; then
+  die_usage "--egress-lock can't be combined with --network: network checks must reach your
+       router, DNS and internet targets, so the agent can't be locked to the server's address"
+fi
 
 # --- uninstall ------------------------------------------------------------------------
 
+# deploy/uninstall.sh does the work. The copy in the installed package came in the tarball
+# whose SHA-256 was checked at install time, so it is used, never a fresh download. It is
+# run from a temporary copy because it deletes the directory it lives in.
 uninstall() {
-  [ "$(id -u)" -eq 0 ] || die "run this with sudo (it removes a user and a systemd service)"
-  command -v systemctl >/dev/null || die "systemd is required"
-
-  say "Stopping and removing the $UNIT_NAME service"
-  systemctl disable --now --quiet "$UNIT_NAME" 2>/dev/null || true
-  rm -f "$UNIT_FILE"
-  rm -rf "$DOCKER_DROPIN_DIR"
-  systemctl daemon-reload
-  systemctl reset-failed "$UNIT_NAME" 2>/dev/null || true
-
-  say "Removing $PREFIX"
-  rm -rf "$PREFIX"
-
-  # Asked BEFORE the user is removed: the answer decides who owns any kept files.
-  if [ -d "$CONFIG_DIR" ]; then
-    if [ -r /dev/tty ] && ask_yes_no "Also delete $CONFIG_DIR (agent.toml with the token, ca.crt)? [y/N] "; then
-      rm -rf "$CONFIG_DIR"
-      say "Deleted $CONFIG_DIR"
-    else
-      # The cronrack group is about to disappear. A group created later could get the
-      # same number and read the token, so the kept files go to root:root. A re-install
-      # gives them back to cronrack.
-      chown -R root:root "$CONFIG_DIR"
-      say "Kept $CONFIG_DIR (now root:root). Delete it yourself with: sudo rm -rf $CONFIG_DIR"
-    fi
+  [ "$(id -u)" -eq 0 ] || die "run this with sudo (it removes a user and systemd services)"
+  local script="$APP_DIR/deploy/uninstall.sh" copy code=0
+  if [ ! -f "$script" ]; then
+    die "$script not found (an agent older than 0.5.0, or already removed).
+       Download uninstall.sh from your server (https://SERVER/agent/uninstall.sh), read it,
+       then run: sudo bash uninstall.sh"
   fi
-
-  if id -u "$AGENT_USER" >/dev/null 2>&1; then
-    say "Removing the $AGENT_USER user"
-    userdel "$AGENT_USER"
-  fi
-  # userdel removes the user's own group on Debian/Ubuntu; this covers systems where it doesn't.
-  if getent group "$AGENT_USER" >/dev/null; then
-    groupdel "$AGENT_USER" || warn "could not remove the $AGENT_USER group"
-  fi
-
-  echo
-  say "The CronRack agent is uninstalled. Delete the host on the server too (host settings)."
+  copy="$(mktemp)"
+  trap 'rm -f "$copy"' EXIT
+  cp "$script" "$copy"
+  if [ "$PURGE" -eq 1 ]; then bash "$copy" --purge || code=$?; else bash "$copy" || code=$?; fi
+  rm -f "$copy"
+  exit "$code"
 }
 
 if [ "$UNINSTALL" -eq 1 ]; then
   uninstall
-  exit 0
 fi
 
 # --- install: check the arguments ------------------------------------------------------
@@ -488,12 +538,6 @@ if ! python3 -c 'import venv, ensurepip' 2>/dev/null; then
   die "Python's venv module is missing: sudo apt install python3-venv"
 fi
 
-# One installer at a time (e.g. an Ansible run and a person at the same moment).
-if command -v flock >/dev/null; then
-  exec 9>/run/cronrack-agent-install.lock
-  flock -n 9 || die "another CronRack install or upgrade is running; try again when it has finished"
-fi
-
 # normalize_url URL: the URL with the scheme and host in lowercase, a default :443 on
 # https dropped and trailing slashes dropped. Everything else is kept as it is.
 normalize_url() {
@@ -553,6 +597,30 @@ code_version() {
   sed -n -E 's/^AGENT_VERSION = "([0-9A-Za-z.+-]{1,40})"$/\1/p' "$file" | head -n 1
 }
 
+# config_table_value TABLE KEY: the bare value (true, false, a number) of KEY inside
+# [TABLE] in agent.toml, or empty. Matched with a pattern, never executed.
+config_table_value() {
+  local table="$1" key="$2" line in_table=0 value=""
+  [ -f "$CONFIG_FILE" ] || return 0
+  { xtrace_off; } 2>/dev/null
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ "$line" =~ ^[[:space:]]*\[ ]]; then
+      in_table=0
+      if [[ "$line" =~ ^[[:space:]]*\[${table}\][[:space:]]*(#.*)?$ ]]; then in_table=1; fi
+    elif [ "$in_table" -eq 1 ] \
+      && [[ "$line" =~ ^[[:space:]]*${key}[[:space:]]*=[[:space:]]*([A-Za-z0-9_.-]+)[[:space:]]*(#.*)?$ ]]; then
+      value="${BASH_REMATCH[1]}"
+    fi
+  done <"$CONFIG_FILE"
+  xtrace_restore
+  printf '%s' "$value"
+}
+
+# has_token: 0 if agent.toml has a top-level token line. grep only reads the file.
+has_token() {
+  [ -f "$CONFIG_FILE" ] && grep -Eq '^[[:space:]]*token[[:space:]]*=' "$CONFIG_FILE"
+}
+
 OLD_VERSION=""
 WAS_ENABLED=0
 CONFIG_SERVER=""
@@ -586,11 +654,13 @@ if [ "$UPGRADE" -eq 1 ]; then
     SERVER_MOVED=1
   fi
 
-  # A drop-in naming a group that no longer exists would stop the service from starting.
-  # A normal re-run deletes it; --upgrade must not change the Docker choice, so it stops.
-  if [ -f "$DOCKER_DROPIN" ] && ! getent group docker >/dev/null; then
-    die "Docker access is on ($DOCKER_DROPIN), but the docker group no longer exists,
-       so the service could not start. Nothing was changed. Reinstall Docker, or run the
+  # The Docker proxy needs the docker group. A normal re-run turns Docker access off when
+  # the group is gone; --upgrade must not change the Docker choice, so it stops.
+  if { [ -f "$PROXY_SOCKET_FILE" ] || [ -f "$OLD_DOCKER_DROPIN" ] \
+       || [ "$(config_table_value docker enabled)" = "true" ]; } \
+    && ! getent group docker >/dev/null; then
+    die "Docker access is on, but the docker group no longer exists, so the read-only
+       Docker proxy could not start. Nothing was changed. Reinstall Docker, or run the
        install command without --upgrade to turn Docker access off."
   fi
 
@@ -602,7 +672,156 @@ if [ "$UPGRADE" -eq 1 ]; then
   [ -n "$OLD_VERSION" ] || OLD_VERSION="$(code_version "$APP_DIR")"
   [ -n "$OLD_VERSION" ] || OLD_VERSION="unknown"
 else
-  [ -r /dev/tty ] || die "no terminal to ask questions on; run this from an interactive shell (to upgrade without one, add --upgrade)"
+  if [ "$HAVE_TTY" -eq 0 ] && [ "$YES" -eq 0 ]; then
+    die_usage "no terminal to ask \"Continue?\" on. Re-run from an interactive shell, add
+       --yes to go ahead without asking (then every question takes its default and an
+       existing token is kept), or add --upgrade to upgrade an installed agent."
+  fi
+  if [ "$HAVE_TTY" -eq 0 ] && { [ "$NEW_TOKEN" -eq 1 ] || ! has_token; }; then
+    die "no terminal to type the token on: a fresh install (or --new-token) needs the token
+       typed in, hidden, on a terminal. Nothing was changed."
+  fi
+fi
+
+# --- what will happen: shown before anything changes ------------------------------------
+
+DOCKER_WAS_ON=0
+if [ -f "$PROXY_SOCKET_FILE" ] || [ -f "$OLD_DOCKER_DROPIN" ] \
+  || [ "$(config_table_value docker enabled)" = "true" ]; then
+  DOCKER_WAS_ON=1
+fi
+NETWORK_WAS_ON=0
+if [ "$(config_table_value network enabled)" = "true" ]; then NETWORK_WAS_ON=1; fi
+if [ "$EGRESS" = "on" ] && [ "$NETWORK_WAS_ON" -eq 1 ]; then
+  die_usage "--egress-lock can't be used while network checks are on ([network] enabled =
+       true in $CONFIG_FILE): they must reach your router, DNS and internet targets."
+fi
+if [ "$NETWORK" -eq 1 ] && [ -f "$EGRESS_DROPIN" ] && [ "$EGRESS" != "off" ]; then
+  die_usage "--network can't be used while the egress lock is on ($EGRESS_DROPIN): add
+       --no-egress-lock, or leave out --network."
+fi
+
+# A lock that exists stays right only while the addresses it allows are: a normal re-run
+# (which may name a new server or Kubernetes API) and a --server-change refresh it.
+EGRESS_REFRESH=0
+if [ -z "$EGRESS" ] && [ -f "$EGRESS_DROPIN" ] \
+  && { [ "$UPGRADE" -eq 0 ] || [ "$SERVER_MOVED" -eq 1 ]; }; then
+  EGRESS=on
+  EGRESS_REFRESH=1
+fi
+
+# valid_ip ADDR: prints the address in its canonical form, or fails. Python's ipaddress
+# decides (the installer already requires python3); an interface suffix (%eth0) is dropped.
+valid_ip() {
+  python3 -I -c 'import ipaddress, sys; print(ipaddress.ip_address(sys.argv[1]))' "${1%%\%*}" 2>/dev/null
+}
+
+# resolve_addresses HOST: its IPv4/IPv6 addresses, one per line (a literal address as is).
+resolve_addresses() {
+  local host="$1"
+  host="${host#[}"; host="${host%]}"
+  if valid_ip "$host" >/dev/null; then
+    valid_ip "$host"
+    return
+  fi
+  getent ahosts "$host" 2>/dev/null | awk '{print $1}' | sort -u
+}
+
+# egress_allow_list: fills EGRESS_ALLOW with every address the agent needs, BEFORE anything
+# changes, so a name that doesn't resolve stops the run while nothing was touched yet.
+EGRESS_ALLOW=()
+egress_allow_list() {
+  local server_host address ip key resolver api_host
+  server_host="$(url_host "$SERVER")"
+  while IFS= read -r address; do
+    if ip="$(valid_ip "$address")"; then EGRESS_ALLOW+=("$ip"); fi
+  done < <(resolve_addresses "$server_host")
+  [ "${#EGRESS_ALLOW[@]}" -gt 0 ] \
+    || die "--egress-lock: cannot resolve $server_host to an address; nothing was changed"
+  # The DNS servers the agent asks to find the server (127.0.0.53 for systemd-resolved).
+  if [ -r /etc/resolv.conf ]; then
+    while read -r key resolver _; do
+      if [ "$key" = "nameserver" ]; then
+        if ip="$(valid_ip "$resolver")"; then
+          EGRESS_ALLOW+=("$ip")
+        else
+          warn "--egress-lock: skipped the resolver \"$resolver\" in /etc/resolv.conf (not an address)"
+        fi
+      fi
+    done </etc/resolv.conf
+  fi
+  # The Kubernetes API, if this agent reads the cluster.
+  if [ "$K8S_VIEW" -eq 1 ] || [ "$(config_table_value kubernetes cluster_view)" = "true" ]; then
+    api_host="$(url_host "${K8S_API:-https://127.0.0.1:6443}")"
+    while IFS= read -r address; do
+      if ip="$(valid_ip "$address")"; then EGRESS_ALLOW+=("$ip"); fi
+    done < <(resolve_addresses "$api_host")
+  fi
+  mapfile -t EGRESS_ALLOW < <(printf '%s\n' "${EGRESS_ALLOW[@]}" | sort -u)
+}
+if [ "$EGRESS" = "on" ]; then egress_allow_list; fi
+
+show_plan() {
+  local docker_line egress_line="" config_line
+  if [ "$UPGRADE" -eq 1 ] && [ "$DOCKER_WAS_ON" -eq 1 ] && [ ! -f "$PROXY_SOCKET_FILE" ]; then
+    config_line="keep every setting; once the new version runs, move Docker access from the
+    docker group to the read-only Docker proxy (adds [docker] enabled = true to $CONFIG_FILE)"
+  elif [ "$UPGRADE" -eq 1 ]; then
+    config_line="keep $CONFIG_FILE and every setting as they are"
+  elif [ -f "$CONFIG_FILE" ]; then
+    config_line="update $CONFIG_FILE (root:$AGENT_USER 0640) and keep the other settings"
+  else
+    config_line="write $CONFIG_FILE (root:$AGENT_USER 0640) with the token you type in"
+  fi
+  if ! getent group docker >/dev/null; then
+    docker_line="Docker not found: container checks off"
+  elif [ "$UPGRADE" -eq 1 ]; then
+    if [ "$DOCKER_WAS_ON" -eq 1 ]; then docker_line="keep Docker access on (read-only Docker proxy)"
+    else docker_line="keep Docker access off"; fi
+  else
+    docker_line="ask whether the agent may read Docker (through the read-only Docker proxy)"
+  fi
+  case "$EGRESS" in
+    on) egress_line="lock the agent's outgoing traffic to ${EGRESS_ALLOW[*]} ($EGRESS_DROPIN)" ;;
+    off) egress_line="remove the egress lock ($EGRESS_DROPIN)" ;;
+  esac
+  echo
+  echo "This will:"
+  if ! id -u "$AGENT_USER" >/dev/null 2>&1; then
+    echo "  - create the system user $AGENT_USER (no login shell, no home, no sudo)"
+  fi
+  if [ -n "$EXPECT_SHA256" ]; then
+    echo "  - download the agent from $SERVER and check it against --expect-sha256"
+  else
+    echo "  - download the agent from $SERVER and check its SHA-256"
+  fi
+  echo "  - install it in $PREFIX (owned by root: the agent can't change its own code),"
+  echo "    with a Python venv and its one library (websockets from PyPI, pinned by version"
+  echo "    and SHA-256: pip refuses any other file)"
+  echo "  - $config_line"
+  if [ "${#SETTING_FLAGS[@]}" -gt 0 ] || [ -n "$CA_FILE" ]; then
+    echo "  - change only what you named: ${SETTING_FLAGS[*]}${CA_FILE:+ --ca-file}"
+  fi
+  echo "  - $docker_line"
+  if [ -n "$egress_line" ]; then echo "  - $egress_line"; fi
+  echo "  - install and (re)start $UNIT_NAME (sandboxed; see systemd-analyze security $UNIT_NAME)"
+  echo "It never opens a port, adds the agent to the docker or sudo group, or runs anything"
+  echo "it downloads before its checksum matches."
+  echo
+}
+show_plan
+if [ "$UPGRADE" -eq 0 ] && [ "$YES" -eq 0 ]; then
+  if ! ask_yes_no "Continue? [Y/n] " y; then
+    echo "Nothing was changed."
+    exit "$EXIT_FAILED"
+  fi
+fi
+
+# One installer at a time (e.g. an Ansible run and a person at the same moment). Taken only
+# now, so a run that stops above leaves nothing behind, not even this lock file.
+if command -v flock >/dev/null; then
+  exec 9>/run/cronrack-agent-install.lock
+  flock -n 9 || die "another CronRack install or upgrade is running; try again when it has finished"
 fi
 
 # --- Kubernetes: check everything and ask for the token BEFORE changing anything ------------
@@ -629,6 +848,7 @@ ask_k8s_token() {
   echo "Paste the Kubernetes service account token for the cluster view."
   echo "(Typing is hidden. It must be a read-only token; see docs/kubernetes-monitoring.md.)"
   K8S_TOKEN=""
+  [ "$HAVE_TTY" -eq 1 ] || die "no terminal to type the Kubernetes token on; nothing was changed"
   read -r -s -p "Kubernetes token: " K8S_TOKEN </dev/tty || true
   echo
   if [ "${#K8S_TOKEN}" -gt 12000 ] \
@@ -661,16 +881,6 @@ if [ "$K8S_VIEW" -eq 1 ]; then
   fi
 fi
 
-# --- 1. user ----------------------------------------------------------------------
-
-if id -u "$AGENT_USER" >/dev/null 2>&1; then
-  say "User $AGENT_USER exists"
-else
-  say "Creating system user $AGENT_USER (no login, no home)"
-  useradd --system --user-group --no-create-home --home-dir /nonexistent \
-    --shell /usr/sbin/nologin "$AGENT_USER"
-fi
-
 # --- 2. download and verify --------------------------------------------------------
 
 TMP="$(mktemp -d)"
@@ -689,7 +899,16 @@ EXPECTED="$(awk 'NR==1 {print $1}' "$TMP/cronrack-agent.tar.gz.sha256")"
 [[ "$EXPECTED" =~ ^[0-9a-f]{64}$ ]] || die "the .sha256 file from the server is malformed"
 ACTUAL="$(sha256sum "$TMP/cronrack-agent.tar.gz" | awk '{print $1}')"
 [ "$EXPECTED" = "$ACTUAL" ] || die "checksum mismatch: the download is corrupt or was tampered with; nothing was installed"
-say "Checksum OK ($ACTUAL)"
+if [ -n "$EXPECT_SHA256" ]; then
+  # The server's .sha256 only proves the download wasn't cut off: it comes from the same
+  # server. --expect-sha256 comes from somewhere else (your own checkout, a release page).
+  [ "$ACTUAL" = "$EXPECT_SHA256" ] || die "the downloaded package ($ACTUAL)
+       does not match --expect-sha256 $EXPECT_SHA256; nothing was installed.
+       Check which version the server runs, or whether someone changed it."
+  say "Checksum OK ($ACTUAL), matches --expect-sha256"
+else
+  say "Checksum OK ($ACTUAL)"
+fi
 
 # The version is read from the verified package with a pattern; nothing in it is run.
 NEW_VERSION="$(tar -xzOf "$TMP/cronrack-agent.tar.gz" agent/__init__.py 2>/dev/null \
@@ -697,6 +916,11 @@ NEW_VERSION="$(tar -xzOf "$TMP/cronrack-agent.tar.gz" agent/__init__.py 2>/dev/n
 [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.+-]*)?$ ]] \
   || die "the downloaded package has no valid AGENT_VERSION; nothing was installed"
 say "Package version $NEW_VERSION"
+if [ -z "$EXPECT_SHA256" ]; then
+  echo "    To check this package without trusting the server: in a git checkout of version"
+  echo "    $NEW_VERSION, run python3 scripts/agent-package-sha256.py; it must print $ACTUAL."
+  echo "    Next time, pass that hash with --expect-sha256 and the install refuses anything else."
+fi
 
 if [ "$UPGRADE" -eq 1 ] && [ -z "$CA_FILE" ] && [ "$SERVER_MOVED" -eq 0 ] \
   && [ "$(installed_value version)" = "$NEW_VERSION" ] \
@@ -711,7 +935,17 @@ if [ "$UPGRADE" -eq 1 ] && [ -z "$CA_FILE" ] && [ "$SERVER_MOVED" -eq 0 ] \
   exit 0
 fi
 
-# --- 3. install code and venv ------------------------------------------------------
+# --- 3. user (only now: nothing is created before the package checked out) ------------
+
+if id -u "$AGENT_USER" >/dev/null 2>&1; then
+  say "User $AGENT_USER exists"
+else
+  say "Creating system user $AGENT_USER (no login, no home)"
+  useradd --system --user-group --no-create-home --home-dir /nonexistent \
+    --shell /usr/sbin/nologin "$AGENT_USER"
+fi
+
+# --- 3b. install code and venv ------------------------------------------------------
 
 say "Installing to $PREFIX"
 install -d -m 0755 -o root -g root "$PREFIX"
@@ -720,7 +954,8 @@ rm -rf "$STAGING"
 install -d -m 0755 -o root -g root "$STAGING"
 tar -xzf "$TMP/cronrack-agent.tar.gz" -C "$STAGING" --no-same-owner --no-same-permissions
 if [ ! -f "$STAGING/agent/__main__.py" ] || [ ! -f "$STAGING/agent/requirements.txt" ] \
-  || [ ! -f "$STAGING/deploy/$UNIT_NAME" ]; then
+  || [ ! -f "$STAGING/deploy/$UNIT_NAME" ] || [ ! -f "$STAGING/deploy/uninstall.sh" ] \
+  || [ ! -f "$STAGING/deploy/$PROXY_SOCKET_NAME" ] || [ ! -f "$STAGING/deploy/$PROXY_SERVICE_NAME" ]; then
   die "the downloaded package looks incomplete"
 fi
 chown -R root:root "$STAGING"
@@ -730,9 +965,17 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
   say "Creating the Python virtual environment"
   python3 -m venv "$VENV_DIR"
 fi
-say "Installing the agent's one dependency (websockets)"
-"$VENV_DIR/bin/pip" install --quiet --disable-pip-version-check --no-cache-dir \
-  --upgrade -r "$STAGING/agent/requirements.txt"
+say "Installing the agent's one dependency (websockets, checked against its SHA-256)"
+# --require-hashes: pip refuses any file whose SHA-256 isn't in requirements.txt, which
+# lists every file PyPI publishes for the pinned version. --no-deps: it has none, and nothing
+# unlisted may come along.
+# PyPI only, whatever this host's pip is set up to do: PIP_CONFIG_FILE=/dev/null skips every
+# pip.conf (Raspberry Pi OS adds piwheels.org in /etc/pip.conf, and piwheels' own builds have
+# hashes that aren't in the list), --isolated skips the PIP_* environment variables, and
+# --index-url replaces any index they would have set.
+PIP_CONFIG_FILE=/dev/null "$VENV_DIR/bin/pip" install --isolated \
+  --index-url https://pypi.org/simple --quiet --disable-pip-version-check --no-cache-dir \
+  --require-hashes --no-deps --upgrade -r "$STAGING/agent/requirements.txt"
 # The venv is root's: the agent must not be able to change its own libraries.
 chown -R root:root "$VENV_DIR"
 chmod -R go-w "$VENV_DIR"
@@ -773,6 +1016,7 @@ ask_token() {  # reads the token into TOKEN, hidden; dies before anything is wri
   echo "Paste the agent token shown on the server's \"Add host\" page."
   echo "(Typing is hidden. The token is not shown again on the server.)"
   TOKEN=""
+  [ "$HAVE_TTY" -eq 1 ] || die "no terminal to type the token on; nothing was changed"
   read -r -s -p "Token: " TOKEN </dev/tty || true
   echo
   [[ "$TOKEN" =~ ^[A-Za-z0-9_-]{20,128}$ ]] || die "that doesn't look like a CronRack token; nothing was changed"
@@ -1003,43 +1247,133 @@ fi
 # the service below must always be installed and started.
 
 # --- 5. Docker access (opt-in, only if Docker is installed) --------------------------------
+#
+# The agent is never put in the docker group (that group is root-equivalent). Docker access
+# means: the read-only proxy (agent/docker_proxy.py) is installed. systemd owns its socket,
+# /run/cronrack/docker.sock (root:cronrack 0660); the proxy runs as a throwaway user in the
+# docker group, with no network, and passes on only a few GET requests.
+
+# install_docker_proxy: 0 when the proxy socket runs and [docker] enabled = true, else 1
+# (each step is checked: callers run it inside `if`, where set -e doesn't apply).
+install_docker_proxy() {
+  install -m 0644 -o root -g root "$APP_DIR/deploy/$PROXY_SOCKET_NAME" "$PROXY_SOCKET_FILE" || return 1
+  install -m 0644 -o root -g root "$APP_DIR/deploy/$PROXY_SERVICE_NAME" "$PROXY_SERVICE_FILE" || return 1
+  systemctl daemon-reload || return 1
+  systemctl enable --now --quiet "$PROXY_SOCKET_NAME" || return 1
+  # A running proxy keeps the old code until it is restarted; the socket stays open meanwhile.
+  systemctl try-restart "$PROXY_SERVICE_NAME" 2>/dev/null || true
+  if [ "$(config_table_value docker enabled)" != "true" ]; then set_table docker 'enabled = true'; fi
+}
+
+remove_docker_proxy() {
+  if [ -f "$PROXY_SOCKET_FILE" ] || [ -f "$PROXY_SERVICE_FILE" ]; then
+    systemctl disable --now --quiet "$PROXY_SOCKET_NAME" 2>/dev/null || true
+    systemctl stop "$PROXY_SERVICE_NAME" 2>/dev/null || true
+    rm -f "$PROXY_SOCKET_FILE" "$PROXY_SERVICE_FILE"
+    systemctl daemon-reload
+  fi
+}
+
+remove_old_docker_dropin() {
+  if [ -f "$OLD_DOCKER_DROPIN" ]; then
+    rm -f "$OLD_DOCKER_DROPIN"
+    rmdir "$DROPIN_DIR" 2>/dev/null || true
+    say "Removed $OLD_DOCKER_DROPIN: the agent is no longer in the docker group (root-equivalent)"
+  fi
+}
 
 echo
+DOCKER_MIGRATE=0
 if [ "$UPGRADE" -eq 1 ]; then
   # --upgrade keeps the current choice and never asks (checked above that it can start).
-  if [ -f "$DOCKER_DROPIN" ]; then
-    say "Docker access kept: on ($DOCKER_DROPIN)"
+  if [ "$DOCKER_WAS_ON" -eq 1 ] && [ -f "$PROXY_SOCKET_FILE" ]; then
+    # Already on the proxy: refresh its units from the new package.
+    if install_docker_proxy; then
+      say "Docker access kept: on, through the read-only Docker proxy ($PROXY_SOCKET_NAME)"
+    else
+      warn "could not refresh the Docker proxy units; see systemctl status $PROXY_SOCKET_NAME"
+    fi
+    remove_old_docker_dropin
+  elif [ "$DOCKER_WAS_ON" -eq 1 ]; then
+    # From the docker group (before 0.5.0). Moved only once the new version keeps running,
+    # so a rollback finds agent.toml and the old drop-in exactly as they were.
+    DOCKER_MIGRATE=1
+    say "Docker access: on. It moves to the read-only Docker proxy once the new version runs."
   else
     say "Docker access kept: off"
   fi
+else
+  remove_old_docker_dropin
+fi
+if [ "$UPGRADE" -eq 1 ]; then
+  :
 elif getent group docker >/dev/null; then
-  echo "The agent can check your Docker containers, but only if it's in the docker group."
-  echo "Members of the docker group can control Docker, which is equivalent to root on this host."
+  echo "The agent can check your Docker containers through a read-only proxy that allows"
+  echo "only a few GET requests (container list, state, stats) and strips the answers: no"
+  echo "environment variables, commands, labels or mounts. The agent itself is NOT added to"
+  echo "the docker group. See docs/trust-the-agent.md."
   # The default follows the current choice, so pressing Enter never removes access.
-  if [ -f "$DOCKER_DROPIN" ]; then
-    docker_prompt="Docker access is on. Keep it? (docker group = root-equivalent) [Y/n] "
+  if [ "$DOCKER_WAS_ON" -eq 1 ]; then
+    docker_prompt="Docker access is on. Keep it? [Y/n] "
     docker_default=y
   else
-    docker_prompt="Give the agent Docker access? (docker group = root-equivalent) [y/N] "
+    docker_prompt="Give the agent Docker access? (read-only, through the proxy) [y/N] "
     docker_default=n
   fi
   if ask_yes_no "$docker_prompt" "$docker_default"; then
-    if install -d -m 0755 "$DOCKER_DROPIN_DIR" \
-      && printf '[Service]\nSupplementaryGroups=docker\n' >"$DOCKER_DROPIN" \
-      && chmod 0644 "$DOCKER_DROPIN"; then
-      say "Docker access enabled ($DOCKER_DROPIN)"
+    if install_docker_proxy; then
+      say "Docker access on: read-only Docker proxy ($PROXY_SOCKET_NAME, /run/cronrack/docker.sock)"
     else
-      rm -f "$DOCKER_DROPIN" || true
-      warn "could not enable Docker access; container checks stay off. Re-run the installer to try again."
+      remove_docker_proxy
+      set_table docker 'enabled = false'
+      warn "could not set up the Docker proxy; container checks stay off. Re-run the installer to try again."
     fi
   else
-    rm -f "$DOCKER_DROPIN" || true
+    remove_docker_proxy
+    set_table docker 'enabled = false'
     say "No Docker access (container checks will report \"unavailable\")"
   fi
 else
-  # A leftover drop-in naming a group that no longer exists would stop the service from starting.
-  rm -f "$DOCKER_DROPIN" || true
+  # No docker group: the proxy could not start, so it is removed if it was there.
+  remove_docker_proxy
+  if [ -n "$(config_table_value docker enabled)" ]; then set_table docker 'enabled = false'; fi
   say "Docker not found: container checks will be off. Re-run this installer after installing Docker to enable them."
+fi
+
+# --- 5b. egress lock (opt-in) ------------------------------------------------------------
+
+write_egress_lock() {
+  local tmp
+  install -d -m 0755 -o root -g root "$DROPIN_DIR"
+  tmp="$(mktemp "$DROPIN_DIR/.egress.conf.XXXXXX")"
+  {
+    printf '# Written by install.sh --egress-lock on %s.\n' "$(date -u +%Y-%m-%d)"
+    printf '# The agent may reach only these addresses: the CronRack server (%s),\n' "$(url_host "$SERVER")"
+    printf '# the DNS servers in /etc/resolv.conf and, with the cluster view, the Kubernetes\n'
+    printf '# API, as resolved then. If the server'"'"'s address changes, re-run install.sh\n'
+    printf '# (a re-run refreshes this file). Remove it with install.sh --no-egress-lock.\n'
+    printf '[Service]\nIPAddressDeny=any\n'
+    printf 'IPAddressAllow=%s\n' "${EGRESS_ALLOW[*]}"
+  } >"$tmp"
+  chown root:root "$tmp"
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$EGRESS_DROPIN"
+  if [ "$EGRESS_REFRESH" -eq 1 ]; then
+    say "Egress lock refreshed ($EGRESS_DROPIN): ${EGRESS_ALLOW[*]}"
+  else
+    say "Egress lock on ($EGRESS_DROPIN): the agent may reach only ${EGRESS_ALLOW[*]}"
+  fi
+  echo "    Re-run the installer if the server's address changes (it was resolved now)."
+}
+
+if [ "$EGRESS" = "on" ]; then
+  write_egress_lock
+elif [ "$EGRESS" = "off" ]; then
+  if [ -f "$EGRESS_DROPIN" ]; then
+    rm -f "$EGRESS_DROPIN"
+    rmdir "$DROPIN_DIR" 2>/dev/null || true
+    say "Egress lock removed"
+  fi
 fi
 
 # --- 6. systemd service -------------------------------------------------------------------
@@ -1080,13 +1414,16 @@ if [ "$UPGRADE" -eq 0 ]; then
   say "Done. The agent is running and connecting to $SERVER."
   echo "    Status:  systemctl status cronrack-agent"
   echo "    Logs:    journalctl -u cronrack-agent -f"
+  echo "    See what it sends: cd $APP_DIR && sudo -u $AGENT_USER ../venv/bin/python -m agent --dry-run --config $CONFIG_FILE"
+  echo "    Sandbox: systemd-analyze security $UNIT_NAME"
   if [ -f "$CA_DEST" ]; then
-    echo "    Upgrade: sudo curl -fsSL --cacert $CA_DEST $SERVER/agent/install.sh \\"
+    echo "    Upgrade: sudo curl -fsSLO --cacert $CA_DEST $SERVER/agent/install.sh"
   else
-    echo "    Upgrade: curl -fsSL $SERVER/agent/install.sh \\"
+    echo "    Upgrade: curl -fsSLO $SERVER/agent/install.sh"
   fi
-  echo "               | sudo bash -s -- --server $SERVER --upgrade"
-  echo "             (asks nothing and keeps the token and every setting)"
+  echo "             sudo bash install.sh --server $SERVER --upgrade"
+  echo "             (read it first; asks nothing and keeps the token and every setting)"
+  echo "    Remove:  sudo bash install.sh --uninstall"
   if [ "$K8S_VIEW" -eq 1 ]; then
     echo "    Check the Kubernetes access:"
     echo "      cd $APP_DIR && sudo -u $AGENT_USER ../venv/bin/python -m agent --check-k8s --config $CONFIG_FILE"
@@ -1099,13 +1436,30 @@ start_service "$APP_DIR"
 if wait_until_stable; then
   write_installed
   rm -rf "$APP_PREV"
+  if [ "$DOCKER_MIGRATE" -eq 1 ]; then
+    if install_docker_proxy; then
+      remove_old_docker_dropin
+      systemctl daemon-reload
+      systemctl restart "$UNIT_NAME" || true
+      if wait_until_stable; then
+        say "Docker access moved to the read-only Docker proxy ($PROXY_SOCKET_NAME)"
+      else
+        warn "the agent did not keep running after the Docker proxy was set up; see journalctl -u cronrack-agent -n 50"
+      fi
+    else
+      remove_docker_proxy
+      warn "could not set up the Docker proxy: Docker access stays on through the old docker
+       group drop-in ($OLD_DOCKER_DROPIN). Run the installer again to retry."
+    fi
+  fi
   kept="token"
   if [ -f "$CA_DEST" ] && [ -z "$CA_FILE" ]; then kept="$kept, CA certificate"; fi
   if [ -f "$K8S_TOKEN_FILE" ]; then kept="$kept, Kubernetes token"; fi
   if grep -Eq '^[[:space:]]*\[kubernetes\]' "$CONFIG_FILE"; then kept="$kept, [kubernetes] settings"; fi
   if grep -Eq '^[[:space:]]*\[network\]' "$CONFIG_FILE"; then kept="$kept, [network] settings"; fi
   if grep -Eq '^[[:space:]]*\[metrics\]' "$CONFIG_FILE"; then kept="$kept, [metrics] settings"; fi
-  if [ -f "$DOCKER_DROPIN" ]; then kept="$kept, Docker access (on)"; else kept="$kept, Docker access (off)"; fi
+  if [ "$DOCKER_WAS_ON" -eq 1 ]; then kept="$kept, Docker access (on)"; else kept="$kept, Docker access (off)"; fi
+  if [ -f "$EGRESS_DROPIN" ]; then kept="$kept, egress lock (on)"; else kept="$kept, egress lock (off)"; fi
   echo
   say "Upgraded the CronRack agent: $OLD_VERSION -> $NEW_VERSION"
   echo "    Kept:    $kept"

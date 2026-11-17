@@ -30,6 +30,7 @@ from agents import package
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
 INSTALL_SH = REPO_ROOT / "deploy" / "install.sh"
+UNINSTALL_SH = REPO_ROOT / "deploy" / "uninstall.sh"
 PREFIX = "cronrack-installtest"
 LABEL = "cronrack-installtest=1"
 
@@ -157,6 +158,8 @@ def packages(tmp_path_factory) -> Packages:
         (download / "cronrack-agent.tar.gz.sha256").write_text(
             f"{sums[name]}  cronrack-agent.tar.gz\n"
         )
+        # Served like the real server's /agent/uninstall.sh.
+        shutil.copy(UNINSTALL_SH, root / name / "agent" / "uninstall.sh")
     # The container's root reads these through a bind mount.
     for path in [root, *root.rglob("*")]:
         path.chmod(0o755 if path.is_dir() else 0o644)
@@ -223,10 +226,20 @@ class Box:
     def is_enabled(self) -> bool:
         return self.sh("systemctl is-enabled --quiet cronrack-agent.service").code == 0
 
-    def interactive(self, args: str, answers: str) -> Result:
-        """install.sh on a fake terminal (script(1)); answers are typed in, one per line."""
+    def interactive(self, args: str, answers: str, *, confirm: bool = False) -> Result:
+        """install.sh on a fake terminal (script(1)); answers are typed in, one per line.
+
+        Unless confirm=True, --yes is added so the "Continue?" prompt doesn't take the
+        first answer; the tests of that prompt pass confirm=True and answer it themselves.
+        """
+        if not confirm:
+            args = f"{args} --yes"
         command = shlex.quote(f"bash /install.sh {args}")
         return self.sh(f"script -qec {command} /dev/null", stdin=answers)
+
+    def no_tty(self, args: str) -> Result:
+        """install.sh in a new session with stdin closed: no terminal at all."""
+        return self.sh(f"setsid -w bash /install.sh {args} <&-")
 
     def install(self, args: str = "", answers: str | None = None, *, k8s_view=False) -> Result:
         """A fresh install over https with the throwaway CA; asserts it worked."""
@@ -274,7 +287,8 @@ def box(image, packages):
             "for i in $(seq 50); do"
             " curl -fs -o /dev/null http://127.0.0.1:8000/agent/download/cronrack-agent.tar.gz"
             " && curl -fs -o /dev/null --cacert /srv/tls/ca.crt"
-            " https://localhost/agent/download/cronrack-agent.tar.gz && exit 0;"
+            " https://localhost/agent/download/cronrack-agent.tar.gz"
+            " && curl -fs -o /dev/null https://pypi.org/simple/websockets/ && exit 0;"
             " sleep 0.1; done; exit 1"
         )
         yield container

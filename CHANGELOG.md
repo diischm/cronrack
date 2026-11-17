@@ -5,6 +5,48 @@ before 1.0.0, any release may change things that worked before, and the notes sa
 
 ## [Unreleased]
 
+### Security
+
+- **Agent 0.5.0 is no longer in the docker group.** That group is root-equivalent. Docker
+  access now goes through a new read-only proxy (`cronrack-docker-proxy.socket` and
+  `.service`, `agent/docker_proxy.py`, standard library only). It allows three GET requests
+  (version, container list, stats; container inspect is refused), refuses everything else with 403
+  before Docker is asked, and strips each answer to the fields the checks use, so
+  container environment variables, commands, labels and mounts never reach the agent. It
+  runs as a throwaway user with no network. `install.sh --upgrade` moves Docker access that
+  was on to the proxy and removes the old `docker.conf` drop-in; new config key
+  `[docker] enabled`. Container health now comes from the Docker API instead of `docker ps`
+  (same fields in the report).
+- **Sandboxed agent unit.** `deploy/cronrack-agent.service` adds a full systemd sandbox (no
+  capabilities, a system call filter, `ProtectProc`, `PrivateDevices`, `MemoryDenyWriteExecute`
+  and more): `systemd-analyze security cronrack-agent` drops from 7.8 EXPOSED to the score in
+  `docs/trust-the-agent.md`.
+- **Verifiable install.** `install.sh` shows what it will do and asks "Continue?" (`--yes` for
+  scripts; without a terminal and without `--yes` it refuses). `--expect-sha256 HASH` refuses
+  a package that doesn't match a hash from somewhere other than the server;
+  `scripts/agent-package-sha256.py` rebuilds that hash from a git checkout. The printed
+  commands now download, read and then run the installer instead of piping it into bash.
+- **websockets pinned by hash.** `agent/requirements.txt` lists the SHA-256 of every file PyPI
+  publishes for `websockets==17.2` (148 files: all wheels plus the sdist), and `install.sh`
+  installs it with `pip install --require-hashes --no-deps` from PyPI only: the host's
+  `pip.conf` files and `PIP_*` variables are ignored (`PIP_CONFIG_FILE=/dev/null`,
+  `--isolated`), so piwheels on a Raspberry Pi can't be picked. `requirements-dev.txt` names the
+  same version without hashes (a test keeps the two equal).
+- **Egress lock.** `install.sh --egress-lock` limits the agent to the exact addresses of the server and your DNS servers
+  (`IPAddressDeny=any` drop-in); refused while network checks are on. `--no-egress-lock`
+  removes it.
+- **`deploy/uninstall.sh`** removes the agent, the proxy, their units and drop-ins,
+  `/run/cronrack` and the user, and lists what it removed (`--purge` also deletes
+  `/etc/cronrack`). `install.sh --uninstall` runs it; the server serves it at
+  `/agent/uninstall.sh`.
+- **`cronrack-agent --dry-run`** (the new name of `--once`, which still works) prints the exact
+  report the agent would send, sends nothing and needs no token.
+- **Guard tests** fail CI if the agent ever gains `eval`/`exec`, a shell, a non-literal
+  command, file writes or a download path. New rule `agent.docker_proxy_unavailable` (heads
+  up) when Docker access is on but the proxy doesn't answer.
+- **docs/trust-the-agent.md**: what the agent runs as, its sandbox, the Docker allowlist, the
+  commands it runs, what it never reads, and the threat model, with commands to check each.
+
 ### Added
 
 - **Activity entries carry their subject.** Each entry on the Activity page and in

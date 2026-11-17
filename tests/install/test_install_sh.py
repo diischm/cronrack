@@ -16,7 +16,8 @@ SETTINGS_FILES = (
     "/etc/cronrack/k8s-token",
     "/etc/cronrack/k8s-ca.crt",
 )
-DROPIN = "/etc/systemd/system/cronrack-agent.service.d/docker.conf"
+# Docker access = the read-only proxy is installed (agent 0.5.0; before, a docker-group drop-in).
+DROPIN = "/etc/systemd/system/cronrack-docker-proxy.socket"
 INSTALLED = "/opt/cronrack-agent/INSTALLED"
 PROMPTS = ("Token:", "[y/N]", "[Y/n]", "Replace it?", "Kubernetes token:")
 

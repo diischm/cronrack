@@ -8,7 +8,7 @@ as possible, then re-run the tests.
 | File | Command that produces it |
 |------|--------------------------|
 | `apt_upgradable.txt` | `LC_ALL=C apt list --upgradable 2>/dev/null` |
-| `docker_ps.txt` | `docker ps -a --format '{{json .}}'` |
+| `docker_containers.json` | `curl --unix-socket /var/run/docker.sock 'http://d/v1.45/containers/json?all=1'` (the Docker API list, before the proxy strips it) |
 | `systemctl_failed.txt` | `systemctl --failed --no-legend --plain` |
 | `systemctl_timers.txt` | `LC_ALL=C TZ=UTC systemctl list-timers --all --no-legend --plain` |
 | `df.txt` | `LC_ALL=C df -P -T` (note the `-T`: it adds the filesystem type column) |

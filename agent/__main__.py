@@ -1,6 +1,10 @@
-"""Command line entry point: python -m agent [--once | --check-k8s] [--config PATH].
+"""Command line entry point: python -m agent [--dry-run | --check-k8s] [--config PATH].
 
-Without --once the agent connects to the server and stays connected until it
+--dry-run (alias --once) builds one report, prints the exact JSON the agent would send,
+and exits. It never connects to the server and needs no token: run it as the agent user
+(sudo -u cronrack ...) to see precisely what leaves the host.
+
+Without --dry-run the agent connects to the server and stays connected until it
 gets SIGTERM (systemctl stop) or SIGINT (Ctrl+C); then it closes the socket
 cleanly and exits 0. Logs go to stderr, where journald collects them.
 
@@ -23,7 +27,7 @@ from agent.connection import run_forever
 from agent.kube_api import KubeClient, permission_report
 from agent.report import build_report, default_sampler
 
-# --once: seconds between the two metric readings that the rates are computed from.
+# --dry-run: seconds between the two metric readings that the rates are computed from.
 ONCE_SAMPLE_SECONDS = 1.0
 
 EXIT_OK = 0
@@ -115,7 +119,12 @@ def check_k8s(config, path: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m agent", description="CronRack host agent.")
     parser.add_argument(
-        "--once", action="store_true", help="collect one report, print it as JSON, and exit"
+        "--dry-run",
+        "--once",
+        dest="dry_run",
+        action="store_true",
+        help="build one report, print the exact JSON the agent would send, and exit; "
+        "sends nothing and needs no token (--once is the old name)",
     )
     parser.add_argument(
         "--check-k8s",
@@ -140,11 +149,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.check_k8s:
         return check_k8s(config, args.config)
 
-    if args.once:
+    if args.dry_run:
         if config.metrics.enabled:
             # Rates (CPU %, disk and network per second) need two readings: take one now,
             # so the printed report shows real numbers instead of nulls.
-            default_sampler().collect(containers="containers" in config.enabled_checks)
+            default_sampler().collect(containers=config.containers_active)
             time.sleep(ONCE_SAMPLE_SECONDS)
         # json.dumps escapes control characters, so a hostile container or unit
         # name can't inject terminal escape sequences into the output.

@@ -4,7 +4,7 @@ no session, and nothing here is secret (the token is typed in at install time)."
 from django.http import HttpRequest, HttpResponse
 from django.views.decorators.http import require_GET
 
-from agents.package import TARBALL_NAME, agent_package, install_script
+from agents.package import TARBALL_NAME, agent_package, install_script, uninstall_script
 
 
 def _no_cache(response: HttpResponse) -> HttpResponse:
@@ -17,6 +17,12 @@ def _no_cache(response: HttpResponse) -> HttpResponse:
 def install_sh(request: HttpRequest) -> HttpResponse:
     """GET /agent/install.sh — plain text, so it can be read before it's run."""
     return _no_cache(HttpResponse(install_script(), content_type="text/plain; charset=utf-8"))
+
+
+@require_GET
+def uninstall_sh(request: HttpRequest) -> HttpResponse:
+    """GET /agent/uninstall.sh — plain text, so it can be read before it's run."""
+    return _no_cache(HttpResponse(uninstall_script(), content_type="text/plain; charset=utf-8"))
 
 
 @require_GET

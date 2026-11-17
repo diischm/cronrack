@@ -27,6 +27,7 @@ EXPECTED_FILES = {
     "agent/config.py",
     "agent/connection.py",
     "agent/docker_api.py",
+    "agent/docker_proxy.py",
     "agent/kube_api.py",
     "agent/kube_cluster.py",
     "agent/metrics.py",
@@ -35,6 +36,9 @@ EXPECTED_FILES = {
     "agent/report.py",
     "agent/requirements.txt",
     "deploy/cronrack-agent.service",
+    "deploy/cronrack-docker-proxy.service",
+    "deploy/cronrack-docker-proxy.socket",
+    "deploy/uninstall.sh",
 }
 
 
@@ -124,7 +128,9 @@ def test_unit_file_in_the_tarball_matches_the_repo(anonymous):
 
     assert unit == (package.REPO_ROOT / "deploy" / "cronrack-agent.service").read_bytes()
     assert b"NoNewPrivileges=yes" in unit
-    assert b"\n#SupplementaryGroups=docker" in unit  # Docker stays opt-in
+    # The agent is never in the docker group; Docker goes through the read-only proxy.
+    assert b"SupplementaryGroups" not in unit
+    assert b"SystemCallFilter=@system-service" in unit
 
 
 # --- the "token rotated" page shows the install command too ---------------------------
@@ -175,3 +181,54 @@ def test_explicit_allowed_hosts_win():
 
 def test_no_default_without_debug():
     assert allowed_hosts_with({"DEBUG": "0"}) == ""
+
+
+# --- uninstall.sh and the independent checksum ----------------------------------------------
+
+
+def test_uninstall_sh_is_public_plain_text(anonymous):
+    response = anonymous.get("/agent/uninstall.sh")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "text/plain; charset=utf-8"
+    assert response.content == package.UNINSTALL_SCRIPT.read_bytes()
+    assert response.content.startswith(b"#!/usr/bin/env bash")
+
+
+def test_uninstall_sh_only_answers_get(anonymous):
+    assert anonymous.post("/agent/uninstall.sh").status_code == 405
+
+
+REPO_ROOT = SERVER_DIR.parent
+HASH_SCRIPT = REPO_ROOT / "scripts" / "agent-package-sha256.py"
+
+
+def test_anyone_can_rebuild_the_package_hash_from_a_checkout():
+    """scripts/agent-package-sha256.py, run with plain python3 and no Django, gives the same
+    SHA-256 the server publishes. That's what install.sh --expect-sha256 is checked against."""
+    result = subprocess.run(
+        [sys.executable, "-I", str(HASH_SCRIPT)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env={"PATH": os.environ.get("PATH", "")},
+        cwd="/",
+    )
+    assert result.returncode == 0, result.stderr
+    first_line = result.stdout.splitlines()[0]
+    assert first_line == f"{package.build_package().sha256}  cronrack-agent.tar.gz"
+
+
+def test_package_module_needs_no_django():
+    """The hash script imports package.py without Django settings, so it must not need them."""
+    import ast
+
+    module = ast.parse((SERVER_DIR / "agents" / "package.py").read_text(encoding="utf-8"))
+    imported = {
+        alias.name.split(".")[0]
+        for n in ast.walk(module)
+        if isinstance(n, ast.Import)
+        for alias in n.names
+    } | {(n.module or "").split(".")[0] for n in ast.walk(module) if isinstance(n, ast.ImportFrom)}
+    assert "django" not in imported

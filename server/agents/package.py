@@ -1,8 +1,12 @@
-"""The files a host downloads to install the agent: install.sh and the agent tarball.
+"""The files a host downloads: install.sh, uninstall.sh and the agent tarball.
 
-Both come straight from this repository (agent/ and deploy/), so the server always
+All come straight from this repository (agent/ and deploy/), so the server always
 hands out the agent that matches its own version. Nothing in them is secret: the
 token is typed in at install time and never part of a download.
+
+No Django here on purpose: scripts/agent-package-sha256.py imports this module from a
+plain git checkout, so anyone can rebuild the tarball and compare its SHA-256 with what a
+server hands out (install.sh --expect-sha256).
 """
 
 import gzip
@@ -13,18 +17,23 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from django.conf import settings
-
-REPO_ROOT = Path(settings.BASE_DIR).parent
+# server/agents/package.py -> the repository root.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SCRIPT = REPO_ROOT / "deploy" / "install.sh"
+UNINSTALL_SCRIPT = REPO_ROOT / "deploy" / "uninstall.sh"
 TARBALL_NAME = "cronrack-agent.tar.gz"
 
 # An allowlist, not a blocklist: only these files ever go into the package.
 # agent/tests/ (fixtures with real command output) is deliberately not listed.
 AGENT_FILE_PATTERNS = ("agent/*.py", "agent/requirements.txt")
-# The systemd unit travels inside the checksummed tarball, so install.sh never
-# installs a service file it hasn't verified.
-EXTRA_FILES = ("deploy/cronrack-agent.service",)
+# The systemd units and uninstall.sh travel inside the checksummed tarball, so install.sh
+# never installs a service file it hasn't verified.
+EXTRA_FILES = (
+    "deploy/cronrack-agent.service",
+    "deploy/cronrack-docker-proxy.service",
+    "deploy/cronrack-docker-proxy.socket",
+    "deploy/uninstall.sh",
+)
 
 # Fixed metadata so the same files always give byte-for-byte the same tarball.
 _FIXED_MTIME = 0
@@ -89,3 +98,8 @@ def agent_package() -> Package:
 @lru_cache(maxsize=1)
 def install_script() -> bytes:
     return INSTALL_SCRIPT.read_bytes()
+
+
+@lru_cache(maxsize=1)
+def uninstall_script() -> bytes:
+    return UNINSTALL_SCRIPT.read_bytes()

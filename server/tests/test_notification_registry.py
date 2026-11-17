@@ -46,8 +46,9 @@ def test_guard_no_rule_spec_without_a_real_check():
 
 def test_there_are_50_rules_today():
     # Not a rule for the future, just a check that nothing was lost or doubled.
-    # 43 before host metrics, plus the 7 resource rules (rules/resources.py).
-    assert len(SPECS) == 50
+    # 43 before host metrics, plus the 7 resource rules (rules/resources.py), plus
+    # agent.docker_proxy_unavailable (agent 0.5.0).
+    assert len(SPECS) == 51
 
 
 @pytest.mark.parametrize("rule_id", sorted(SPECS))
