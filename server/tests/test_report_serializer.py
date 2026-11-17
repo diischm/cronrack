@@ -1,12 +1,13 @@
 """ReportSerializer accepts exactly what agent/report.py builds, and nothing else."""
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from agent import collectors
-from agent.config import AgentConfig
+from agent import collectors, docker_api
+from agent.config import AgentConfig, DockerConfig
 from agent.report import build_report, command_check
 from agents.serializers import (
     MAX_ITEMS,
@@ -18,6 +19,12 @@ from agents.serializers import (
 from .sample import SAMPLE_REPORT, make_report
 
 FIXTURES = Path(__file__).resolve().parents[2] / "agent" / "tests" / "fixtures"
+
+
+def container_fixture():
+    """Container health from the Docker API list fixture, as the agent parses it."""
+    data = json.loads((FIXTURES / "docker_containers.json").read_text(encoding="utf-8"))
+    return docker_api.parse_container_health(data)
 
 
 def is_valid(report) -> bool:
@@ -39,12 +46,12 @@ def test_real_agent_report_is_valid():
         return command_check(lambda: text, parse)
 
     report = build_report(
-        AgentConfig(),
+        AgentConfig(docker=DockerConfig(enabled=True)),
         now=datetime(2026, 10, 12, 12, 0, 0, tzinfo=UTC),
         collectors={
             "updates": from_fixture("apt_upgradable.txt", collectors.parse_apt_upgradable),
             "reboot": lambda: True,
-            "containers": from_fixture("docker_ps.txt", collectors.parse_docker_ps),
+            "containers": container_fixture,
             "units": from_fixture("systemctl_failed.txt", collectors.parse_systemctl_failed),
             "timers": from_fixture("systemctl_timers.txt", collectors.parse_systemctl_timers),
             "disks": from_fixture("df.txt", collectors.parse_df),
@@ -52,6 +59,7 @@ def test_real_agent_report_is_valid():
     )
     serializer = ReportSerializer(data=report)
 
+    assert report["containers"]
     assert serializer.is_valid(), serializer.errors
     assert serializer.validated_data == report
 

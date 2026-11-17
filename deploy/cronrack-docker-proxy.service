@@ -1,0 +1,67 @@
+# CronRack read-only Docker proxy (agent/docker_proxy.py).
+# Installed by deploy/install.sh (only when you give the agent Docker access).
+#
+# It is the one CronRack process in the docker group, so it is locked down hardest:
+# a throwaway user (DynamicUser), no network at all, only unix sockets, and its only
+# input is the socket systemd hands it (cronrack-docker-proxy.socket). It allows a few
+# GET requests and strips every answer; see docs/trust-the-agent.md for the list.
+#
+#   systemctl status cronrack-docker-proxy.socket cronrack-docker-proxy.service
+#   systemd-analyze security cronrack-docker-proxy
+
+[Unit]
+Description=CronRack read-only Docker proxy
+Documentation=https://github.com/diischm/cronrack/blob/main/docs/trust-the-agent.md
+Requires=cronrack-docker-proxy.socket
+After=cronrack-docker-proxy.socket
+
+[Service]
+Type=exec
+DynamicUser=yes
+# The docker group lets it reach /var/run/docker.sock. Nothing else gets this group.
+SupplementaryGroups=docker
+WorkingDirectory=/opt/cronrack-agent/app
+# -E: ignore PYTHON* environment variables; -s: no user site-packages.
+ExecStart=/opt/cronrack-agent/venv/bin/python -E -s -m agent.docker_proxy
+Restart=on-failure
+RestartSec=5
+
+# --- Hardening (everything the agent has, plus no network and fewer /proc files) -------
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProcSubset=pid
+UMask=0077
+RemoveIPC=yes
+PrivateIPC=yes
+KeyringMode=private
+
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @swap @reboot @module @raw-io @debug @cpu-emulation @obsolete @clock
+SystemCallErrorNumber=EPERM
+
+# No network: a private, empty network namespace. Path-based unix sockets still work,
+# which is all it needs (the socket from systemd, and /var/run/docker.sock).
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX

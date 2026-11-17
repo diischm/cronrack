@@ -5,4 +5,7 @@ pytest
 pytest-django==4.14.0
 pytest-asyncio==1.4.0
 -r server/requirements.txt
--r agent/requirements.txt
+# The agent's library, same exact version as agent/requirements.txt. Not "-r" that file:
+# its hashes would switch pip into hash-checking mode for every package here.
+# agent/tests/test_requirements.py keeps the two versions equal.
+websockets==17.2

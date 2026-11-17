@@ -3,10 +3,11 @@
 #
 #   systemctl status cronrack-agent
 #   journalctl -u cronrack-agent -f
+#   systemd-analyze security cronrack-agent     (the sandbox score; see docs/trust-the-agent.md)
 
 [Unit]
 Description=CronRack agent
-Documentation=https://github.com/diischm/cronrack
+Documentation=https://github.com/diischm/cronrack/blob/main/docs/trust-the-agent.md
 Wants=network-online.target
 After=network-online.target
 
@@ -19,26 +20,61 @@ ExecStart=/opt/cronrack-agent/venv/bin/python -m agent --config /etc/cronrack/ag
 Restart=always
 RestartSec=5
 
-# Docker access is OPT-IN. Uncomment only if you want container checks.
-# Being in the "docker" group is effectively ROOT on this host: anyone in it can
-# start a container that mounts / and changes any file. Only enable it if you
-# accept that a compromised agent could take over the machine.
-#SupplementaryGroups=docker
+# Docker: the agent is NOT in the docker group (that group is root-equivalent). With
+# Docker access on, it reads containers through the read-only proxy at
+# /run/cronrack/docker.sock (cronrack-docker-proxy.socket), which only allows a few GETs.
 
 # --- Hardening ------------------------------------------------------------------
-# Never gain privileges (blocks sudo, setuid binaries, file capabilities).
+# Privileges: none, and no way to gain any (sudo, setuid binaries, file capabilities).
 NoNewPrivileges=yes
-# The whole filesystem is read-only for the agent; it never needs to write anything.
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+
+# Files: the whole filesystem is read-only; /home, /root and /run/user are invisible;
+# a private /tmp; only pseudo devices (/dev/null, /dev/urandom ...) in /dev.
 ProtectSystem=strict
-# /home, /root and /run/user are invisible.
 ProtectHome=yes
-# A private /tmp, not shared with other services.
 PrivateTmp=yes
-# No changing kernel settings (/proc/sys, /sys) or cgroups.
+PrivateDevices=yes
+# Other users' processes are invisible in /proc. (/proc/stat, /proc/meminfo and the like
+# stay readable: the metrics need them, so ProcSubset=pid is not set.)
+ProtectProc=invisible
+# Container engine sockets are hidden even if someone made one world-writable (a common
+# shortcut): the agent only ever talks to Docker through /run/cronrack/docker.sock.
+# "-" = fine if the path doesn't exist on this host.
+InaccessiblePaths=-/run/docker.sock -/run/containerd -/run/k3s/containerd -/run/podman -/run/snapd.socket -/run/snapd-snap.socket
+UMask=0077
+RemoveIPC=yes
+
+# Kernel: no loading modules, reading the kernel log, changing sysctls, cgroups, the
+# clock or the host name.
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
-# No creating setuid/setgid files.
-RestrictSUIDSGID=yes
+ProtectClock=yes
+ProtectHostname=yes
+
+# Process: no new namespaces, no realtime scheduling, no switching execution domain, and
+# no memory that is both writable and executable (no injected code).
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+# System calls: only the usual service set, minus everything privileged. A blocked call
+# fails with EPERM instead of killing the agent.
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @swap @reboot @module @raw-io @debug @cpu-emulation @obsolete @clock
+SystemCallErrorNumber=EPERM
+
+# Sockets: IPv4/IPv6 (the server, the opt-in network checks, the Kubernetes API),
+# unix (D-Bus for systemctl, the Docker proxy) and netlink (address lookups).
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+# Limiting WHICH addresses it may reach depends on your server's address, so it is an
+# opt-in drop-in written by `install.sh --egress-lock` (egress.conf next to this file).
 
 [Install]
 WantedBy=multi-user.target

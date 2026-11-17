@@ -7,4 +7,8 @@ set -eu
 ln -sfn /pkgs/current /srv/www
 python3 /usr/local/lib/installtest/serve.py /srv/www 8000 &
 python3 /usr/local/lib/installtest/serve.py /srv/www 443 /srv/tls/server.crt /srv/tls/server.key &
+# The stand-in for PyPI (see the Dockerfile): https://pypi.org is 127.0.0.2 in here.
+echo "127.0.0.2 pypi.org" >>/etc/hosts
+python3 /usr/local/lib/installtest/serve.py /srv/pypi 127.0.0.2:443 \
+  /srv/pypi-tls/server.crt /srv/pypi-tls/server.key &
 exec sleep infinity

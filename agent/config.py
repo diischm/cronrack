@@ -112,6 +112,17 @@ class MetricsConfig:
 
 
 @dataclass
+class DockerConfig:
+    """The [docker] table. Off until install.sh sets up the read-only Docker proxy.
+
+    The agent never talks to Docker itself: it reads containers through
+    /run/cronrack/docker.sock (agent/docker_proxy.py), a path fixed in code, not here.
+    """
+
+    enabled: bool = False
+
+
+@dataclass
 class AgentConfig:
     server_url: str | None = None
     token: str | None = None
@@ -122,6 +133,12 @@ class AgentConfig:
     kubernetes: KubernetesConfig = field(default_factory=KubernetesConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
     metrics: MetricsConfig = field(default_factory=MetricsConfig)
+    docker: DockerConfig = field(default_factory=DockerConfig)
+
+    @property
+    def containers_active(self) -> bool:
+        """Container checks run only with the "containers" check AND Docker access on."""
+        return "containers" in self.enabled_checks and self.docker.enabled
 
     def __repr__(self) -> str:
         # Written by hand so the token can't leak into logs or tracebacks.
@@ -132,7 +149,7 @@ class AgentConfig:
             f"ca_file={self.ca_file!r}, interval_seconds={self.interval_seconds!r}, "
             f"enabled_checks={self.enabled_checks!r}, actions={self.actions!r}, "
             f"kubernetes={self.kubernetes!r}, network={self.network!r}, "
-            f"metrics={self.metrics!r})"
+            f"metrics={self.metrics!r}, docker={self.docker!r})"
         )
 
 
@@ -460,6 +477,17 @@ def _parse_metrics(data: Any) -> MetricsConfig:
     return MetricsConfig(enabled=data.get("enabled", True))
 
 
+def _parse_docker(data: Any) -> DockerConfig:
+    if not isinstance(data, dict):
+        raise ConfigError("'docker' must be a table")
+    unknown = sorted(set(data) - {"enabled"})
+    if unknown:
+        raise ConfigError(f"unknown [docker] setting(s): {', '.join(unknown)}")
+    if not isinstance(data.get("enabled", False), bool):
+        raise ConfigError("'enabled' must be true or false")
+    return DockerConfig(enabled=data.get("enabled", False))
+
+
 def _optional_str(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     if value is not None and not isinstance(value, str):
@@ -478,6 +506,7 @@ def _parse(data: dict[str, Any]) -> AgentConfig:
         "kubernetes",
         "network",
         "metrics",
+        "docker",
     }
     unknown = sorted(set(data) - known)
     if unknown:
@@ -530,6 +559,9 @@ def _parse(data: dict[str, Any]) -> AgentConfig:
 
     if "metrics" in data:
         config.metrics = _parse_metrics(data["metrics"])
+
+    if "docker" in data:
+        config.docker = _parse_docker(data["docker"])
 
     return config
 

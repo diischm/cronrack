@@ -12,7 +12,6 @@ that don't look right are skipped. Everything they return is still untrusted
 (container and unit names come from the host) and must be validated server-side.
 """
 
-import json
 import os
 import re
 import socket
@@ -23,7 +22,7 @@ COMMAND_TIMEOUT = 15
 # Commands run with a fixed locale and timezone so their output looks the same on
 # every host: apt translates "Listing...", systemd localizes weekday names, and
 # timer timestamps come back in UTC (the report format uses UTC).
-# PATH is fixed too (systemd's default plus /snap/bin for Docker installed as a snap),
+# PATH is fixed too (systemd's default plus /snap/bin for tools installed as a snap),
 # so a command is never found in a directory that happens to be in the agent's PATH.
 _COMMAND_ENV_OVERRIDES = {
     "LC_ALL": "C",
@@ -46,17 +45,6 @@ _UNIT_NAME = re.compile(
 _APT_LINE = re.compile(
     r"(?P<name>[^\s/]+)/(?P<suites>\S+) \S+ \S+ \[upgradable from: [^\]]+\]",
 )
-
-# "Exited (137) 3 hours ago" -> 137
-_DOCKER_EXIT_CODE = re.compile(r"Exited \((-?\d+)\)", re.ASCII)
-
-# "Up 2 hours (healthy)", "Up 5 seconds (health: starting)" -> healthcheck state.
-_DOCKER_HEALTH = re.compile(r"\((healthy|unhealthy|health: starting)\)", re.ASCII)
-_DOCKER_HEALTH_VALUES = {
-    "healthy": "healthy",
-    "unhealthy": "unhealthy",
-    "health: starting": "starting",
-}
 
 # A systemd timestamp, e.g. "Sun 2026-10-11 19:42:10 UTC".
 _TIMESTAMP = re.compile(r"[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+", re.ASCII)
@@ -127,55 +115,7 @@ def check_reboot_required(path: str = REBOOT_REQUIRED_PATH) -> bool:
     return os.path.exists(path)
 
 
-# --- 3. Docker containers -------------------------------------------------------
-
-
-def run_docker_ps() -> str | None:
-    return _run(["docker", "ps", "-a", "--format", "{{json .}}"])
-
-
-def _container_health(status: str) -> str | None:
-    match = _DOCKER_HEALTH.search(status)
-    return _DOCKER_HEALTH_VALUES[match[1]] if match else None
-
-
-def _container_exit_code(status: str) -> int | None:
-    match = _DOCKER_EXIT_CODE.match(status)
-    return int(match[1]) if match else None
-
-
-def parse_docker_ps(text: str) -> list[dict]:
-    """One dict per container: name, state, status, health, exit_code.
-
-    Facts only. Whether a container is a problem is decided on the server by
-    the rule engine, so the user can override it.
-    health:    "healthy" | "unhealthy" | "starting", or None without a healthcheck
-    exit_code: the N in "Exited (N) ...", or None if the container hasn't exited
-    """
-    containers = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-        except (ValueError, RecursionError):
-            continue
-        if not isinstance(data, dict):
-            continue
-        name, state, status = data.get("Names"), data.get("State"), data.get("Status")
-        if not all(isinstance(value, str) for value in (name, state, status)):
-            continue
-        containers.append(
-            {
-                "name": name,
-                "state": state,
-                "status": status,
-                "health": _container_health(status),
-                "exit_code": _container_exit_code(status),
-            }
-        )
-    return containers
+# --- 3. Docker containers: agent/docker_api.py, through the read-only proxy -----
 
 
 # --- 4. Failed systemd units ----------------------------------------------------

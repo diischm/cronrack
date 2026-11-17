@@ -107,7 +107,10 @@ RESOURCE_RULE_IDS = {
 def test_only_the_mvp_rules_the_resource_rules_and_the_helm_host_rule_are_registered():
     # Cluster rules live in rules.k8s (CLUSTER_RULES); the Helm command is a host rule;
     # the resource rules (agent 0.4.0 metrics) are in rules.resources.
-    assert set(RULES) == MVP_RULES | RESOURCE_RULE_IDS | {"k8s.helm_cli_outdated"}
+    assert set(RULES) == MVP_RULES | RESOURCE_RULE_IDS | {
+        "k8s.helm_cli_outdated",
+        "agent.docker_proxy_unavailable",
+    }
 
 
 @pytest.mark.parametrize("rule", RULES.values(), ids=lambda r: r.id)

@@ -1,19 +1,19 @@
-"""Read-only Docker API client for container metrics (CPU, memory, network).
+"""Read-only Docker API client: container health and container metrics.
 
-The agent already reads container *health* with `docker ps` (collectors.py). Usage numbers
-come from the Engine API's stats endpoint instead, because `docker stats` prints rounded,
-human-formatted strings ("1.2GiB / 3.8GiB") and can't say whether a memory limit is set.
-
-Only GET requests, only to the local socket at a fixed path (never from the server or the
-config), and only these endpoints:
+The agent never talks to Docker itself. It talks to the read-only proxy
+(agent/docker_proxy.py) on /run/cronrack/docker.sock, a path fixed here (never from the
+server or the config). The proxy runs in the docker group; the agent doesn't. It allows
+only these GET requests, and strips each answer to the fields used below:
 
     GET /version                                   which API version the engine speaks
+    GET /v<api>/containers/json?all=1              every container: name, state, status
     GET /v<api>/containers/json                    running containers (id + name)
     GET /v<api>/containers/<id>/stats?stream=false&one-shot=true
 
-Reaching the socket needs the same opt-in Docker access the container checks need (the
-docker group, see deploy/install.sh). Without it every call fails with PermissionError
-and the agent sends `"containers": null`.
+Docker access is opt-in ([docker] enabled = true, written by deploy/install.sh when it sets
+up the proxy). Without it the agent never calls this module and sends `"containers": null`.
+With it but no proxy answering, health collection raises DockerProxyUnavailable, which
+reaches the server as an error entry (rule agent.docker_proxy_unavailable).
 
 Hard limits keep a busy host from slowing the agent down: at most MAX_CONTAINERS
 containers (by name), CALL_TIMEOUT seconds per socket operation, TOTAL_BUDGET seconds for
@@ -30,7 +30,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-DOCKER_SOCKET = "/var/run/docker.sock"
+# The read-only proxy (deploy/cronrack-docker-proxy.socket), never /var/run/docker.sock.
+DOCKER_SOCKET = "/run/cronrack/docker.sock"
 MAX_CONTAINERS = 50
 CALL_TIMEOUT = 2.0
 TOTAL_BUDGET = 8.0
@@ -41,6 +42,14 @@ MAX_NAME = 190
 # sample (about 1-2 s per container), so the budget cuts the list short there.
 ONE_SHOT_API = (1, 41)
 FALLBACK_API = "1.24"  # what Docker 1.12 speaks; only used if /version doesn't say
+
+# "Exited (137) 3 hours ago" -> 137
+_EXIT_CODE = re.compile(r"Exited \((-?\d+)\)", re.ASCII)
+# "Up 2 hours (healthy)", "Up 5 seconds (health: starting)" -> healthcheck state.
+_HEALTH = re.compile(r"\((healthy|unhealthy|health: starting)\)", re.ASCII)
+_HEALTH_VALUES = {"healthy": "healthy", "unhealthy": "unhealthy", "health: starting": "starting"}
+MAX_STATE = 32
+MAX_STATUS = 255
 
 _API_VERSION = re.compile(r"(\d{1,2})\.(\d{1,3})", re.ASCII)
 _CONTAINER_ID = re.compile(r"[0-9a-f]{12,64}", re.ASCII)
@@ -54,11 +63,15 @@ class DockerError(Exception):
     """A call failed (timeout, HTTP error, bad JSON). The message is only the error kind."""
 
 
-class DockerUnavailable(DockerError):
-    """No socket, or no permission to use it: Docker metrics are simply off."""
+class DockerProxyUnavailable(DockerError):
+    """Nothing answers on the proxy socket (missing, refused, reset, or no permission)."""
 
 
-class _UnixConnection(http.client.HTTPConnection):
+class DockerEngineUnavailable(DockerError):
+    """The proxy answers, but Docker behind it doesn't (the proxy says 502)."""
+
+
+class UnixConnection(http.client.HTTPConnection):
     def __init__(self, path: str, timeout: float) -> None:
         super().__init__("localhost", timeout=timeout)
         self._path = path
@@ -76,18 +89,26 @@ class _UnixConnection(http.client.HTTPConnection):
 
 def get_json(socket_path: str, path: str, timeout: float, limit: int) -> Any:
     """GET `path` on the Docker socket and return the parsed JSON body."""
-    conn = _UnixConnection(socket_path, timeout)
+    conn = UnixConnection(socket_path, timeout)
     try:
         conn.request("GET", path, headers={"Host": "docker", "Accept": "application/json"})
         response = conn.getresponse()
+        if response.status == 502:
+            raise DockerEngineUnavailable("HTTP 502")
         if response.status != 200:
             raise DockerError(f"HTTP {response.status}")
         body = response.read(limit + 1)
         if len(body) > limit:
             raise DockerError("response too large")
         return json.loads(body)
-    except (FileNotFoundError, PermissionError, ConnectionRefusedError) as exc:
-        raise DockerUnavailable(type(exc).__name__) from None
+    except (
+        FileNotFoundError,
+        PermissionError,
+        ConnectionRefusedError,
+        ConnectionResetError,
+        BrokenPipeError,
+    ) as exc:
+        raise DockerProxyUnavailable(type(exc).__name__) from None
     except (OSError, http.client.HTTPException, ValueError, RecursionError) as exc:
         raise DockerError(type(exc).__name__) from None
     finally:
@@ -130,6 +151,70 @@ def parse_container_list(data: Any) -> list[tuple[str, str]]:
             continue
         found.setdefault(name, cid)
     return sorted(((cid, name) for name, cid in found.items()), key=lambda pair: pair[1])
+
+
+def _health(status: str) -> str | None:
+    match = _HEALTH.search(status)
+    return _HEALTH_VALUES[match[1]] if match else None
+
+
+def _exit_code(status: str) -> int | None:
+    match = _EXIT_CODE.match(status)
+    return int(match[1]) if match else None
+
+
+def parse_container_health(data: Any) -> list[dict[str, Any]]:
+    """One dict per container from GET /containers/json?all=1: name, state, status,
+    health, exit_code. The same facts `docker ps -a` shows (and the agent sent before 0.5.0).
+
+    Facts only: whether a container is a problem is decided on the server by the rule
+    engine, so the user can override it. State "restarting" is what the server's
+    docker.container_restarting rule (crash loop) looks for.
+    health:    "healthy" | "unhealthy" | "starting", or None without a healthcheck
+    exit_code: the N in "Exited (N) ...", or None if the container hasn't exited
+    """
+    if not isinstance(data, list):
+        return []
+    containers = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        names, state, status = item.get("Names"), item.get("State"), item.get("Status")
+        if not isinstance(names, list) or not isinstance(state, str) or not isinstance(status, str):
+            continue
+        # The first plain name; old-style link aliases look like "/web/db" and are skipped.
+        name = next(
+            (
+                n.lstrip("/")
+                for n in names
+                if isinstance(n, str)
+                and len(n.lstrip("/")) <= MAX_NAME
+                and _NAME.fullmatch(n.lstrip("/"))
+            ),
+            None,
+        )
+        if name is None:
+            continue
+        containers.append(
+            {
+                "name": name,
+                "state": state[:MAX_STATE],
+                "status": status[:MAX_STATUS],
+                "health": _health(status),
+                "exit_code": _exit_code(status),
+            }
+        )
+    return containers
+
+
+def collect_container_health(socket_path: str | None = None) -> list[dict[str, Any]]:
+    """Every container's health through the proxy. Raises DockerProxyUnavailable if nothing
+    answers on the socket, DockerError if Docker itself fails (the proxy says 502)."""
+    path = DOCKER_SOCKET if socket_path is None else socket_path
+    api, _ = parse_api_version(get_json(path, "/version", CALL_TIMEOUT, MAX_STATS_BYTES))
+    return parse_container_health(
+        get_json(path, f"/v{api}/containers/json?all=1", CALL_TIMEOUT, MAX_LIST_BYTES)
+    )
 
 
 @dataclass(frozen=True)
@@ -248,7 +333,7 @@ class ContainerStats:
                     min(CALL_TIMEOUT, remaining),
                     MAX_STATS_BYTES,
                 )
-            except DockerUnavailable:
+            except DockerProxyUnavailable:
                 return None, False
             except DockerError:
                 continue  # it stopped between the list and now, or the engine hiccuped

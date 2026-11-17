@@ -41,7 +41,7 @@ jobs:
 
       # shellcheck comes with the ubuntu-24.04 runner image; nothing is downloaded.
       - run: shellcheck --version
-      - run: shellcheck deploy/install.sh scripts/*.sh scripts/ci/*.sh tests/install/*.sh
+      - run: shellcheck deploy/install.sh deploy/uninstall.sh scripts/*.sh scripts/ci/*.sh tests/install/*.sh
   bandit:
     name: Security lint (bandit)
     runs-on: ubuntu-24.04

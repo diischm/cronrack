@@ -32,7 +32,8 @@ class PrimeRecorder:
 
 def test_once_primes_the_metrics_sampler_first(tmp_path: Path, capsys) -> None:
     assert main(["--once", "--config", str(tmp_path / "missing.toml")]) == 0
-    assert report._sampler.calls == [True]
+    # No [docker] access by default: the sampler isn't asked for container numbers.
+    assert report._sampler.calls == [False]
     assert json.loads(capsys.readouterr().out)["metrics"]["cpu"]["busy_pct"] == 12.5
 
 
@@ -260,3 +261,68 @@ def test_check_k8s_does_not_start_the_agent(cluster_view_config, monkeypatch) ->
     monkeypatch.setattr(agent_main.asyncio, "run", lambda *a, **k: pytest.fail("must not connect"))
 
     assert main(["--check-k8s", "--config", cluster_view_config]) == 0
+
+
+# --- --dry-run: see exactly what would be sent, send nothing --------------------------------
+
+
+class NoNetwork:
+    """Fails the test if anything tries to open a connection to the server."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def refuse(*_args, **_kwargs):
+            raise AssertionError("--dry-run must not connect to anything")
+
+        monkeypatch.setattr(agent_main, "run_until_signal", refuse)
+        monkeypatch.setattr(agent_main, "run_forever", refuse)
+        from agent import connection
+
+        monkeypatch.setattr(connection, "connect", refuse)
+
+
+def test_dry_run_prints_the_report_and_sends_nothing(tmp_path: Path, capsys, monkeypatch) -> None:
+    NoNetwork(monkeypatch)
+    path = tmp_path / "agent.toml"
+    # A complete config with a token: --dry-run still must not use it.
+    path.write_text(
+        'server_url = "https://cronrack.example"\ntoken = "abcdefghijklmnopqrstuvwxyz0123"\n',
+        encoding="utf-8",
+    )
+    os.chmod(path, 0o600)
+    assert main(["--dry-run", "--config", str(path)]) == 0
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert set(data) == EXPECTED_KEYS
+    assert "abcdefghijklmnopqrstuvwxyz0123" not in out
+
+
+def test_dry_run_needs_no_token(tmp_path: Path, capsys, monkeypatch) -> None:
+    NoNetwork(monkeypatch)
+    assert main(["--dry-run", "--config", str(tmp_path / "missing.toml")]) == 0
+    assert json.loads(capsys.readouterr().out)["disks"] == [{"mount": "/", "percent": 42}]
+
+
+def test_once_is_an_alias_of_dry_run(tmp_path: Path, capsys, monkeypatch) -> None:
+    NoNetwork(monkeypatch)
+    config = str(tmp_path / "missing.toml")
+    main(["--dry-run", "--config", config])
+    dry = json.loads(capsys.readouterr().out)
+    main(["--once", "--config", config])
+    once = json.loads(capsys.readouterr().out)
+    dry.pop("timestamp"), once.pop("timestamp")
+    assert dry == once
+
+
+def test_print_report_is_documented_in_help(capsys) -> None:
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    help_text = capsys.readouterr().out
+    assert "--dry-run" in help_text and "sends nothing" in help_text
+
+
+def test_dry_run_primes_container_metrics_only_with_docker_access(tmp_path: Path, capsys) -> None:
+    path = tmp_path / "agent.toml"
+    path.write_text("[docker]\nenabled = true\n", encoding="utf-8")
+    os.chmod(path, 0o600)
+    assert main(["--dry-run", "--config", str(path)]) == 0
+    assert report._sampler.calls == [True]

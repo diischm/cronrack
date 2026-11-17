@@ -5,6 +5,7 @@ import socketserver
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 
 import pytest
 
@@ -57,11 +58,13 @@ class FakeDocker:
     def __init__(self, socket_path: str):
         self.routes: dict = {}
         self.requests: list[tuple[str, str]] = []
+        self.headers: list[dict[str, str]] = []
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):  # http.server's naming
                 fake.requests.append(("GET", self.path))
+                fake.headers.append(dict(self.headers))
                 route = fake.routes.get(self.path.split("?")[0])
                 if callable(route):
                     route = route(self.path)
@@ -323,3 +326,93 @@ def test_previous_samples_never_outgrow_the_running_containers(docker):
     docker.routes["/v1.45/containers/json"] = (200, [])
     collector.collect(HOST_TOTAL)
     assert collector._previous == {}
+
+
+# --- container health (replaces `docker ps`; reached through the read-only proxy) ---------
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def load_containers():
+    return json.loads((FIXTURES / "docker_containers.json").read_text(encoding="utf-8"))
+
+
+def test_container_health_from_the_api_fixture():
+    containers = docker_api.parse_container_health(load_containers())
+    by_name = {c["name"]: c for c in containers}
+    assert list(by_name) == [
+        "web",
+        "db",
+        "app",
+        "worker",
+        "backup-job",
+        "init-migrate",
+        "scratch",
+        "cache",
+    ]
+    for item in containers:
+        assert set(item) == {"name", "state", "status", "health", "exit_code"}
+    assert by_name["app"] == {
+        "name": "app",
+        "state": "running",
+        "status": "Up 2 hours (unhealthy)",
+        "health": "unhealthy",
+        "exit_code": None,
+    }
+    assert by_name["web"]["health"] == "healthy"
+    assert by_name["cache"]["health"] == "starting"
+    assert by_name["db"]["health"] is None  # no healthcheck defined
+    assert by_name["backup-job"]["exit_code"] == 1
+    assert by_name["init-migrate"]["exit_code"] == 0
+    # Restart-loop detection: the server's docker.container_restarting reads this state.
+    assert by_name["worker"]["state"] == "restarting"
+    assert by_name["worker"]["exit_code"] is None
+    assert by_name["scratch"]["exit_code"] is None
+    assert by_name["scratch"]["health"] is None
+
+
+def test_container_health_negative_exit_code():
+    data = [{"Id": "a" * 64, "Names": ["/x"], "State": "exited", "Status": "Exited (-1) 2 min"}]
+    assert docker_api.parse_container_health(data)[0]["exit_code"] == -1
+
+
+def test_container_health_skips_bad_entries_but_keeps_good_ones():
+    data = [
+        {"Names": ["/ok"], "State": "running", "Status": "Up 1 hour"},
+        "not a dict",
+        [1, 2, 3],
+        {"Names": [42], "State": "running", "Status": "Up"},
+        {"Names": "ok-but-not-a-list", "State": "running", "Status": "Up"},
+        {"Names": [], "State": "running", "Status": "Up"},
+        {"Names": ["/missing-status"], "State": "running"},
+        {"Names": ["/evil\nname"], "State": "running", "Status": "Up"},
+    ]
+    assert docker_api.parse_container_health(data) == [
+        {"name": "ok", "state": "running", "status": "Up 1 hour", "health": None, "exit_code": None}
+    ]
+
+
+def test_container_health_skips_link_aliases_for_the_real_name():
+    data = [{"Names": ["/web/db", "/db"], "State": "restarting", "Status": "Restarting (1)"}]
+    assert docker_api.parse_container_health(data)[0]["name"] == "db"
+
+
+@pytest.mark.parametrize("data", [None, {}, "text", 5, {"Names": []}, [None] * 3])
+def test_container_health_survives_garbage(data):
+    assert docker_api.parse_container_health(data) == []
+
+
+def test_container_health_asks_only_for_the_list(docker):
+    docker.routes["/v1.45/containers/json"] = (200, load_containers())
+    result = docker_api.collect_container_health(socket_path=docker.path)
+    assert len(result) == 8
+    assert docker.requests == [("GET", "/version"), ("GET", "/v1.45/containers/json?all=1")]
+
+
+def test_container_health_without_the_proxy_raises_proxy_unavailable(tmp_path):
+    with pytest.raises(docker_api.DockerProxyUnavailable):
+        docker_api.collect_container_health(socket_path=str(tmp_path / "missing.sock"))
+
+
+def test_the_agent_talks_to_the_proxy_never_to_docker_itself():
+    assert docker_api.DOCKER_SOCKET == "/run/cronrack/docker.sock"

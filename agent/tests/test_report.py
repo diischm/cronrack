@@ -6,8 +6,14 @@ from typing import Any
 
 import pytest
 
-from agent import AGENT_VERSION, collectors, report
-from agent.config import AgentConfig, KubernetesConfig, MetricsConfig, NetworkConfig
+from agent import AGENT_VERSION, collectors, docker_api, report
+from agent.config import (
+    AgentConfig,
+    DockerConfig,
+    KubernetesConfig,
+    MetricsConfig,
+    NetworkConfig,
+)
 from agent.protocol import MAX_REPORT_BYTES, report_message
 from agent.report import (
     DEFAULT_COLLECTORS,
@@ -132,9 +138,12 @@ def test_default_metrics_collector_follows_the_containers_check(monkeypatch) -> 
     monkeypatch.setattr(report, "_sampler", FakeSampler())
     collectors = fake_collectors()
     del collectors["metrics"]
-    build_report(AgentConfig(), now=NOW, collectors=collectors)
-    build_report(AgentConfig(enabled_checks=["disks"]), now=NOW, collectors=collectors)
-    # Docker is only asked when the containers check (the opt-in Docker access) is on.
+    docker = DockerConfig(enabled=True)
+    build_report(AgentConfig(docker=docker), now=NOW, collectors=collectors)
+    build_report(
+        AgentConfig(enabled_checks=["disks"], docker=docker), now=NOW, collectors=collectors
+    )
+    # Docker is only asked when the containers check AND Docker access ([docker]) are on.
     assert calls == [True, False]
 
 
@@ -181,7 +190,7 @@ def test_command_check_parses_output() -> None:
 
 def test_raising_collector_is_null_with_error_entry() -> None:
     def broken() -> Any:
-        raise PermissionError("[Errno 13] Permission denied: '/home/dimi/secret-path'")
+        raise PermissionError("[Errno 13] Permission denied: '/home/someone/secret-path'")
 
     report = build_report(AgentConfig(), now=NOW, collectors=fake_collectors(disks=broken))
 
@@ -250,13 +259,17 @@ def test_report_items_match_the_contract() -> None:
         text = (fixtures / name).read_text(encoding="utf-8")
         return command_check(lambda: text, parse)
 
+    def container_fixture():
+        data = json.loads((fixtures / "docker_containers.json").read_text(encoding="utf-8"))
+        return docker_api.parse_container_health(data)
+
     report = build_report(
-        AgentConfig(),
+        AgentConfig(docker=DockerConfig(enabled=True)),
         now=NOW,
         collectors={
             "updates": from_fixture("apt_upgradable.txt", collectors.parse_apt_upgradable),
             "reboot": lambda: True,
-            "containers": from_fixture("docker_ps.txt", collectors.parse_docker_ps),
+            "containers": container_fixture,
             "units": from_fixture("systemctl_failed.txt", collectors.parse_systemctl_failed),
             "timers": from_fixture("systemctl_timers.txt", collectors.parse_systemctl_timers),
             "disks": from_fixture("df.txt", collectors.parse_df),
@@ -651,3 +664,63 @@ def test_network_failure_never_breaks_the_report() -> None:
     assert result["errors"] == [{"check": "network", "error": "OSError"}]
     assert "192.0.2.1" not in json.dumps(result)
     assert result["disks"] == [{"mount": "/", "percent": 42}]  # the rest is untouched
+
+
+# --- [docker]: containers only through the read-only proxy ---------------------------------
+
+
+def docker_on(**kwargs: Any) -> AgentConfig:
+    return AgentConfig(docker=DockerConfig(enabled=True), **kwargs)
+
+
+def test_containers_are_null_without_docker_access() -> None:
+    """[docker] enabled is off by default: the container collector isn't even called."""
+    result = build_report(
+        AgentConfig(), now=NOW, collectors=fake_collectors(containers=failing_collector)
+    )
+    assert result["containers"] is None
+    assert result["errors"] == []
+
+
+def test_containers_with_docker_access() -> None:
+    result = build_report(docker_on(), now=NOW, collectors=fake_collectors())
+    assert result["containers"][0]["name"] == "nginx"
+
+
+def test_proxy_down_is_reported_as_an_error(monkeypatch, tmp_path) -> None:
+    """[docker] on but nothing listens on the proxy socket: the server gets an error entry
+    (rule agent.docker_proxy_unavailable) instead of a silent null."""
+    monkeypatch.setattr(docker_api, "DOCKER_SOCKET", str(tmp_path / "missing.sock"))
+    collectors_without_containers = {
+        k: v for k, v in fake_collectors().items() if k not in ("containers", "metrics")
+    }
+    monkeypatch.setattr(
+        report,
+        "DEFAULT_COLLECTORS",
+        {
+            **collectors_without_containers,
+            "containers": report.DEFAULT_COLLECTORS["containers"],
+        },
+    )
+    result = build_report(docker_on(metrics=MetricsConfig(enabled=False)), now=NOW)
+    assert result["containers"] is None
+    assert result["errors"] == [{"check": "containers", "error": "DockerProxyUnavailable"}]
+
+
+def test_container_metrics_need_docker_access(monkeypatch) -> None:
+    calls = []
+
+    class Sampler:
+        def collect(self, containers: bool) -> dict:
+            calls.append(containers)
+            return FAKE_METRICS
+
+    monkeypatch.setattr(report, "_sampler", Sampler())
+    without_metrics = {k: v for k, v in fake_collectors().items() if k != "metrics"}
+    build_report(AgentConfig(), now=NOW, collectors=without_metrics)
+    build_report(docker_on(), now=NOW, collectors=without_metrics)
+    assert calls == [False, True]
+
+
+def test_the_default_container_collector_uses_the_proxy() -> None:
+    assert report.DEFAULT_COLLECTORS["containers"] is docker_api.collect_container_health

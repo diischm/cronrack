@@ -4,7 +4,8 @@
 # agent with the venv's python: if that fails, the service counts as failed, like an
 # agent that crashes on start. Create /etc/fake-systemctl-fail to make every start fail,
 # and /etc/fake-systemctl-reload-fail to make daemon-reload fail (an error mid-install).
-# Like the real one, "disable" only stops the service with --now.
+# Like the real one, "disable" only stops the service with --now. Units other than
+# cronrack-agent are only logged.
 set -u
 
 LOG=/var/log/fake-systemctl.log
@@ -26,6 +27,14 @@ for arg in "$@"; do
     *) args+=("$arg") ;;
   esac
 done
+
+# Only the agent's own state is tracked. Other units (the Docker proxy socket and service)
+# are just logged, so starting or stopping them never changes what the agent looks like.
+unit="${args[1]:-}"
+case "$unit" in
+  ""|cronrack-agent|cronrack-agent.service) ;;
+  *) exit 0 ;;
+esac
 
 case "${args[0]:-}" in
   restart|start)

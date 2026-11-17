@@ -20,8 +20,11 @@ reproduce, and the impact you think it has.
 - Credit in the advisory, if you want it
 
 ## Scope
-In scope: the agent, the server, the install script, and the
-default docker compose setup.
+In scope: the agent (including its systemd sandbox and the read-only
+Docker proxy), the server, the install and uninstall scripts, and the
+default docker compose setup. A way to make an agent do anything beyond
+reading and reporting (see docs/trust-the-agent.md, "Threat model") is
+always in scope.
 
 Out of scope: your own VPN or reverse proxy configuration, and
 vulnerabilities in third-party dependencies that are already

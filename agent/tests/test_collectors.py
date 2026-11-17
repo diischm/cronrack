@@ -31,64 +31,6 @@ def test_parse_apt_upgradable_counts_suite_not_package_name():
     assert collectors.parse_apt_upgradable(text) == {"total": 2, "security": 1}
 
 
-def test_parse_docker_ps_fixture():
-    containers = collectors.parse_docker_ps(load("docker_ps.txt"))
-    by_name = {c["name"]: c for c in containers}
-    assert list(by_name) == [
-        "web",
-        "db",
-        "app",
-        "worker",
-        "backup-job",
-        "init-migrate",
-        "scratch",
-        "cache",
-    ]
-    for container in containers:
-        assert set(container) == {"name", "state", "status", "health", "exit_code"}
-    assert by_name["app"] == {
-        "name": "app",
-        "state": "running",
-        "status": "Up 2 hours (unhealthy)",
-        "health": "unhealthy",
-        "exit_code": None,
-    }
-    assert by_name["web"]["health"] == "healthy"
-    assert by_name["cache"]["health"] == "starting"
-    assert by_name["db"]["health"] is None  # no healthcheck defined
-    assert by_name["backup-job"]["exit_code"] == 1
-    assert by_name["init-migrate"]["exit_code"] == 0
-    # Only "Exited (N)" sets exit_code; running, restarting and created don't.
-    assert by_name["worker"]["state"] == "restarting"
-    assert by_name["worker"]["exit_code"] is None
-    assert by_name["scratch"]["exit_code"] is None
-    assert by_name["scratch"]["health"] is None
-
-
-def test_parse_docker_ps_negative_exit_code():
-    text = '{"Names": "x", "State": "exited", "Status": "Exited (-1) 2 minutes ago"}\n'
-    assert collectors.parse_docker_ps(text)[0]["exit_code"] == -1
-
-
-def test_parse_docker_ps_skips_bad_lines_but_keeps_good_ones():
-    text = (
-        '{"Names": "ok", "State": "running", "Status": "Up 1 hour"}\n'
-        "not json\n"
-        "[1, 2, 3]\n"
-        '{"Names": 42, "State": "running", "Status": "Up"}\n'
-        '{"Names": "missing-status", "State": "running"}\n'
-    )
-    assert collectors.parse_docker_ps(text) == [
-        {
-            "name": "ok",
-            "state": "running",
-            "status": "Up 1 hour",
-            "health": None,
-            "exit_code": None,
-        },
-    ]
-
-
 def test_parse_systemctl_failed_fixture():
     assert collectors.parse_systemctl_failed(load("systemctl_failed.txt")) == [
         "backup-nightly.service",
@@ -282,7 +224,6 @@ def test_reboot_required_false(tmp_path):
 
 PARSERS_AND_EMPTY_RESULTS = [
     (collectors.parse_apt_upgradable, {"total": 0, "security": 0}),
-    (collectors.parse_docker_ps, []),
     (collectors.parse_systemctl_failed, []),
     (collectors.parse_systemctl_timers, []),
     (collectors.parse_df, []),
@@ -299,7 +240,7 @@ GARBAGE_INPUTS = [
     "Listing...",
     "\x00\x01\x02�� binary junk \x7f",
     "{not json",
-    "[" * 100_000,  # deeply nested JSON must not crash the docker parser
+    "[" * 100_000,  # deeply nested input
     "a b c d e f g h i j k l m n o p",
     "x x x x x ²% /mnt",  # unicode digit that str.isdigit() would accept
     "Exited (1) 3 hours ago",
@@ -319,7 +260,6 @@ def test_parsers_survive_empty_and_garbage(parser, empty_result, text):
 
 RUNNERS_AND_COMMANDS = [
     (collectors.run_apt_upgradable, ["apt", "list", "--upgradable"]),
-    (collectors.run_docker_ps, ["docker", "ps", "-a", "--format", "{{json .}}"]),
     (collectors.run_systemctl_failed, ["systemctl", "--failed", "--no-legend", "--plain"]),
     (
         collectors.run_systemctl_timers,
