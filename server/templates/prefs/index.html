@@ -6,6 +6,7 @@
 {% block nav_settings %}aria-current="page"{% endblock %}
 {% block main_class %}app-main--settings app-main--prefs{% endblock %}
 {% block extra_head %}<script src="{% static 'cronrack/js/password.js' %}" defer></script>
+  <script src="{% static 'cronrack/js/prefs.js' %}" defer></script>
   <link rel="stylesheet" href="{% static 'cronrack/css/phone-app.css' %}">{% endblock %}
 
 {% comment %}
@@ -13,7 +14,8 @@
   phones.
   Alerts + Offline detection are ONE form (the view saves both fields together), shown as two
   panels: the <form> has display: contents, so its panels are grid items like the others.
-  Either Save key saves both. "Send test alert" belongs to its own form (#test-alert-form,
+  Either Save key saves both. With JS (prefs.js) changes save as they happen, like
+  Notifications: the Save keys hide and #prefs-autosave says so. "Send test alert" belongs to its own form (#test-alert-form,
   outside the grid) through the button's form= attribute, so it isn't nested in the prefs
   form; actions.js sends it with fetch and shows the result as a toast.
   The webhook URL is only ever in its own input: no toast or message repeats it.
@@ -29,7 +31,7 @@
   <div class="settings-body">
 
   <div class="settings-grid">
-    <form class="settings-prefs" method="post" action="{% url 'prefs' %}" novalidate>
+    <form class="settings-prefs" id="prefs-form" method="post" action="{% url 'prefs' %}" novalidate>
       {% csrf_token %}
       <input type="hidden" name="form" value="prefs">
 
@@ -37,6 +39,7 @@
         <h2 class="section-title" id="alerts-title">Alerts</h2>
         {% include "components/form_errors.html" with form=prefs_form %}
         <p class="muted">CronRack posts to Discord when a problem opens, turns red or is resolved. Choose which ones under Notifications.</p>
+        <p class="muted prefs-autosave" id="prefs-autosave" hidden>Changes on this page save automatically.</p>
         {% with field=prefs_form.discord_webhook_url %}
           <div class="field">
             <label class="field__label" for="{{ field.auto_id }}">{{ field.label }}</label>
@@ -49,7 +52,7 @@
           </div>
         {% endwith %}
         <div class="form-keys">
-          <button type="submit" class="btn">Save</button>
+          <button type="submit" class="btn js-save-key">Save</button>
           <button type="submit" class="btn" form="test-alert-form">Send test alert</button>
         </div>
       </section>
@@ -70,7 +73,7 @@
             {% if field.errors %}<div class="field__errors" id="{{ field.auto_id }}_error">{% for error in field.errors %}<p class="field__error">{{ error }}</p>{% endfor %}</div>{% endif %}
           </div>
         {% endwith %}
-        <div class="form-keys"><button type="submit" class="btn">Save</button></div>
+        <div class="form-keys js-save-row"><button type="submit" class="btn">Save</button></div>
       </section>
 
       <section class="surface panel form" aria-labelledby="updates-title">
@@ -84,7 +87,7 @@
             <p class="field__help" id="{{ field.auto_id }}_helptext">Off by default. When on, once a day the server asks update.k3s.io and api.github.com (argoproj/argo-cd, helm/helm) for the newest k3s, Argo CD and Helm versions. Nothing about your setup is sent.</p>
           </div>
         {% endwith %}
-        <div class="form-keys"><button type="submit" class="btn">Save</button></div>
+        <div class="form-keys js-save-row"><button type="submit" class="btn">Save</button></div>
       </section>
     </form>
 

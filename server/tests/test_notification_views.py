@@ -79,15 +79,13 @@ def test_page_lists_every_rule_with_a_three_way_radio_group(alice_client: Client
     assert html.count('class="notify-rule"') == len(SPECS)
 
 
-def test_groups_kubernetes_starts_collapsed_with_its_count(alice_client: Client):
+def test_groups_all_start_collapsed_with_their_counts(alice_client: Client):
+    """Closed groups keep the page short on a phone; each still says how many rules it has."""
     html = alice_client.get(URL).content.decode()
     groups = dict(specs_by_group())
-    for name in ("Hosts", "Services &amp; containers", "Network"):
-        assert re.search(
-            rf'<details class="notify-group"[^>]* open>\s*<summary[^>]*>\s*{name}', html
-        )
-    k8s = re.search(r'<details class="notify-group"([^>]*)>\s*<summary[^>]*>\s*Kubernetes', html)
-    assert k8s and " open" not in k8s.group(1)
+    for name in ("Hosts", "Services &amp; containers", "Network", "Kubernetes"):
+        group = re.search(rf'<details class="notify-group"([^>]*)>\s*<summary[^>]*>\s*{name}', html)
+        assert group and " open" not in group.group(1), name
     count = len(groups["Kubernetes"])
     assert f'Kubernetes <span class="notify-group__count">· {count}</span>' in html
 
@@ -184,7 +182,7 @@ def test_page_has_no_inline_script_style_or_handlers(alice_client: Client, host)
         assert "<style" not in raw, url
 
 
-@pytest.mark.parametrize("name", ["notifications.js", "sound.js"])
+@pytest.mark.parametrize("name", ["notifications.js", "sound.js", "prefs.js"])
 def test_notifications_js_follows_the_rules(name):
     source = (STATIC / "js" / name).read_text(encoding="utf-8")
     for banned in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
@@ -192,6 +190,34 @@ def test_notifications_js_follows_the_rules(name):
     assert "console." not in source
     assert "dataset" not in source
     assert ".style" not in source
+
+
+def test_general_settings_autosave_like_notifications(alice_client: Client):
+    """One way of saving: with JS (prefs.js) changes save as they happen and the Save keys
+    hide; without JS the Save keys post the form as before. The password keeps its key."""
+    html = alice_client.get("/settings/").content.decode()
+    assert "cronrack/js/prefs.js" in html
+    assert '<form class="settings-prefs" id="prefs-form"' in html
+    assert 'id="prefs-autosave" hidden>' in html
+    assert html.count('class="btn js-save-key">Save</button>') == 1
+    assert html.count('class="form-keys js-save-row">') == 2
+    assert ">Update password</button>" in html
+    source = (STATIC / "js" / "prefs.js").read_text(encoding="utf-8")
+    assert "response.redirected" in source and "response.status === 400" in source
+    assert 'getElementById("test-alert-form")' in source  # waits for a pending save
+
+
+def test_notification_controls_are_at_least_44px():
+    css = (STATIC / "css" / "notifications.css").read_text(encoding="utf-8")
+    for rule in (
+        ".notify-input { min-height: 44px;",
+        ".notify-range { width: 120px; height: 44px;",
+        ".notify-search { width: 100%; min-height: 44px;",
+        ".notify-target { display: inline-flex; align-items: center; gap: 6px; min-height: 44px;",
+    ):
+        assert rule in css, rule
+    assert "width: 44px; height: 44px;" in css  # the expand arrow, at every width
+    assert "min-height: 32px" not in css and "min-height: 36px" not in css
 
 
 def test_css_respects_reduced_motion_and_uses_no_new_colours():

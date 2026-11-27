@@ -42,7 +42,7 @@ CACHE_PREFIX = "cronrack-shell-v1-"
 PRECACHE_STATIC = (
     "cronrack/css/offline.css",
     "cronrack/js/offline.js",
-    "cronrack/fonts/manrope-latin-wght.woff2",
+    "cronrack/fonts/InterVariable.woff2",
     "cronrack/icons/icon-192.png",
     "cronrack/icons/icon-512.png",
     "cronrack/icons/icon-maskable-512.png",

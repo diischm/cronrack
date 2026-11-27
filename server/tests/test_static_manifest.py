@@ -131,7 +131,7 @@ def test_pwa_precache_uses_hashed_files(manifest_storage, collected, client, ali
         assert (root / url.removeprefix("/static/")).is_file(), url
     # The offline page's CSS loads the font by its hashed name, the same URL that is stored.
     css = (root / paths["cronrack/css/offline.css"]).read_text()
-    font = paths["cronrack/fonts/manrope-latin-wght.woff2"]
+    font = paths["cronrack/fonts/InterVariable.woff2"]
     assert f'url("../fonts/{Path(font).name}")' in css
     assert f"/static/{font}" in precache
     # And the offline page links exactly the hashed CSS and JS that are stored.

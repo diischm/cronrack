@@ -185,7 +185,7 @@ def expected_precache() -> list[str]:
         "/offline/",
         static("cronrack/css/offline.css"),
         static("cronrack/js/offline.js"),
-        static("cronrack/fonts/manrope-latin-wght.woff2"),
+        static("cronrack/fonts/InterVariable.woff2"),  # the offline page's font (Inter, like Glass)
         static("cronrack/icons/icon-192.png"),
         static("cronrack/icons/icon-512.png"),
         static("cronrack/icons/icon-maskable-512.png"),

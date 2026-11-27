@@ -1,15 +1,15 @@
 /* Offline page (templates/pwa/offline.html), shown by the service worker with no network.
-   Self-contained on purpose: the only other file it loads is the Manrope font, which the
-   worker stores too (sw.js PRECACHE). Same tokens as the Glass theme (glass.css): ground
-   #0b0c0f, text #f5f5f7, muted rgba(235,235,245,.66), orange #f26b2e. Calm: no status
-   dots, no glows. */
+   Self-contained on purpose: the only other file it loads is the Inter font (the same
+   @font-face as glass.css), which the worker stores too (sw.js PRECACHE). Same tokens as
+   the Glass theme (glass.css): ground #0b0c0f, text #f5f5f7, muted rgba(235,235,245,.66),
+   orange #f26b2e. Calm: no status dots, no glows. */
 
 @font-face {
-  font-family: "Manrope";
+  font-family: "Inter";
   font-style: normal;
-  font-weight: 200 800;
+  font-weight: 100 900;
   font-display: swap;
-  src: url("../fonts/manrope-latin-wght.woff2") format("woff2");
+  src: url("../fonts/InterVariable.woff2") format("woff2");
 }
 
 :root { color-scheme: dark; }
@@ -21,7 +21,8 @@ body {
   display: flex; align-items: center; justify-content: center;
   padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
     max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
-  font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-feature-settings: "cv11";
   color: #f5f5f7; -webkit-font-smoothing: antialiased;
 }
 
