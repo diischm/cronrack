@@ -23,8 +23,9 @@
     so arrow keys and screen readers work as usual.
   - Switches are native checkboxes with role="switch", like everywhere else in CronRack:
     the same keyboard and screen-reader support, and they still submit without JS.
-  - Groups are <details>: Hosts, Services & containers and Network start open, Kubernetes
-    starts closed with its count. The search opens every group that has a match.
+  - Groups are <details>, all closed at the start with their counts, so the page stays short
+    on a phone (the view's group.open is not used). The search opens every group that has a
+    match.
   - Every name (rules, hosts, clusters) is printed by the template, so it is escaped.
     The JS never builds markup from data.
 {% endcomment %}
@@ -126,7 +127,7 @@
 
     <div class="notify-groups" id="notify-groups">
       {% for group in groups %}
-        <details class="notify-group" data-group="{{ group.slug }}"{% if group.open %} open{% endif %}>
+        <details class="notify-group" data-group="{{ group.slug }}">
           <summary class="notify-group__title">{{ group.name }} <span class="notify-group__count">· {{ group.rows|length }}</span><span class="visually-hidden"> rules</span></summary>
           <div class="notify-list">
             {% for row in group.rows %}{% with spec=row.spec %}
