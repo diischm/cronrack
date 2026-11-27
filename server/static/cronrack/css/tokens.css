@@ -50,7 +50,10 @@
   /* Focus ring colour, used only by the global :focus-visible outline. A touch darker than
      --accent because the ring needs 3:1 against ground AND wells (#D9541E is 2.88:1 on a well). */
   --focus: #CF4F1C;
-  --accent-hi: #F08551;   --accent-mid: #E0612C;   --accent-lo: #CC501F;  --accent-pressed: #D3591F;
+  /* Design system PR: --accent-hi #F08551 -> #E66E3A. The primary key's white label sits on
+     this end of the gradient and needs 3:1 as large text (was 2.57:1, now 3.16:1). Same hue;
+     --accent-mid (3.55:1) and --accent-lo (4.44:1) already passed. */
+  --accent-hi: #E66E3A;   --accent-mid: #E0612C;   --accent-lo: #CC501F;  --accent-pressed: #D3591F;
   --on-accent: #FFFFFF;
   --code-bg: #1E1B2E;     --code-text: #FCE3D4;
 

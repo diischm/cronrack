@@ -4,9 +4,11 @@
    Glass is the default look: neutral graphite (#0b0c0f) with quiet translucent surfaces and
    no glows anywhere (no background glows, no Border Beam, no glare, no coloured shadows, no
    status-tinted cards or borders). Colour has two jobs only:
-   - status: the small dot (attention cards, filter chips), the soft gradient at the left
-     edge of a rack unit (red #ff453a, yellow #ffd60a, green #32d74b, grey #8e8e93), and the
-     disk meter from 85% (yellow);
+   - status: the words "Needs you" / "Heads up" (always visible on attention cards and rack
+     units), the soft gradient at the left edge of a red or yellow rack unit (red #ff453a,
+     yellow #ffd60a; OK units have none), small coloured line icons in expanded issue lines,
+     and the disk meter from 85% (yellow). Dots only on activity rows, host-page findings
+     and the host-page header;
    - orange #f26b2e: the logo bars, the primary key (Add host), "See all" links, the focus
      ring and the island's loader bars. Nothing else: the current nav item is a grey pill.
    Legacy (tokens.css, components.css, pages.css) is untouched: EVERY rule here starts at
@@ -412,29 +414,29 @@
   border-color: #f5f5f7; }
 [data-skin="glass"] .check__input:focus-visible + .check__box { outline: 2px solid var(--focus); outline-offset: 3px; }
 
-/* --- Status: a flat round dot ------------------------------------------------------------------
-   Glass shows status as a flat dot only: red #ff453a, yellow #ffd60a, green #32d74b, grey
-   #8e8e93. No glow, no coloured pill or background behind words; the words themselves are
-   neutral text.
+/* --- Status: words first, then a flat dot or a line icon ----------------------------------------
+   Colours: red #ff453a, yellow #ffd60a, green #32d74b, grey #8e8e93. No glow, no coloured pill
+   or background behind words; the words themselves are neutral text.
 
-   WCAG 1.4.1 (Use of Color), a conscious choice: by default the dot's colour alone tells a
-   sighted user the status (Legacy's icons also differ in SHAPE). Mitigations:
-   - every dot carries its words for screen readers (the visually-hidden text inside
-     .status-icon, also the title= tooltip on hover);
-   - every card also says WHY in plain text (the summary line: "immich-server exited",
-     "2 issues", "All good", "Waiting for the first report", "Offline");
-   - Settings > Appearance > "Show status labels" adds the visible word next to every dot,
-     every rack unit's name and every attention card's name (Needs you, Heads up, All good,
-     Offline), for anyone who can't tell the colours apart.
+   WCAG 1.4.1 (Use of Color): a problem is never shown by colour alone.
+   - Attention cards and rack units always show the visible word for a problem ("Needs you",
+     "Heads up", or the backend's own status label) next to the name. OK hosts show nothing
+     (ok = usually nothing); their word stays for screen readers.
+   - Expanded issue lines (attention cards, rack units) show the small coloured line icon,
+     whose SHAPE differs per severity (triangle = needs you, circle "!" = heads up), not a dot.
+   - Every status carries its words for screen readers (the visually-hidden text inside
+     .status-icon, also the title= tooltip on hover), and every card also says WHY in plain
+     text (the summary line).
+   - Settings > Appearance > "Show status labels" still adds the visible word everywhere else
+     (All good, Offline, next to the host page's findings and header dots).
    On the overview only the activity rows have dots; the filter chips always show words.
    The host detail and Clusters pages have none either (.g-no-dots on their <main>), except
-   on findings and in the page header, where the dot is the only visible severity sign. The
-   words stay, for screen readers and with "Show status labels". */
+   on findings and in the page header. */
 [data-skin="glass"] .status-icon { width: auto; height: auto; min-width: 10px; min-height: 10px; gap: 7px;
   font-size: 12px; font-weight: 600; color: var(--g-text-2); --dot: var(--g-grey); }
 [data-skin="glass"] .status-icon svg { display: none; }
-[data-skin="glass"] .status-icon::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 50%;
-  background: var(--dot); }
+[data-skin="glass"] .status-icon::before { content: ""; display: var(--g-dot, block); flex: none; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--dot); }
 [data-skin="glass"] .status-icon--good { --dot: var(--g-green); }
 [data-skin="glass"] .status-icon--warn { --dot: var(--g-yellow); }
 [data-skin="glass"] .status-icon--bad { --dot: var(--g-red); }
@@ -536,6 +538,10 @@
    "See all →" inside it, spans both columns below. Below 1200px one column: Hosts, the newest 3 of
    "While you were away", Clusters. No sticky side column anywhere. */
 [data-skin="glass"] .app-main--wide { --stack-gap: var(--g-section); }
+/* The answer, in words: "3 things need you" / "All good". One quiet line, not a section title;
+   closer to what follows than the sections are to each other. */
+[data-skin="glass"] .g-headline { margin: 0 0 calc(14px - var(--g-section)); font-size: 22px; font-weight: 700;
+  letter-spacing: -0.02em; line-height: 1.2; color: var(--g-text); }
 [data-skin="glass"] .refresh-failed { color: var(--g-text); font-weight: 600; }
 /* Phones: "+ Add host" is on the chips row, so the top bar's copy goes when that row exists
    (no hosts yet: no chips, the key stays). No Check all key on the overview. */
@@ -589,10 +595,15 @@
 [data-skin="glass"] .g-attn__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
 [data-skin="glass"] .g-attn__name { min-width: 0; font-size: 15.5px; font-weight: 700; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; }
-/* No dot on the card: the status is words only, visible with "Show status labels". */
+/* No dot on the card: the status is words only. "Needs you" / "Heads up" always show (so red
+   and yellow cards never look alike); other words show with "Show status labels". */
 [data-skin="glass"] .g-attn__head > .status-icon, [data-skin="glass"] .g-attn__offline { flex: none; display: inline-flex; align-items: center;
   font-size: 12px; font-weight: 600; color: var(--g-text-2); }
-[data-skin="glass"] .g-attn__head > .status-icon { min-width: 0; min-height: 0; --dot: transparent; }
+[data-skin="glass"] .g-attn__head > .status-icon { min-width: 0; min-height: 0; gap: 0; --g-dot: none; --dot: transparent; }
+[data-skin="glass"] .g-attn__head > :is(.status-icon--bad, .status-icon--warn) > .visually-hidden,
+[data-skin="glass"] .rack-unit__head > :is(.status-icon--bad, .status-icon--warn) > .visually-hidden {
+  position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; clip-path: none; white-space: nowrap; }
+[data-skin="glass"] .g-attn__head > .status-icon--bad, [data-skin="glass"] .rack-unit__head > .status-icon--bad { color: var(--g-text); }
 [data-skin="glass"][data-labels="on"] .g-attn__offline > .visually-hidden { position: static; width: auto; height: auto; margin: 0;
   overflow: visible; clip: auto; clip-path: none; }
 [data-skin="glass"] .g-attn__summary { display: block; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden;
@@ -613,6 +624,13 @@
 [data-skin="glass"] .g-attention__slot.is-open .g-attn-more__body { opacity: 1; transform: none; transition-delay: 80ms; }
 [data-skin="glass"] .g-attn-more__issues { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 [data-skin="glass"] .g-attn-more__issues .issue-line { gap: 8px; font-size: 13.5px; overflow-wrap: anywhere; }
+/* Expanded issue lines (attention cards and rack units): the line icon, not a dot. Its shape
+   differs per severity; red #ff453a and yellow #ffd60a are >= 3:1 on the card. */
+[data-skin="glass"] :is(.g-attn-more__issues, .g-unit-more__issues) .status-icon { min-width: 0; min-height: 0; gap: 0; --g-dot: none; }
+[data-skin="glass"] :is(.g-attn-more__issues, .g-unit-more__issues) .status-icon svg { display: block; flex: none; width: 15px; height: 15px; }
+[data-skin="glass"] :is(.g-attn-more__issues, .g-unit-more__issues) .status-icon--bad svg { color: var(--g-red); }
+[data-skin="glass"] :is(.g-attn-more__issues, .g-unit-more__issues) .status-icon--warn svg { color: var(--g-yellow); }
+[data-skin="glass"] :is(.g-attn-more__issues, .g-unit-more__issues) .status-icon--info svg { color: var(--g-text-3); }
 [data-skin="glass"] .g-attn-more__note { margin: 0; font-size: 13.5px; color: var(--g-text-2); }
 [data-skin="glass"] .g-attn-more__facts { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12px; color: var(--g-text-3); }
 [data-skin="glass"] .g-attn-more__facts dd { margin: 0; color: var(--g-text); font: 500 12px var(--font-code); }
@@ -665,7 +683,8 @@
   transition: --g-st 700ms var(--g-ease), transform 350ms var(--g-ease), border-color 250ms ease, box-shadow 350ms var(--g-ease); }
 [data-skin="glass"] .rack__slot--st-red { --g-st: var(--g-red); }
 [data-skin="glass"] .rack__slot--st-yellow { --g-st: var(--g-yellow); }
-[data-skin="glass"] .rack__slot--st-green { --g-st: var(--g-green); }
+/* OK units get no tint at all (ok = usually nothing): the gradient ends where it starts. */
+[data-skin="glass"] .rack__slot--st-green { --g-st: var(--g-unit); }
 /* Filtering (overview.js): units that don't match get .is-filtered-out, hidden in Glass only
    (Legacy has no chips, so it always shows every unit); with motion they slide. */
 [data-skin="glass"] .rack > .rack__slot { view-transition-class: g-unit; }
@@ -695,7 +714,8 @@
 [data-skin="glass"] .rack-unit__head > * { grid-column: 1 / -1; min-width: 0; }
 [data-skin="glass"] .rack-unit .rack-unit__name { grid-column: 1; max-width: 100%; font-size: 15px; font-weight: 700;
   letter-spacing: -0.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* No dot here: the status icon keeps only its words (visible with "Show status labels"). */
+/* No dot here: the status icon keeps only its words ("Needs you" / "Heads up" always visible,
+   see the attention card; the rest with "Show status labels"). */
 [data-skin="glass"] .rack-unit__head > .status-icon { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
 [data-skin="glass"] .rack-unit__head > .status-icon::before { display: none; }
 [data-skin="glass"] .rack-unit .rack-unit__offline { font-size: 12px; }

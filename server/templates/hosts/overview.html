@@ -31,7 +31,8 @@
   Everything marked desk-only (actions, tiles, the units' front panels) appears from 900px.
   Glass: the network strip first, then Needs attention, then [chips + Add host + the Hosts
   rack | While you were away], then Clusters. No header row, no tiles, no visible section
-  titles: each section keeps a visually-hidden heading.
+  titles: each section keeps a visually-hidden heading. The page's one visible line is the
+  answer ("3 things need you" / "All good", #g-overview-title), not a section title.
   overview.js refreshes the strip, headline, subline, tiles, chips and racks every 60s
   (handoff 5.3); the ids below are fixed hooks for it.
 
@@ -40,7 +41,7 @@
   returns. Check now on a card or a unit is unaffected.
 {% endcomment %}
 {% block content %}
-  <h1 class="visually-hidden g-only">Overview</h1>
+  <h1 class="g-only g-headline" id="g-overview-title">{% if not hosts %}No hosts yet{% elif attention_count %}{{ attention_count }} thing{{ attention_count|pluralize }} need{{ attention_count|pluralize:"s," }} you{% else %}All good{% endif %}</h1>
   {% if network %}{% include "components/network_strip.html" with network=network %}{% endif %}
   <template id="net-strip-template">{% include "components/network_strip.html" with blank=True %}</template>
   <template id="net-point-template">{% include "components/network_point.html" with point=None %}</template>
