@@ -126,6 +126,18 @@ def test_preset_cards_mark_the_current_one(alice_client: Client, alice):
     assert re.search(r'name="preset" value="balanced" aria-pressed="false"', html)
 
 
+def test_preset_asks_before_resetting_changed_rules(alice_client: Client):
+    """With JS a native <dialog> asks first (only when a rule differs); without JS the
+    hint under the presets says what a preset does, and the form posts as before."""
+    html = alice_client.get(URL).content.decode()
+    assert '<dialog class="confirm-dialog surface" id="preset-dialog"' in html
+    assert ">Keep my changes</button>" in html
+    assert "Picking a preset resets every rule below to that preset." in html
+    source = (STATIC / "js" / "notifications.js").read_text(encoding="utf-8")
+    assert "if (count && !(await confirmReset(preset, count)))" in source
+    assert 'getElementById("preset-dialog-cancel").focus()' in source
+
+
 def test_changed_label_only_on_rules_that_differ(alice_client: Client, alice):
     NotificationRuleOverride.objects.create(owner=alice, rule_id="disk.usage", level="show")
     html = alice_client.get(URL).content.decode()
