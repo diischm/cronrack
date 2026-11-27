@@ -108,6 +108,16 @@ before 1.0.0, any release may change things that worked before, and the notes sa
 
 ### Changed
 
+- **Status is never shown by colour alone** (design review, `docs/design-handoff.md`). Glass
+  attention cards and rack units always show "Needs you" or "Heads up"; OK hosts show nothing
+  and get no tint. Expanded issue lines use the small line icon instead of a dot. The Glass
+  overview opens with the answer in words ("3 things need you" / "All good"). Legacy's orange
+  key passes 3:1 with its white label.
+- **Settings save one way.** General saves as you go, like Notifications (Save keys without
+  JS). Picking a preset asks first when you have changed rules. Notifications groups start
+  closed and every control is at least 44px tall. The install and offline pages use Inter (the
+  service worker now stores Inter instead of Manrope for the offline page).
+
 - **Discord alerts are per problem, not per colour change.** One message when a problem opens,
   one "now red" if it gets worse, one "resolved" when it has been gone for 2 checks. A second
   problem on a host that is already red now alerts too (it used to be silent). Coming back
