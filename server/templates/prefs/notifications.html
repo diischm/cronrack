@@ -192,6 +192,18 @@
   <form id="notify-preset-form" method="post" action="{% url 'notifications-preset' %}" hidden>
     {% csrf_token %}
   </form>
+  {# Asked before a preset resets rules you changed (notifications.js fills the words). #}
+  {# Without JS it is never opened: the hint under the presets says what a preset does. #}
+  <dialog class="confirm-dialog surface" id="preset-dialog" aria-labelledby="preset-dialog-title" aria-describedby="preset-dialog-text">
+    <div class="confirm-dialog__inner">
+      <h2 class="confirm-dialog__title" id="preset-dialog-title"></h2>
+      <p class="confirm-dialog__text" id="preset-dialog-text"></p>
+      <div class="confirm-dialog__keys">
+        <button type="button" class="btn" id="preset-dialog-cancel">Keep my changes</button>
+        <button type="button" class="btn" id="preset-dialog-go"></button>
+      </div>
+    </div>
+  </dialog>
   {# "Send test alert": actions.js sends it with fetch and shows a toast; without JS the #}
   {# server redirects back here with a flash message. #}
   <form id="test-alert-form" class="js-fetch-action" method="post" action="{% url 'test-alert' %}" data-action="test-alert" hidden>

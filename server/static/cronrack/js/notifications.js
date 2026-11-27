@@ -2,7 +2,8 @@
 // page only. Without it the page is a normal form with a Save key; this adds:
 //   - autosave: every change posts the whole form with fetch (same URL, same fields), then a
 //     "Saved" toast; the server answers which rules now differ from the preset;
-//   - presets: switch at once (fetch), set every rule back to that preset's defaults;
+//   - presets: switch at once (fetch), set every rule back to that preset's defaults; when
+//     some rules were changed, a <dialog> asks first ("Keep my changes" is the default);
 //   - the expand arrow per rule (Counts as / Limit / Applies to), with the grid-rows
 //     animation from notifications.css; closed panels are inert, so Tab skips them;
 //   - the search box, which opens every group that has a match;
@@ -207,6 +208,55 @@
   }
 
   const presetKeys = Array.from(document.querySelectorAll(".notify-preset"));
+  // Before a preset resets rules the user changed, ask (native <dialog>; focus starts on "Keep
+  // my changes"; Esc or a click on the backdrop also keeps them). No changed rules: no question.
+  const presetDialog = document.getElementById("preset-dialog");
+
+  function changedCount() {
+    return rules.filter((rule) => {
+      const label = rule.querySelector(".notify-rule__changed");
+      return label && !label.hidden;
+    }).length;
+  }
+
+  function confirmReset(preset, count) {
+    const name = PRESET_NAMES[preset] || "this preset";
+    const sentence =
+      (count === 1 ? "The rule you changed goes" : "The " + count + " rules you changed go") +
+      " back to " +
+      name +
+      "'s settings.";
+    if (!presetDialog || typeof presetDialog.showModal !== "function") {
+      return Promise.resolve(window.confirm(sentence));
+    }
+    document.getElementById("preset-dialog-title").textContent = "Switch to " + name + "?";
+    document.getElementById("preset-dialog-text").textContent = sentence;
+    document.getElementById("preset-dialog-go").textContent =
+      count === 1 ? "Reset 1 rule" : "Reset " + count + " rules";
+    return new Promise((resolve) => {
+      presetDialog.returnValue = "";
+      presetDialog.addEventListener("close", () => resolve(presetDialog.returnValue === "go"), {
+        once: true,
+      });
+      presetDialog.showModal();
+      document.getElementById("preset-dialog-cancel").focus();
+    });
+  }
+
+  if (presetDialog) {
+    document.getElementById("preset-dialog-cancel").addEventListener("click", () => {
+      presetDialog.close("");
+    });
+    document.getElementById("preset-dialog-go").addEventListener("click", () => {
+      presetDialog.close("go");
+    });
+    presetDialog.addEventListener("click", (event) => {
+      if (event.target === presetDialog) {
+        presetDialog.close(""); // the backdrop
+      }
+    });
+  }
+
   presetKeys.forEach((key) => {
     key.addEventListener("click", async (event) => {
       if (!presetForm) {
@@ -214,6 +264,11 @@
       }
       event.preventDefault();
       const preset = key.value;
+      const count = changedCount();
+      if (count && !(await confirmReset(preset, count))) {
+        key.focus();
+        return;
+      }
       const body = new FormData(presetForm);
       body.set("preset", preset);
       window.clearTimeout(saveTimer); // a pending autosave would bring the old rules back
