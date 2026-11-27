@@ -612,8 +612,9 @@
   }
 
   function renderHead(data, hostCount) {
-    // Legacy's header: the headline and the subline.
+    // The headline (Legacy's header and Glass's visible line) and Legacy's subline.
     setText("overview-title", headline(data, hostCount));
+    setText("g-overview-title", headline(data, hostCount));
     setText(
       "overview-sub",
       plural(hostCount, "host") + (hostCount ? " · updated " + text(data.updated_human) : "")

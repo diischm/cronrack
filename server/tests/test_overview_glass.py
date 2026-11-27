@@ -110,7 +110,7 @@ def test_server_and_json_summaries_agree(alice_client: Client, alice, live):  # 
 
 
 @pytest.mark.django_db
-def test_glass_has_no_header_row_headline_or_check_all(alice_client: Client, alice):
+def test_glass_has_no_header_row_or_check_all(alice_client: Client, alice):
     make_host(alice, "a-red", "red", make_report(reboot_required=True))
     html = without_templates(page(alice_client))
     # All of it is in the Legacy-only header (display: none in Glass, out of the a11y tree).
@@ -118,8 +118,8 @@ def test_glass_has_no_header_row_headline_or_check_all(alice_client: Client, ali
     head = head[: head.index("summary desk-only")]
     assert 'id="overview-title"' in head and "Check all now" in head and "overview-sub" in head
     assert html.count("Check all now") == 1
-    # Glass's heading for the page, visually hidden.
-    assert '<h1 class="visually-hidden g-only">Overview</h1>' in html
+    # Glass's heading for the page: the answer in words, visible (not a section title).
+    assert '<h1 class="g-only g-headline" id="g-overview-title">1 thing needs you</h1>' in html
     # The phone top bar's Check all key and Add host copy are hidden in Glass.
     assert (
         '[data-skin="glass"] .topbar__form, [data-skin="glass"] .app:has(.g-add-host) .add-key'
@@ -187,7 +187,7 @@ def test_dots_stay_only_on_activity_rows(alice_client: Client, alice):
     assert "dot" not in chips
     cards = html[html.index('id="g-attention-list"') : html.index('<div class="overview-body')]
     assert "lamp" not in cards
-    assert "--dot: transparent; }" in glass_css()
+    assert "--g-dot: none; --dot: transparent; }" in glass_css()
     away = html[html.index('id="g-away-list"') :]
     assert "lamp--red" in away[: away.index("</ol>")]  # activity keeps its dots
 
@@ -383,7 +383,8 @@ def test_unit_gradient_is_registered_and_crossfades():
         "    color-mix(in srgb, var(--g-st) 4%, var(--g-unit)) 14%, var(--g-unit) 30%);"
     ) in css
     assert "transition: --g-st 700ms var(--g-ease)" in css
-    for status, colour in (("red", "--g-red"), ("yellow", "--g-yellow"), ("green", "--g-green")):
+    # OK units: no tint (the gradient's colour is the unit's own face).
+    for status, colour in (("red", "--g-red"), ("yellow", "--g-yellow"), ("green", "--g-unit")):
         assert f'[data-skin="glass"] .rack__slot--st-{status} {{ --g-st: var({colour}); }}' in css
     assert '[data-skin="glass"] .rack-unit__lamp { display: none; }' in css
     # Only the summary line in the Glass button (Legacy's issue line would overlap it).

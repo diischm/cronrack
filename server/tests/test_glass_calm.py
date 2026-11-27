@@ -396,3 +396,44 @@ def test_labels_setting_still_shows_the_words_in_the_scope():
     """The switch's rule isn't scoped, so it reaches the hidden words on these pages too."""
     selectors = [s for s, _ in css_rules(glass_css()) if "> .visually-hidden" in s]
     assert any('[data-labels="on"] .status-icon > .visually-hidden' in s for s in selectors)
+
+
+# --- 9. Status is never colour alone on the overview ---------------------------------------
+
+
+def test_problem_words_always_show_on_cards_and_units_ok_stays_bare():
+    """Needs you / Heads up show without "Show status labels"; All good (--good) does not."""
+    rules = [
+        (s, b)
+        for s, b in css_rules(glass_css())
+        if "> .visually-hidden" in s and "data-labels" not in s
+    ]
+    shown = [s for s, b in rules if "position: static" in b]
+    for head in (".g-attn__head", ".rack-unit__head"):
+        assert any(
+            head in s and ".status-icon--bad" in s and ".status-icon--warn" in s for s in shown
+        ), head
+    assert not [s for s in shown if "--good" in s]
+
+
+def test_expanded_issue_lines_show_the_line_icon_not_a_dot():
+    rules = css_rules(glass_css())
+    scope = ":is(.g-attn-more__issues, .g-unit-more__issues) .status-icon"
+    # The dot reads --g-dot for its display, so these rules need no ::before selector (the
+    # cards' no-glare test forbids one).
+    assert any(
+        s.endswith(".status-icon::before") and "display: var(--g-dot, block)" in b for s, b in rules
+    )
+    assert any(s.endswith(scope) and "--g-dot: none" in b for s, b in rules)
+    assert any(s.endswith(scope + " svg") and "display: block" in b for s, b in rules)
+
+
+def test_ok_units_get_no_tint():
+    bodies = [b for s, b in css_rules(glass_css()) if s.endswith(".rack__slot--st-green")]
+    assert bodies and "--g-green" not in bodies[0]
+
+
+def test_glass_shows_the_headline_in_words(alice_client, alice):
+    make_host(alice, "box-1", "red", make_report(reboot_required=True))
+    assert 'id="g-overview-title">1 thing needs you</h1>' in page(alice_client)
+    assert 'setText("g-overview-title"' in (JS / "overview.js").read_text(encoding="utf-8")
